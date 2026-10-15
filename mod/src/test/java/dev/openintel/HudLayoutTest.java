@@ -61,6 +61,7 @@ public final class HudLayoutTest {
         check(trimmed.equals("\uD801\uDC00\u2026"), "Trimming preserves complete Unicode codepoints");
         verifyEdgeOverflow();
         verifyEditorIntegration();
+        verifyEditorMouseButtons();
         System.out.println("Responsive HUD layout tests passed");
     }
 
@@ -99,6 +100,54 @@ public final class HudLayoutTest {
             }, org.objectweb.asm.ClassReader.SKIP_DEBUG | org.objectweb.asm.ClassReader.SKIP_FRAMES);
         }
         check(shared[0] && shared[1] && shared[2], "Editor uses shared builtin and external HUD bounds");
+    }
+
+    /** Check the compiled input gates against this Minecraft version's button IDs. */
+    private static void verifyEditorMouseButtons() throws Exception {
+        var buttons = new java.util.HashMap<String, java.util.List<Integer>>();
+        try (var input = dev.openintel.gui.HudEditorScreen.class.getResourceAsStream("HudEditorScreen.class")) {
+            new org.objectweb.asm.ClassReader(input).accept(new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                @Override
+                public org.objectweb.asm.MethodVisitor visitMethod(int access, String name, String descriptor,
+                                                                   String signature, String[] exceptions) {
+                    if (!java.util.Set.of("mouseClicked", "mouseDragged", "mouseReleased").contains(name)) return null;
+                    var gates = new java.util.ArrayList<Integer>();
+                    buttons.put(name, gates);
+                    return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
+                        private boolean button;
+
+                        @Override
+                        public void visitMethodInsn(int opcode, String owner, String method, String descriptor, boolean isInterface) {
+                            button = owner.equals("net/minecraft/client/input/MouseButtonEvent") && method.equals("button");
+                        }
+
+                        @Override
+                        public void visitJumpInsn(int opcode, org.objectweb.asm.Label label) {
+                            if (button && (opcode == org.objectweb.asm.Opcodes.IFEQ
+                                    || opcode == org.objectweb.asm.Opcodes.IFNE)) gates.add(0);
+                            button = false;
+                        }
+
+                        @Override
+                        public void visitInsn(int opcode) {
+                            if (button && opcode >= org.objectweb.asm.Opcodes.ICONST_M1
+                                    && opcode <= org.objectweb.asm.Opcodes.ICONST_5) {
+                                gates.add(opcode - org.objectweb.asm.Opcodes.ICONST_0);
+                            }
+                            button = false;
+                        }
+                    };
+                }
+            }, org.objectweb.asm.ClassReader.SKIP_DEBUG | org.objectweb.asm.ClassReader.SKIP_FRAMES);
+        }
+        int left = com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT;
+        int right = com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_RIGHT;
+        check(buttons.get("mouseClicked").equals(java.util.List.of(left, right, right, left)),
+                "HUD selection uses Minecraft's left button; external HUD toggling uses its right button");
+        check(buttons.get("mouseDragged").equals(java.util.List.of(left)),
+                "Dragging accepts the same left button that selects a HUD element");
+        check(buttons.get("mouseReleased").equals(java.util.List.of(left)),
+                "Releasing Minecraft's left button finishes and saves the drag");
     }
 
     private static void inside(HudLayout.Frame frame, int width, int height) {
