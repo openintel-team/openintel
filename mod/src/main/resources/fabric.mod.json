@@ -13,7 +13,8 @@
   },
   "entrypoints": {
     "client": ["dev.openintel.OpenIntelClient"],
-    "journeymap": ["dev.openintel.jm.OpenIntelJmPlugin"]
+    "journeymap": ["dev.openintel.jm.OpenIntelJmPlugin"],
+    "modmenu": ["dev.openintel.compat.ModMenuIntegration"]
   },
   "mixins": ["openintel.mixins.json"],
   "depends": {
@@ -21,5 +22,11 @@
     "fabric-api": "*",
     "minecraft": "~26.3",
     "java": ">=25"
+  },
+  "suggests": {
+    "modmenu": "*",
+    "chesttracker": "*",
+    "whereisit": "*",
+    "xaeroworldmap": "*"
   }
 }
