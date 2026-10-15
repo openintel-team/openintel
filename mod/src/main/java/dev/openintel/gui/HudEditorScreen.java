@@ -1,5 +1,6 @@
 package dev.openintel.gui;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.api.hud.HudApi;
 import dev.openintel.api.hud.HudElementDescriptor;
@@ -64,14 +65,14 @@ public class HudEditorScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
         if (super.mouseClicked(click, doubled)) return true;
-        if (click.button() != 0 && click.button() != 1) return false;
+        if (click.button() != InputConstants.MOUSE_BUTTON_LEFT && click.button() != InputConstants.MOUSE_BUTTON_RIGHT) return false;
         finishDrag();
         List<ExternalBox> external = externalBoxes();
         for (int i = external.size() - 1; i >= 0; i--) {
             ExternalBox box = external.get(i);
             if (!box.contains(click.x(), click.y())) continue;
             selectedExternalId = box.descriptor.id();
-            if (click.button() == 1) {
+            if (click.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
                 try {
                     HudApi.getInstance().setEnabled(selectedExternalId, !box.descriptor.enabled());
                 } catch (IllegalArgumentException ignored) {
@@ -85,7 +86,7 @@ public class HudEditorScreen extends Screen {
             return true;
         }
         selectedExternalId = null;
-        if (click.button() != 0) return false;
+        if (click.button() != InputConstants.MOUSE_BUTTON_LEFT) return false;
         List<Box> boxes = boxes();
         for (int i = boxes.size() - 1; i >= 0; i--) {
             Box box = boxes.get(i);
@@ -100,7 +101,7 @@ public class HudEditorScreen extends Screen {
 
     @Override
     public boolean mouseDragged(MouseButtonEvent click, double offsetX, double offsetY) {
-        if (click.button() != 0) return super.mouseDragged(click, offsetX, offsetY);
+        if (click.button() != InputConstants.MOUSE_BUTTON_LEFT) return super.mouseDragged(click, offsetX, offsetY);
         if (draggingExternalId != null) {
             HudElementDescriptor descriptor = HudApi.getInstance().element(draggingExternalId).orElse(null);
             if (descriptor == null) {
@@ -128,7 +129,7 @@ public class HudEditorScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent click) {
-        if (click.button() == 0 && (dragging != null || draggingExternalId != null)) {
+        if (click.button() == InputConstants.MOUSE_BUTTON_LEFT && (dragging != null || draggingExternalId != null)) {
             finishDrag();
             return true;
         }
