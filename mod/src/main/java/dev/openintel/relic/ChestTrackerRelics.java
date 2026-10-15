@@ -84,14 +84,14 @@ public final class ChestTrackerRelics {
         ItemContainerContents container = stack.get(DataComponents.CONTAINER);
         if (container != null) {
             int index = 0;
-            for (ItemStack inner : container.nonEmptyItemCopyStream().toList()) {
+            for (ItemStack inner : container.nonEmptyItemsCopy()) {
                 collect(entries, stacks, inner, memoryKey, chest, path + "c" + index++ + ":", client, depth + 1);
             }
         }
         BundleContents bundle = stack.get(DataComponents.BUNDLE_CONTENTS);
         if (bundle != null) {
             int index = 0;
-            for (ItemStack inner : bundle.itemCopies().toList()) {
+            for (ItemStack inner : bundle.itemsCopy()) {
                 collect(entries, stacks, inner, memoryKey, chest, path + "b" + index++ + ":", client, depth + 1);
             }
         }

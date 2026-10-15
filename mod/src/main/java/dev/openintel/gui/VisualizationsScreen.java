@@ -6,7 +6,7 @@ import dev.openintel.viz.RangeStore;
 import dev.openintel.viz.RangeType;
 import dev.openintel.viz.SnitchKind;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -224,13 +224,13 @@ public final class VisualizationsScreen extends Screen {
     }
 
     @Override
-    public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
         ctx.fill(0, 0, width, height, 0xC0101015);
-        super.extractRenderState(ctx, mouseX, mouseY, delta);
-        ctx.text(font, "Coverage shapes — look at a block, then add", 8, 10, 0xFFE8EAF0);
+        super.render(ctx, mouseX, mouseY, delta);
+        ctx.drawString(font, "Coverage shapes — look at a block, then add", 8, 10, 0xFFE8EAF0);
         String hint = lookHint();
         if (!hint.isEmpty()) {
-            ctx.text(font, hint, width - 8 - font.width(hint), 10, 0xFF7C8CF8);
+            ctx.drawString(font, hint, width - 8 - font.width(hint), 10, 0xFF7C8CF8);
         }
         ctx.enableScissor(listX, listY, listX + listW, listY + listH);
         int y = listY - scroll;
@@ -250,12 +250,12 @@ public final class VisualizationsScreen extends Screen {
                     line += kind == SnitchKind.LOGGING ? "  logging" : "  notifier";
                 }
                 int color = s.enabled ? 0xFFE8EAF0 : 0xFF8E93A6;
-                ctx.text(font, line, listX + 4, y + 5, color);
+                ctx.drawString(font, line, listX + 4, y + 5, color);
             }
             y += ROW_H;
         }
         ctx.disableScissor();
-        ctx.text(font,
+        ctx.drawString(font,
                 view.size() + " / " + RangeStore.MAX_SHAPES
                         + "  — bastion column shows 64 blocks up; protection continues above",
                 8, height - 64, 0xFF8E93A6);
@@ -285,7 +285,7 @@ public final class VisualizationsScreen extends Screen {
     @Override
     public void onClose() {
         RangeStore.get().save();
-        minecraft.gui.setScreen(parent);
+        minecraft.setScreen(parent);
     }
 
     @Override

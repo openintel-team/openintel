@@ -105,7 +105,7 @@ public final class MapFontTest {
                     @Override
                     public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
                         if (name.equals("getModId") && descriptor.equals("()Ljava/lang/String;")) methods[0] = true;
-                        if (name.equals("drawText") && descriptor.equals("(Lnet/minecraft/client/gui/GuiGraphicsExtractor;DDLjourneymap/client/render/map/Renderer;DD)V")) methods[1] = true;
+                        if (name.equals("drawText") && descriptor.equals("(Lnet/minecraft/class_332;DDLjourneymap/client/render/map/Renderer;DD)V")) methods[1] = true;
                         return null;
                     }
                 }, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);

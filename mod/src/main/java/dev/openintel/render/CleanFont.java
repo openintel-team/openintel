@@ -1,17 +1,17 @@
 package dev.openintel.render;
 
 import dev.openintel.OpenIntelClient;
-import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.renderpearl.api.textures.AddressMode;
-import com.mojang.renderpearl.api.textures.FilterMode;
-import com.mojang.renderpearl.api.textures.GpuTexture;
-import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.blaze3d.textures.AddressMode;
+import com.mojang.blaze3d.textures.FilterMode;
+import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.blaze3d.textures.TextureFormat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.navigation.ScreenRectangle;
-import net.minecraft.client.renderer.state.gui.GuiElementRenderState;
+import net.minecraft.client.gui.render.state.GuiElementRenderState;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.gui.render.TextureSetup;
 import org.joml.Matrix3x2f;
@@ -52,8 +52,8 @@ public final class CleanFont {
     private static final RenderPipeline PIPELINE = RenderPipeline.builder(RenderPipelines.GUI_TEXTURED_SNIPPET)
             .withLocation(Identifier.fromNamespaceAndPath("openintel", "pipeline/clean_font"))
             .withFragmentShader(Identifier.fromNamespaceAndPath("openintel", "core/clean_font"))
-            .withDepthStencilState(new com.mojang.renderpearl.api.pipeline.DepthStencilState(
-                    com.mojang.renderpearl.api.pipeline.CompareOp.ALWAYS_PASS, false))
+            .withDepthTestFunction(com.mojang.blaze3d.platform.DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
             .build();
     private static final int ATLAS = 1024;
     private static final int MIP_LEVELS = 4;
@@ -115,7 +115,7 @@ public final class CleanFont {
         return pen;
     }
 
-    public static void draw(GuiGraphicsExtractor ctx, String text, float x, float y,
+    public static void draw(GuiGraphics ctx, String text, float x, float y,
                             int argb, boolean shadow) {
         if (shadow) {
             int sc = UiFont.shadowColor((argb & 0xFF000000) | ((argb & 0xFCFCFC) >>> 2));
@@ -125,12 +125,12 @@ public final class CleanFont {
         pass(ctx, text, x, y, argb);
     }
 
-    public static void drawCentered(GuiGraphicsExtractor ctx, String text, float cx,
+    public static void drawCentered(GuiGraphics ctx, String text, float cx,
                                     float y, int argb) {
         draw(ctx, text, cx - width(text) / 2f, y, argb, true);
     }
 
-    private static void pass(GuiGraphicsExtractor ctx, String text, float x, float y, int argb) {
+    private static void pass(GuiGraphics ctx, String text, float x, float y, int argb) {
         if ((argb >>> 24) == 0 || text.isEmpty()) return;
         var pose = new Matrix3x2f(ctx.pose());
         ScreenRectangle bounds = textBounds(text, x, y, pose);
@@ -139,7 +139,7 @@ public final class CleanFont {
         if (scissor != null) bounds = bounds.intersection(scissor);
         if (bounds == null) return;
         var texture = Minecraft.getInstance().getTextureManager().getTexture(ATLAS_ID);
-        ctx.guiRenderState.addGuiElement(new TextRun(pose,
+        ctx.guiRenderState.submitGuiElement(new TextRun(pose,
                 TextureSetup.singleTexture(texture.getTextureView(), texture.getSampler()),
                 text, x, y, argb, scissor, bounds));
     }
@@ -310,7 +310,7 @@ public final class CleanFont {
             var device = RenderSystem.getDevice();
             texture = device.createTexture("openintel-clean-font",
                     GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_COPY_DST,
-                    GpuFormat.RGBA8_UNORM, ATLAS, ATLAS, 1, MIP_LEVELS);
+                    TextureFormat.RGBA8, ATLAS, ATLAS, 1, MIP_LEVELS);
             try {
                 textureView = device.createTextureView(texture);
                 uploadMip(image, 0);
@@ -322,7 +322,7 @@ public final class CleanFont {
 
         private void uploadMip(NativeImage image, int level) {
             RenderSystem.getDevice().createCommandEncoder().writeToTexture(
-                    texture, image, level, 0, 0, 0);
+                    texture, image, level, 0, 0, 0, image.getWidth(), image.getHeight(), 0, 0);
             if (level + 1 < MIP_LEVELS) {
                 try (NativeImage next = downsample(image)) {
                     uploadMip(next, level + 1);

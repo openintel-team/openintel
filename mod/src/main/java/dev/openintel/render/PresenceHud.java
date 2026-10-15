@@ -5,7 +5,7 @@ import dev.openintel.api.hud.HudSize;
 import dev.openintel.config.OIConfig;
 import dev.openintel.tracker.Tracker.RemotePlayer;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
@@ -35,11 +35,11 @@ public final class PresenceHud {
         return measure(mc, rows(mc, cfg));
     }
 
-    public static void render(GuiGraphicsExtractor ctx) {
+    public static void render(GuiGraphics ctx) {
         OIConfig cfg = OpenIntelClient.config();
         if (!cfg.presenceEnabled || !cfg.relayRendering) return;
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.level == null || mc.gui.hud.isHidden()) return;
+        if (mc.player == null || mc.level == null || mc.options.hideGui) return;
         List<Row> rows = rows(mc, cfg);
         if (rows.isEmpty()) return;
         HudSize size = measure(mc, rows);
@@ -90,7 +90,7 @@ public final class PresenceHud {
         return new HudSize(Math.min(32768, panelW), rows.size() * (tr.lineHeight + 2) + 8);
     }
 
-    private static void drawPanel(GuiGraphicsExtractor ctx, Minecraft mc, OIConfig cfg, List<Row> rows, HudSize size) {
+    private static void drawPanel(GuiGraphics ctx, Minecraft mc, OIConfig cfg, List<Row> rows, HudSize size) {
         var tr = mc.font;
         int lineH = tr.lineHeight + 2;
         int padX = 4, padY = 4, dot = 4;
@@ -118,10 +118,10 @@ public final class PresenceHud {
         return cf ? CleanFont.width(s) : tr.width(s);
     }
 
-    private static void draw(GuiGraphicsExtractor ctx, net.minecraft.client.gui.Font tr,
+    private static void draw(GuiGraphics ctx, net.minecraft.client.gui.Font tr,
                              boolean cf, String s, float x, int y, int color) {
         if (cf) CleanFont.draw(ctx, s, x, y, color, true);
-        else ctx.text(tr, s, (int) x, y, color, true);
+        else ctx.drawString(tr, s, (int) x, y, color, true);
     }
 
     private static String distText(Row r) {

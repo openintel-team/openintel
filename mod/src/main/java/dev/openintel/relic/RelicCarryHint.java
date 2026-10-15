@@ -1,7 +1,7 @@
 package dev.openintel.relic;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.entity.player.Player;
@@ -14,7 +14,7 @@ import net.minecraft.world.item.ItemStack;
 public final class RelicCarryHint {
     private RelicCarryHint() { }
 
-    public static void draw(GuiGraphicsExtractor graphics, int screenWidth) {
+    public static void draw(GuiGraphics graphics, int screenWidth) {
         RelicLibraryVisit visit = RelicLibraryVisit.current();
         if (visit == null || !visit.isMapVisit()) return;
         Minecraft client = Minecraft.getInstance();
@@ -48,7 +48,7 @@ public final class RelicCarryHint {
         int y = 8;
         graphics.fill(x - 6, y - 3, x + width + 6, y + 12, 0xC0101014);
         graphics.fill(x - 6, y - 3, x + width + 6, y - 2, color);
-        graphics.text(client.font, text, x, y, color);
+        graphics.drawString(client.font, text, x, y, color);
     }
 
     /**

@@ -1,7 +1,7 @@
 package dev.openintel.render;
 
-import com.mojang.renderpearl.api.pipeline.RenderPipeline;
-import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.textures.TextureFormat;
 import net.minecraft.client.gui.font.glyphs.EffectGlyph;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -15,12 +15,11 @@ public final class UiFont {
     public static final FontDescription.Resource SOURCE = new FontDescription.Resource(FONT_ID);
     public static final RenderPipeline PIPELINE = RenderPipeline.builder(RenderPipelines.GUI_TEXTURED_SNIPPET)
             .withLocation(Identifier.fromNamespaceAndPath("openintel", "pipeline/ui_font"))
-            .withVertexBinding(0, RenderPipelines.GUI_TEXT.getVertexFormatBinding(0))
-            .withPrimitiveTopology(RenderPipelines.GUI_TEXT.getPrimitiveTopology())
+            .withVertexFormat(RenderPipelines.GUI_TEXT.getVertexFormat(), RenderPipelines.GUI_TEXT.getVertexFormatMode())
             .withFragmentShader(Identifier.fromNamespaceAndPath("openintel", "core/clean_font"))
             .withShaderDefine("FONT_INTENSITY")
-            .withDepthStencilState(new com.mojang.renderpearl.api.pipeline.DepthStencilState(
-                    com.mojang.renderpearl.api.pipeline.CompareOp.ALWAYS_PASS, false))
+            .withDepthTestFunction(com.mojang.blaze3d.platform.DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
             .build();
 
     private static volatile boolean enabled;
@@ -113,7 +112,7 @@ public final class UiFont {
         return label != null && label.startsWith(ATLAS_PREFIX);
     }
 
-    public static boolean smoothAtlas(String label, GpuFormat format) {
-        return isAtlas(label) && format == GpuFormat.R8_UNORM;
+    public static boolean smoothAtlas(String label, TextureFormat format) {
+        return isAtlas(label) && format == TextureFormat.RED8;
     }
 }

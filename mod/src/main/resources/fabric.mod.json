@@ -20,8 +20,8 @@
   "depends": {
     "fabricloader": ">=0.19.5",
     "fabric-api": "*",
-    "minecraft": "~26.3",
-    "java": ">=25"
+    "minecraft": "~1.21.11",
+    "java": ">=21"
   },
   "suggests": {
     "modmenu": "*",

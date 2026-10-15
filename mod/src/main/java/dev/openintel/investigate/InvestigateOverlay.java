@@ -2,7 +2,7 @@ package dev.openintel.investigate;
 
 import dev.openintel.snitch.SnitchLogParser;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gizmos.GizmoProperties;
 import net.minecraft.gizmos.GizmoStyle;
@@ -63,7 +63,7 @@ public final class InvestigateOverlay {
         }
     }
 
-    public static void renderHud(GuiGraphicsExtractor ctx) {
+    public static void renderHud(GuiGraphics ctx) {
         InvestigateSession session = InvestigateSession.get();
         if (!session.isWatching()) return;
         Minecraft mc = Minecraft.getInstance();
@@ -79,6 +79,6 @@ public final class InvestigateOverlay {
         int x = Math.max(4, (ctx.guiWidth() - w) / 2);
         int y = 8;
         ctx.fill(x - 4, y - 2, x + w + 4, y + 12, 0xC0101015);
-        ctx.text(font, line, x, y, 0xFFFFFFFF);
+        ctx.drawString(font, line, x, y, 0xFFFFFFFF);
     }
 }

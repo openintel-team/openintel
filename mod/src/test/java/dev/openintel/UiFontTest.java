@@ -1,7 +1,7 @@
 package dev.openintel;
 
 import com.google.gson.JsonParser;
-import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.blaze3d.textures.TextureFormat;
 import com.mojang.serialization.JsonOps;
 import dev.openintel.render.UiFont;
 import net.minecraft.client.gui.font.providers.GlyphProviderDefinition;
@@ -43,10 +43,10 @@ public final class UiFontTest {
             var atlasId = GlyphStitcher.class.getDeclaredMethod("textureName", int.class);
             atlasId.setAccessible(true);
             String label = atlasId.invoke(baker, 0).toString();
-            check(UiFont.smoothAtlas(label, GpuFormat.R8_UNORM), "Native glyph atlas is recognized for smooth coverage");
-            check(!UiFont.smoothAtlas(label, GpuFormat.RGBA8_UNORM), "Color glyphs retain their own rendering");
+            check(UiFont.smoothAtlas(label, TextureFormat.RED8), "Native glyph atlas is recognized for smooth coverage");
+            check(!UiFont.smoothAtlas(label, TextureFormat.RGBA8), "Color glyphs retain their own rendering");
         }
-        check(!UiFont.smoothAtlas("minecraft:default/0", GpuFormat.R8_UNORM), "Vanilla atlas filtering unchanged");
+        check(!UiFont.smoothAtlas("minecraft:default/0", TextureFormat.RED8), "Vanilla atlas filtering unchanged");
         check(!UiFont.isAtlas("openintel:ui_other/0") && !UiFont.isAtlas(null), "Atlas matching is scoped precisely");
 
         try (var input = UiFontTest.class.getResourceAsStream("/assets/openintel/font/ui.json")) {
@@ -94,7 +94,7 @@ public final class UiFontTest {
         }
         verifyShadows();
         verifyMixinTargets();
-        check(UiFont.PIPELINE.getVertexFormatBinding(0).equals(net.minecraft.client.renderer.RenderPipelines.GUI_TEXT.getVertexFormatBinding(0)),
+        check(UiFont.PIPELINE.getVertexFormat().equals(net.minecraft.client.renderer.RenderPipelines.GUI_TEXT.getVertexFormat()),
                 "Native glyph vertex layout is preserved");
         System.out.println("UI font selection and native loading tests passed");
     }
@@ -279,19 +279,19 @@ public final class UiFontTest {
         net.minecraft.client.gui.font.glyphs.BakedSheetGlyph.class.getDeclaredMethod("createEffect", float.class, float.class,
                 float.class, float.class, float.class, int.class, int.class, float.class);
         check(net.minecraft.client.gui.font.glyphs.BakedSheetGlyph.class.getDeclaredField("textureView").getType()
-                == com.mojang.renderpearl.api.textures.GpuTextureView.class, "Shadow hook can identify the clean-font atlas");
+                == com.mojang.blaze3d.textures.GpuTextureView.class, "Shadow hook can identify the clean-font atlas");
         var chat = net.minecraft.client.gui.components.ChatComponent.class;
         chat.getDeclaredMethod("refreshTrimmedMessages");
-        chat.getDeclaredMethod("extractRenderState", net.minecraft.client.gui.GuiGraphicsExtractor.class,
+        chat.getDeclaredMethod("render", net.minecraft.client.gui.GuiGraphics.class,
                 net.minecraft.client.gui.Font.class, int.class, int.class, int.class,
-                net.minecraft.client.gui.components.ChatComponent.DisplayMode.class, boolean.class);
+                boolean.class, boolean.class);
         chat.getDeclaredMethod("captureClickableText", net.minecraft.client.gui.ActiveTextCollector.class,
-                int.class, int.class, net.minecraft.client.gui.components.ChatComponent.DisplayMode.class);
-        for (String name : new String[]{"extractOverlayMessage", "extractTitle"}) {
-            net.minecraft.client.gui.Hud.class.getDeclaredMethod(name,
-                    net.minecraft.client.gui.GuiGraphicsExtractor.class, net.minecraft.client.DeltaTracker.class);
+                int.class, int.class, boolean.class);
+        for (String name : new String[]{"renderOverlayMessage", "renderTitle"}) {
+            net.minecraft.client.gui.Gui.class.getDeclaredMethod(name,
+                    net.minecraft.client.gui.GuiGraphics.class, net.minecraft.client.DeltaTracker.class);
         }
-        net.minecraft.client.renderer.state.gui.GuiTextRenderState.class.getDeclaredConstructor(
+        net.minecraft.client.gui.render.state.GuiTextRenderState.class.getDeclaredConstructor(
                 net.minecraft.client.gui.Font.class, net.minecraft.util.FormattedCharSequence.class,
                 org.joml.Matrix3x2fc.class, int.class, int.class, int.class, int.class,
                 boolean.class, boolean.class, net.minecraft.client.gui.navigation.ScreenRectangle.class);
@@ -301,8 +301,8 @@ public final class UiFontTest {
         verifyFontSettingWiring();
         var selector = net.minecraft.client.gui.Font.class.getDeclaredMethod("getGlyphSource", FontDescription.class);
         check(selector.getReturnType() == net.minecraft.client.gui.GlyphSource.class, "Component selection hook matches this Minecraft version");
-        var element = net.minecraft.client.renderer.state.gui.GlyphRenderState.class;
-        check(element.getDeclaredMethod("pipeline").getReturnType() == com.mojang.renderpearl.api.pipeline.RenderPipeline.class,
+        var element = net.minecraft.client.gui.render.state.GlyphRenderState.class;
+        check(element.getDeclaredMethod("pipeline").getReturnType() == com.mojang.blaze3d.pipeline.RenderPipeline.class,
                 "GUI font pipeline hook matches");
         check(element.getDeclaredMethod("textureSetup").getReturnType() == net.minecraft.client.gui.render.TextureSetup.class,
                 "GUI font sampler hook matches");

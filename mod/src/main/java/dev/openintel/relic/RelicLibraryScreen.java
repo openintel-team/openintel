@@ -2,7 +2,7 @@ package dev.openintel.relic;
 
 import dev.openintel.xaero.RelicCatalog;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
@@ -187,7 +187,7 @@ public final class RelicLibraryScreen extends Screen {
 
     @Override
     public void onClose() {
-        Minecraft.getInstance().gui.setScreen(parent);
+        Minecraft.getInstance().setScreen(parent);
     }
 
     @Override
@@ -245,14 +245,14 @@ public final class RelicLibraryScreen extends Screen {
     }
 
     @Override
-    public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
         drawRaisedPanel(ctx, panelX, panelY, panelW, panelH);
         drawInset(ctx, insetX, insetY, insetW, insetH);
-        ctx.text(font, title, panelX + 8, panelY + 6, TITLE_COLOR);
+        ctx.drawString(font, title, panelX + 8, panelY + 6, TITLE_COLOR);
         String count = Component.translatable("openintel.relic.library.count",
                 view.size(), visit.selectedIds().size()).getString();
-        ctx.text(font, count, panelX + panelW - 8 - font.width(count), panelY + 6, TITLE_COLOR);
-        super.extractRenderState(ctx, mouseX, mouseY, delta);
+        ctx.drawString(font, count, panelX + panelW - 8 - font.width(count), panelY + 6, TITLE_COLOR);
+        super.render(ctx, mouseX, mouseY, delta);
 
         ctx.enableScissor(listX, listY, listX + listW, listY + listH);
         int y = listY - scroll;
@@ -284,7 +284,7 @@ public final class RelicLibraryScreen extends Screen {
                 String line = entry.title()
                         + (entry.enchantment().isEmpty() ? "" : "  |  " + entry.enchantment())
                         + "  |  " + coords;
-                ctx.text(font, fit(line, textLimit), listX + 22, y + 6,
+                ctx.drawString(font, fit(line, textLimit), listX + 22, y + 6,
                         selected ? TITLE_COLOR : PANEL_HIGHLIGHT, !selected);
             }
             y += ROW_H;
@@ -295,7 +295,7 @@ public final class RelicLibraryScreen extends Screen {
             Component message = visit.entries().isEmpty()
                     ? Component.translatable("openintel.relic.library.empty")
                     : Component.translatable("openintel.relic.library.no_matches");
-            ctx.textWithWordWrap(font, message, listX + 4, listY + 6, listW - 8, PANEL_HIGHLIGHT);
+            ctx.drawWordWrap(font, message, listX + 4, listY + 6, listW - 8, PANEL_HIGHLIGHT);
         }
 
         ctx.blitSprite(RenderPipelines.GUI_TEXTURED, SCROLLER_BG, scrollX, listY, SCROLL_W, listH);
@@ -360,7 +360,7 @@ public final class RelicLibraryScreen extends Screen {
      * Vanilla container bevel: black outer edge, white top-left, dark bottom-right,
      * and the notched corners from the villager and chest windows.
      */
-    private static void drawRaisedPanel(GuiGraphicsExtractor g, int x, int y, int w, int h) {
+    private static void drawRaisedPanel(GuiGraphics g, int x, int y, int w, int h) {
         if (w < 8 || h < 8) return;
         g.fill(x + 3, y + 3, x + w - 3, y + h - 3, PANEL_FILL);
 
@@ -394,7 +394,7 @@ public final class RelicLibraryScreen extends Screen {
     }
 
     /** Recessed list well: dark along the top and left, light along the bottom and right. */
-    private static void drawInset(GuiGraphicsExtractor g, int x, int y, int w, int h) {
+    private static void drawInset(GuiGraphics g, int x, int y, int w, int h) {
         g.fill(x + 1, y + 1, x + w - 1, y + h - 1, INSET_FILL);
         g.fill(x, y, x + w - 1, y + 1, INSET_SHADE);
         g.fill(x, y, x + 1, y + h - 1, INSET_SHADE);

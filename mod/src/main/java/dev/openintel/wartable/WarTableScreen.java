@@ -8,7 +8,7 @@ import dev.openintel.tracker.Tracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.components.EditBox;
 import com.mojang.blaze3d.platform.NativeImage;
@@ -268,7 +268,7 @@ public class WarTableScreen extends Screen {
     public boolean isPauseScreen() { return false; }
 
     @Override
-    public void extractBackground(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
+    public void renderBackground(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
         // Full-dark backdrop; no blur pass (in-world screens must not blur).
         ctx.fill(0, 0, (int) width, (int) height, 0xFF0A0E14);
     }
@@ -276,7 +276,7 @@ public class WarTableScreen extends Screen {
     // ----------------------------------------------------------- render ----
 
     @Override
-    public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
         LiveMap.ensureLoaded();
         Sanctuaries.ensureLoaded();
         MapProjection proj = LiveMap.projection();
@@ -313,11 +313,11 @@ public class WarTableScreen extends Screen {
         // Chrome text uses the same clean HUD text path as the other OpenIntel
         // surfaces; map labels use the explicit CleanFont fallback helpers.
         UiFont.withHudFont(() -> renderChrome(ctx, mouseX, mouseY, proj));
-        UiFont.withHudFont(() -> super.extractRenderState(ctx, mouseX, mouseY, delta));
+        UiFont.withHudFont(() -> super.render(ctx, mouseX, mouseY, delta));
     }
 
     /** Visible tile grid at the chosen pyramid level. */
-    private void renderTiles(GuiGraphicsExtractor ctx, MapProjection proj) {
+    private void renderTiles(GuiGraphics ctx, MapProjection proj) {
         int level = pickLevel();
         double tileSpan = LiveMap.TILE * LiveMap.levelScale(level);   // map px per tile
         double tileScreen = tileSpan * zoom;                          // screen px per tile
@@ -390,7 +390,7 @@ public class WarTableScreen extends Screen {
 
     // ------------------------------------------------------- strokes ----
 
-    private void renderStrokes(GuiGraphicsExtractor ctx, MapProjection proj,
+    private void renderStrokes(GuiGraphics ctx, MapProjection proj,
                                int mouseX, int mouseY) {
         rebuildStrokeOverlay(proj);
         if (strokeTexId != null) {
@@ -425,7 +425,7 @@ public class WarTableScreen extends Screen {
         renderPointDraft(ctx, proj);
     }
 
-    private void renderSanctuaryLabels(GuiGraphicsExtractor ctx, MapProjection proj) {
+    private void renderSanctuaryLabels(GuiGraphics ctx, MapProjection proj) {
         if (!showSanctuaries()) return;
         for (Sanctuaries.Sanctuary s : Sanctuaries.all()) {
             if (!s.overworld()) continue;
@@ -457,7 +457,7 @@ public class WarTableScreen extends Screen {
     }
 
     /** Pending label/pin input shows at the clicked point instead of the bottom. */
-    private void renderPointDraft(GuiGraphicsExtractor ctx, MapProjection proj) {
+    private void renderPointDraft(GuiGraphics ctx, MapProjection proj) {
         if (!labeling || labelTool == null) return;
         double sx = screenX(proj, labelAnchorX), sy = screenY(proj, labelAnchorZ);
         String text = labelField.getValue().trim();
@@ -483,18 +483,18 @@ public class WarTableScreen extends Screen {
         return CleanFont.active() ? CleanFont.LINE_H - 2f : font.lineHeight;
     }
 
-    private void drawText(GuiGraphicsExtractor ctx, String text, float x, float y, int color) {
+    private void drawText(GuiGraphics ctx, String text, float x, float y, int color) {
         if (cleanText(text)) CleanFont.draw(ctx, text, x, y, color, false);
-        else ctx.text(font, text, Math.round(x), Math.round(y), color, true);
+        else ctx.drawString(font, text, Math.round(x), Math.round(y), color, true);
     }
 
-    private void drawCentered(GuiGraphicsExtractor ctx, String text, float cx, float y, int color) {
+    private void drawCentered(GuiGraphics ctx, String text, float cx, float y, int color) {
         if (cleanText(text)) CleanFont.drawCentered(ctx, text, cx, y, color);
-        else ctx.centeredText(font, text, Math.round(cx), Math.round(y), color);
+        else ctx.drawCenteredString(font, text, Math.round(cx), Math.round(y), color);
     }
 
     /** Filled diamond at a map point — same marker language as JourneyMap waypoints. */
-    private void drawDiamond(GuiGraphicsExtractor ctx, int cx, int cy, int r, int argb) {
+    private void drawDiamond(GuiGraphics ctx, int cx, int cy, int r, int argb) {
         for (int dy = -r; dy <= r; dy++) {
             int half = r - Math.abs(dy);
             ctx.fill(cx - half, cy + dy, cx + half + 1, cy + dy + 1, argb);
@@ -502,7 +502,7 @@ public class WarTableScreen extends Screen {
     }
 
     /** Dark translucent plate under the label — readable over any terrain, no outline halo. */
-    private void drawPlatedCentered(GuiGraphicsExtractor ctx, String text, float cx, float y, int color) {
+    private void drawPlatedCentered(GuiGraphics ctx, String text, float cx, float y, int color) {
         float w = textWidth(text);
         int alpha = (color >>> 24) & 0xFF;
         int plate = Math.clamp(Math.round(alpha * 0.9f), 0xA0, 0xE0) << 24 | 0x0A0C12;
@@ -688,7 +688,7 @@ public class WarTableScreen extends Screen {
         g.fill(tri);
     }
 
-    private void renderSanctuaryTooltip(GuiGraphicsExtractor ctx, int mouseX, int mouseY) {
+    private void renderSanctuaryTooltip(GuiGraphics ctx, int mouseX, int mouseY) {
         Sanctuaries.Sanctuary s = hoveredSanctuary;
         if (s == null) return;
         String title = s.name();
@@ -699,14 +699,14 @@ public class WarTableScreen extends Screen {
         int y = Math.max(TOOLBAR_H + 4,
                 Math.min((int) height - STATUS_H - boxH - 4, mouseY + 10));
         ctx.fill(x - 4, y - 4, x + boxW - 4, y + boxH - 4, 0xE0080C12);
-        ctx.outline(x - 4, y - 4, boxW, boxH, 0xAAFFAA00);
+        ctx.renderOutline(x - 4, y - 4, boxW, boxH, 0xAAFFAA00);
         drawText(ctx, title, x, y, 0xFFFFD27A);
         drawText(ctx, sub, x, y + textHeight() + 2, 0xFFDDDDDD);
     }
 
     // ----------------------------------------------------- intel overlay ---
 
-    private void renderOverlays(GuiGraphicsExtractor ctx, MapProjection proj) {
+    private void renderOverlays(GuiGraphics ctx, MapProjection proj) {
         if (minecraft == null) return;
         // Shared pings first (under player markers).
         for (PingManager.Ping p : PingManager.active()) {
@@ -772,7 +772,7 @@ public class WarTableScreen extends Screen {
 
     // ----------------------------------------------------------- chrome ----
 
-    private void renderChrome(GuiGraphicsExtractor ctx, int mouseX, int mouseY, MapProjection proj) {
+    private void renderChrome(GuiGraphics ctx, int mouseX, int mouseY, MapProjection proj) {
         // Top bar.
         ctx.fill(0, 0, (int) width, TOOLBAR_H + 2, 0xC0080C12);
         boolean live = WarTable.live();
@@ -787,7 +787,7 @@ public class WarTableScreen extends Screen {
                     && mouseY >= b.y() && mouseY < b.y() + b.h();
             if (hot) bg = 0xFF506880;
             ctx.fill(b.x(), b.y(), b.x() + b.w(), b.y() + b.h(), bg);
-            ctx.outline(b.x(), b.y(), b.w(), b.h(),
+            ctx.renderOutline(b.x(), b.y(), b.w(), b.h(),
                     active ? 0xFFFFAA00 : (hot ? 0xFF9FB4C8 : 0xFF3A4652));
             drawText(ctx, b.label(), b.x() + 6, b.y() + 4,
                     active ? 0xFFFFAA00 : 0xFFDDDDDD);
@@ -796,7 +796,7 @@ public class WarTableScreen extends Screen {
             boolean hot = mouseX >= sw[0] && mouseX < sw[0] + 12
                     && mouseY >= sw[1] && mouseY < sw[1] + 12;
             ctx.fill(sw[0], sw[1], sw[0] + 12, sw[1] + 12, sw[2]);
-            ctx.outline(sw[0], sw[1], 12, 12,
+            ctx.renderOutline(sw[0], sw[1], 12, 12,
                     color == sw[2] ? 0xFFFFFFFF : (hot ? 0xAAFFFFFF : 0x55000000));
         }
 

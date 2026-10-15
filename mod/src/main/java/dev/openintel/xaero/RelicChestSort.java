@@ -6,7 +6,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ChestMenu;
-import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.ShulkerBoxMenu;
 import net.minecraft.world.inventory.Slot;
 
@@ -35,7 +35,7 @@ public final class RelicChestSort {
             reset();
             return;
         }
-        var screen = client.gui.screen();
+        var screen = client.screen;
         AbstractContainerMenu menu = player.containerMenu;
         if (screen == null || !storageMenu(menu)) {
             reset();
@@ -73,9 +73,9 @@ public final class RelicChestSort {
             return;
         }
         var input = client.gameMode;
-        input.handleContainerInput(menu.containerId, clicks[cursor], 0, ContainerInput.PICKUP, player);
-        input.handleContainerInput(menu.containerId, clicks[cursor + 1], 0, ContainerInput.PICKUP, player);
-        input.handleContainerInput(menu.containerId, clicks[cursor + 2], 0, ContainerInput.PICKUP, player);
+        input.handleInventoryMouseClick(menu.containerId, clicks[cursor], 0, ClickType.PICKUP, player);
+        input.handleInventoryMouseClick(menu.containerId, clicks[cursor + 1], 0, ClickType.PICKUP, player);
+        input.handleInventoryMouseClick(menu.containerId, clicks[cursor + 2], 0, ClickType.PICKUP, player);
         cursor += 3;
         if (cursor >= clicks.length) done = true;
     }

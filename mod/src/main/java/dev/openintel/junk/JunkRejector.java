@@ -3,7 +3,7 @@ package dev.openintel.junk;
 import dev.openintel.OpenIntelClient;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.HashSet;
@@ -24,7 +24,7 @@ public final class JunkRejector {
         var cfg = OpenIntelClient.config();
         if (!cfg.junkReject) return;
         if (client.player == null || client.gameMode == null) return;
-        if (client.gui.screen() != null) return;                 // never click under an open GUI
+        if (client.screen != null) return;                 // never click under an open GUI
         if (client.player.isCreative() || client.player.isSpectator()) return;
         if (!client.player.isAlive()) return;
 
@@ -35,8 +35,8 @@ public final class JunkRejector {
         for (int slot = 9; slot <= 44; slot++) {
             ItemStack stack = menu.getSlot(slot).getItem();
             if (stack.isEmpty() || !junk.contains(id(stack))) continue;
-            client.gameMode.handleContainerInput(menu.containerId, slot, 1,
-                    ContainerInput.THROW, client.player);
+            client.gameMode.handleInventoryMouseClick(menu.containerId, slot, 1,
+                    ClickType.THROW, client.player);
             return;                                              // one stack per sweep
         }
     }

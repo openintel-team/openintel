@@ -419,7 +419,7 @@ public final class ClickGui {
 
     private static void applyFont(OIConfig config, boolean clean) {
         config.cleanFont = clean;
-        if (UiFont.setEnabled(clean)) Minecraft.getInstance().gui.hud.getChat().rescaleChat();
+        if (UiFont.setEnabled(clean)) Minecraft.getInstance().gui.getChat().rescaleChat();
         config.save();
     }
 

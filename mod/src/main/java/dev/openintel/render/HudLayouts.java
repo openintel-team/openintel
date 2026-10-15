@@ -3,7 +3,7 @@ package dev.openintel.render;
 import dev.openintel.api.hud.HudSize;
 import dev.openintel.config.OIConfig;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 
 import java.util.LinkedHashMap;
 
@@ -119,14 +119,14 @@ public final class HudLayouts {
         config.save();
     }
 
-    public static FrameScope apply(GuiGraphicsExtractor context, HudLayout.Frame frame) {
+    public static FrameScope apply(GuiGraphics context, HudLayout.Frame frame) {
         return new FrameScope(context, frame);
     }
 
     public static final class FrameScope implements AutoCloseable {
-        private final GuiGraphicsExtractor context;
+        private final GuiGraphics context;
 
-        private FrameScope(GuiGraphicsExtractor context, HudLayout.Frame frame) {
+        private FrameScope(GuiGraphics context, HudLayout.Frame frame) {
             this.context = context;
             context.pose().pushMatrix();
             context.enableScissor(frame.x(), frame.y(), frame.right(), frame.bottom());

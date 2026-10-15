@@ -1,11 +1,11 @@
 package dev.openintel.mixin;
 
-import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.blaze3d.textures.FilterMode;
 import dev.openintel.render.UiFont;
 import net.minecraft.client.gui.font.TextRenderable;
-import net.minecraft.client.renderer.state.gui.GlyphRenderState;
+import net.minecraft.client.gui.render.state.GlyphRenderState;
 import net.minecraft.client.gui.render.TextureSetup;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;

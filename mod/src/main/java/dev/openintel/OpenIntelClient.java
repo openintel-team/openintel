@@ -37,12 +37,12 @@ import dev.openintel.xaero.RelicChestSort;
 import dev.openintel.xaero.RelicMapScanner;
 import dev.openintel.xaero.XaeroIntegration;
 import net.fabricmc.api.ClientModInitializer;
-import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
@@ -124,7 +124,7 @@ public class OpenIntelClient implements ClientModInitializer {
         registerKeybinds();
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if (UiFont.setEnabled(config.cleanFont)) client.gui.hud.getChat().rescaleChat();
+            if (UiFont.setEnabled(config.cleanFont)) client.gui.getChat().rescaleChat();
             dev.openintel.render.HudLayouts.flush();
             relay.tick();
             tracker.tick(client);
@@ -149,13 +149,13 @@ public class OpenIntelClient implements ClientModInitializer {
                 status("radar " + (config.radarEnabled ? "on" : "off"));
             }
             if (config.pingWheelEnabled && pingKey.consumeClick() && client.player != null
-                    && client.gui.screen() == null) {
-                client.gui.setScreen(new PingWheelScreen(pingKey,
+                    && client.screen == null) {
+                client.setScreen(new PingWheelScreen(pingKey,
                         PingWheelScreen.physicallyHeld(pingKey)));
             }
             while (warTableKey.consumeClick()) {
-                if (config.warTableEnabled && client.gui.screen() == null) {
-                    client.gui.setScreen(new WarTableScreen());
+                if (config.warTableEnabled && client.screen == null) {
+                    client.setScreen(new WarTableScreen());
                 }
             }
             while (investigatePrevKey.consumeClick()) {
@@ -291,8 +291,8 @@ public class OpenIntelClient implements ClientModInitializer {
     }
 
     private static KeyMapping keybind(String id, int key) {
-        return KeyMappingHelper.registerKeyMapping(
-                new KeyMapping(id, InputConstants.Type.KEYBOARD, key, OI_CATEGORY));
+        return KeyBindingHelper.registerKeyBinding(
+                new KeyMapping(id, InputConstants.Type.KEYSYM, key, OI_CATEGORY));
     }
 
     private static int setRelayCut(String action) {
@@ -312,84 +312,84 @@ public class OpenIntelClient implements ClientModInitializer {
 
     private void registerCommands() {
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
-                dispatcher.register(ClientCommands.literal("oi")
-                        .then(ClientCommands.literal("reconnect").executes(c -> {
+                dispatcher.register(ClientCommandManager.literal("oi")
+                        .then(ClientCommandManager.literal("reconnect").executes(c -> {
                             reconnectRelay();
                             return 1;
                         }))
-                        .then(ClientCommands.literal("status").executes(c -> {
+                        .then(ClientCommandManager.literal("status").executes(c -> {
                             status(relay.isConnected() ? "connected to " + config.relayUrl
                                                        : "not connected");
                             return 1;
                         }))
-                        .then(ClientCommands.literal("dumpmap").executes(c -> {
+                        .then(ClientCommandManager.literal("dumpmap").executes(c -> {
                             dumpMap();
                             return 1;
                         }))
-                        .then(ClientCommands.literal("cut")
+                        .then(ClientCommandManager.literal("cut")
                                 .requires(source -> OpenIntelApi.relay().snapshot().role()
                                         .map(role -> role.equalsIgnoreCase("admin")).orElse(false))
                                 .executes(c -> setRelayCut("toggle"))
-                                .then(ClientCommands.literal("on").executes(c -> setRelayCut("on")))
-                                .then(ClientCommands.literal("off").executes(c -> setRelayCut("off")))
-                                .then(ClientCommands.literal("status").executes(c -> setRelayCut("status"))))
-                        .then(ClientCommands.literal("radar").executes(c -> {
+                                .then(ClientCommandManager.literal("on").executes(c -> setRelayCut("on")))
+                                .then(ClientCommandManager.literal("off").executes(c -> setRelayCut("off")))
+                                .then(ClientCommandManager.literal("status").executes(c -> setRelayCut("status"))))
+                        .then(ClientCommandManager.literal("radar").executes(c -> {
                             // Defer one tick — the chat screen closes itself
                             // after the command dispatches and would wipe it.
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(new ClickGuiScreen(null, "radar")));
+                                    Minecraft.getInstance().setScreen(new ClickGuiScreen(null, "radar")));
                             return 1;
                         }))
-                        .then(ClientCommands.literal("macros").executes(c -> {
+                        .then(ClientCommandManager.literal("macros").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(new ClickGuiScreen(null, "macros")));
+                                    Minecraft.getInstance().setScreen(new ClickGuiScreen(null, "macros")));
                             return 1;
                         }))
-                        .then(ClientCommands.literal("settings").executes(c -> {
+                        .then(ClientCommandManager.literal("settings").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(new ClickGuiScreen(null)));
+                                    Minecraft.getInstance().setScreen(new ClickGuiScreen(null)));
                             return 1;
                         }))
-                        .then(ClientCommands.literal("viz").executes(c -> {
+                        .then(ClientCommandManager.literal("viz").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(
+                                    Minecraft.getInstance().setScreen(
                                             new ClickGuiScreen(null, "viz")));
                             return 1;
                         }))
-                        .then(ClientCommands.literal("visualizations").executes(c -> {
+                        .then(ClientCommandManager.literal("visualizations").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(
+                                    Minecraft.getInstance().setScreen(
                                             new VisualizationsScreen(null)));
                             return 1;
                         }))
-                        .then(ClientCommands.literal("investigate").executes(c -> {
+                        .then(ClientCommandManager.literal("investigate").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(
+                                    Minecraft.getInstance().setScreen(
                                             new InvestigateScreen(null)));
                             return 1;
                         }))
-                        .then(ClientCommands.literal("hud").executes(c -> {
+                        .then(ClientCommandManager.literal("hud").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(new HudEditorScreen(null)));
+                                    Minecraft.getInstance().setScreen(new HudEditorScreen(null)));
                             return 1;
                         }))
-                        .then(ClientCommands.literal("ping").executes(c -> {
+                        .then(ClientCommandManager.literal("ping").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(
+                                    Minecraft.getInstance().setScreen(
                                             new PingWheelScreen(pingKey, false)));
                             return 1;
                         }))
-                        .then(ClientCommands.literal("map").executes(c -> {
+                        .then(ClientCommandManager.literal("map").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(new WarTableScreen()));
+                                    Minecraft.getInstance().setScreen(new WarTableScreen()));
                             return 1;
                         }))
-                        .then(ClientCommands.literal("wartable").executes(c -> {
+                        .then(ClientCommandManager.literal("wartable").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(new WarTableScreen()));
+                                    Minecraft.getInstance().setScreen(new WarTableScreen()));
                             return 1;
                         }))
-                        .then(ClientCommands.literal("snitchtest").executes(c -> {
+                        .then(ClientCommandManager.literal("snitchtest").executes(c -> {
                             Minecraft mc = Minecraft.getInstance();
                             if (mc.player != null && mc.level != null) {
                                 tracker.addSnitchHit("Test Vault", "ExamplePlayer", "local",
@@ -400,16 +400,16 @@ public class OpenIntelClient implements ClientModInitializer {
                             }
                             return 1;
                         }))
-                        .then(ClientCommands.literal("url")
-                                .then(ClientCommands.argument("url", StringArgumentType.greedyString())
+                        .then(ClientCommandManager.literal("url")
+                                .then(ClientCommandManager.argument("url", StringArgumentType.greedyString())
                                         .executes(c -> {
                                             config.relayUrl = StringArgumentType.getString(c, "url");
                                             config.save();
                                             status("relay url set — run /oi reconnect");
                                             return 1;
                                         })))
-                        .then(ClientCommands.literal("token")
-                                .then(ClientCommands.argument("token", StringArgumentType.greedyString())
+                        .then(ClientCommandManager.literal("token")
+                                .then(ClientCommandManager.argument("token", StringArgumentType.greedyString())
                                         .executes(c -> {
                                             config.token = StringArgumentType.getString(c, "token");
                                             config.save();
@@ -417,18 +417,18 @@ public class OpenIntelClient implements ClientModInitializer {
                                             return 1;
                                         })))
                         // Captain-only (enforced server-side): mark a priority target.
-                        .then(ClientCommands.literal("focus")
-                                .then(ClientCommands.literal("clear").executes(c -> {
+                        .then(ClientCommandManager.literal("focus")
+                                .then(ClientCommandManager.literal("clear").executes(c -> {
                                     sendFocus("clear", null);
                                     return 1;
                                 }))
-                                .then(ClientCommands.argument("player", StringArgumentType.word())
+                                .then(ClientCommandManager.argument("player", StringArgumentType.word())
                                         .executes(c -> {
                                             sendFocus("add", StringArgumentType.getString(c, "player"));
                                             return 1;
                                         })))
-                        .then(ClientCommands.literal("unfocus")
-                                .then(ClientCommands.argument("player", StringArgumentType.word())
+                        .then(ClientCommandManager.literal("unfocus")
+                                .then(ClientCommandManager.argument("player", StringArgumentType.word())
                                         .executes(c -> {
                                             sendFocus("remove", StringArgumentType.getString(c, "player"));
                                             return 1;
@@ -516,8 +516,8 @@ public class OpenIntelClient implements ClientModInitializer {
         Minecraft client = Minecraft.getInstance();
         client.execute(() -> {
             if (client.player != null) {
-                client.player.sendSystemMessage(Component.literal("[OpenIntel] ").withStyle(ChatFormatting.GOLD)
-                        .append(Component.literal(message).withStyle(ChatFormatting.GRAY)));
+                client.player.displayClientMessage(Component.literal("[OpenIntel] ").withStyle(ChatFormatting.GOLD)
+                        .append(Component.literal(message).withStyle(ChatFormatting.GRAY)), false);
             }
         });
     }

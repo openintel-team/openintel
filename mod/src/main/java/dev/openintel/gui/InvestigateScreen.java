@@ -4,7 +4,7 @@ import dev.openintel.OpenIntelClient;
 import dev.openintel.investigate.InvestigateSession;
 import dev.openintel.snitch.SnitchLogParser;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.components.MultiLineEditBox;
@@ -112,7 +112,7 @@ public final class InvestigateScreen extends Screen {
         }
         session.watch();
         OpenIntelClient.status("investigate watching " + session.size() + " events");
-        minecraft.gui.setScreen(null);
+        minecraft.setScreen(null);
     }
 
     private void clear() {
@@ -151,10 +151,10 @@ public final class InvestigateScreen extends Screen {
     }
 
     @Override
-    public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
         ctx.fill(0, 0, width, height, 0xC0101015);
-        super.extractRenderState(ctx, mouseX, mouseY, delta);
-        ctx.text(font, "Investigate — paste snitch / Discord logs", 8, 8, 0xFFE8EAF0);
+        super.render(ctx, mouseX, mouseY, delta);
+        ctx.drawString(font, "Investigate — paste snitch / Discord logs", 8, 8, 0xFFE8EAF0);
 
         List<InvestigateSession.Event> events = InvestigateSession.get().events();
         int selected = InvestigateSession.get().index();
@@ -172,12 +172,12 @@ public final class InvestigateScreen extends Screen {
                 };
                 String line = (i + 1) + ". " + ev.detail();
                 if (line.length() > 120) line = line.substring(0, 117) + "...";
-                ctx.text(font, line, listX + 4, y + 3, color);
+                ctx.drawString(font, line, listX + 4, y + 3, color);
             }
             y += ROW_H;
         }
         ctx.disableScissor();
-        ctx.text(font, status, 8, height - 18, 0xFF8E93A6);
+        ctx.drawString(font, status, 8, height - 18, 0xFF8E93A6);
     }
 
     private static String shortDim(String dim) {
@@ -189,7 +189,7 @@ public final class InvestigateScreen extends Screen {
 
     @Override
     public void onClose() {
-        minecraft.gui.setScreen(parent);
+        minecraft.setScreen(parent);
     }
 
     @Override

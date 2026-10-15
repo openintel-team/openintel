@@ -9,8 +9,8 @@ import dev.openintel.render.HudLayouts;
 import dev.openintel.render.ColoredQuadsElement;
 import dev.openintel.tracker.Tracker.RemotePlayer;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.PlayerFaceExtractor;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.PlayerFaceRenderer;
 import net.minecraft.client.gui.navigation.ScreenRectangle;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.multiplayer.PlayerInfo;
@@ -59,12 +59,12 @@ public final class RadarHud {
     private static final RadarLabelLayout.Session LABEL_LAYOUT = new RadarLabelLayout.Session();
     private record RadarLabel(RadarLabelLayout.Label bounds, String text, int color, float scale) { }
 
-    public static void render(GuiGraphicsExtractor ctx, float tickDelta) {
+    public static void render(GuiGraphics ctx, float tickDelta) {
         OIConfig cfg = OpenIntelClient.config();
         if (!cfg.radarEnabled) return;
 
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.level == null || mc.gui.hud.isHidden()) return;
+        if (mc.player == null || mc.level == null || mc.options.hideGui) return;
 
         int r = HudLayouts.radius(cfg);
         var frame = HudLayouts.bounds(HudLayouts.Element.RADAR, mc, cfg,
@@ -96,7 +96,7 @@ public final class RadarHud {
 
     // ------------------------------------------------------------- blips ----
 
-    private static void renderPlayers(GuiGraphicsExtractor ctx, Minecraft mc, OIConfig cfg,
+    private static void renderPlayers(GuiGraphics ctx, Minecraft mc, OIConfig cfg,
                                       Vec3 self, float yaw, float tickDelta,
                                       List<RadarLabel> labels) {
         for (AbstractClientPlayer p : mc.level.players()) {
@@ -120,9 +120,9 @@ public final class RadarHud {
                 PlayerInfo entry = mc.getConnection() == null
                         ? null : mc.getConnection().getPlayerInfo(p.getUUID());
                 // Allegiance frame around the face.
-                ctx.outline(-5, -5, 10, 10, color);
+                ctx.renderOutline(-5, -5, 10, 10, color);
                 if (entry != null) {
-                    PlayerFaceExtractor.extractRenderState(ctx, entry.getSkin(), -4, -4, 8);
+                    PlayerFaceRenderer.draw(ctx, entry.getSkin(), -4, -4, 8);
                 } else {
                     ctx.fill(-3, -3, 3, 3, color);
                 }
@@ -136,7 +136,7 @@ public final class RadarHud {
         }
     }
 
-    private static void renderVehiclesAndItems(GuiGraphicsExtractor ctx, Minecraft mc, OIConfig cfg,
+    private static void renderVehiclesAndItems(GuiGraphics ctx, Minecraft mc, OIConfig cfg,
                                                Vec3 self, float yaw, float tickDelta) {
         if (!cfg.radarShowItems && !cfg.radarShowVehicles) return;
 
@@ -153,7 +153,7 @@ public final class RadarHud {
                 Matrix3x2fStack pose = ctx.pose();
                 pose.pushMatrix();
                 pose.scale(cfg.radarIconSize * 0.9f, cfg.radarIconSize * 0.9f);
-                ctx.fakeItem(icon, -8, -8);
+                ctx.renderFakeItem(icon, -8, -8);
                 pose.popMatrix();
             });
             if (++drawn > MAX_ITEM_BLIPS) return;
@@ -188,7 +188,7 @@ public final class RadarHud {
      * sit at their true position; beyond it they pin to the rim so the dial
      * answers "which way" even at 400m out.
      */
-    private static void renderRelayBlips(GuiGraphicsExtractor ctx, Minecraft mc, OIConfig cfg,
+    private static void renderRelayBlips(GuiGraphics ctx, Minecraft mc, OIConfig cfg,
                                          Vec3 self, float yaw, int r,
                                          Set<String> onRadar, List<RadarLabel> labels) {
         String myDim = mc.level.dimension().identifier().toString();
@@ -229,7 +229,7 @@ public final class RadarHud {
      * Shared pings from the wheel — diamonds on the dial, pinned to the rim
      * when the ping is beyond the sweep. Fades during its last seconds.
      */
-    private static void renderPings(GuiGraphicsExtractor ctx, Minecraft mc, OIConfig cfg,
+    private static void renderPings(GuiGraphics ctx, Minecraft mc, OIConfig cfg,
                                     Vec3 self, float yaw, List<RadarLabel> labels) {
         String myDim = mc.level.dimension().identifier().toString();
         long now = System.currentTimeMillis();
@@ -266,7 +266,7 @@ public final class RadarHud {
      * compression blend, the result is clamped just inside the rim, then
      * counter-rotated so icons and text stay upright.
      */
-    private static void blip(GuiGraphicsExtractor ctx, double dx, double dz,
+    private static void blip(GuiGraphics ctx, double dx, double dz,
                              OIConfig cfg, float yaw, Runnable painter) {
         double dist = Math.hypot(dx, dz);
         if (dist < 0.1) return;
@@ -304,9 +304,9 @@ public final class RadarHud {
      * (degenerate quads for triangles) with per-vertex colors, so every edge
      * is a real gradient at screen resolution. No texture, no texels.
      */
-    private static void drawDial(GuiGraphicsExtractor ctx, OIConfig cfg, int r) {
+    private static void drawDial(GuiGraphics ctx, OIConfig cfg, int r) {
         Matrix3x2f pose = new Matrix3x2f(ctx.pose());
-        ctx.guiRenderState.addGuiElement(new ColoredQuadsElement(
+        ctx.guiRenderState.submitGuiElement(new ColoredQuadsElement(
                 pose, vc -> paintDial(vc, pose, r, cfg),
                 new ScreenRectangle(-(r + 3), -(r + 3), 2 * r + 6, 2 * r + 6)
                         .transformMaxBounds(pose)));
@@ -437,7 +437,7 @@ public final class RadarHud {
     }
 
     /** N/E/S/W hugging the rim — small, soft, upright in the rotated frame. */
-    private static void drawCardinals(GuiGraphicsExtractor ctx, Minecraft mc, OIConfig cfg,
+    private static void drawCardinals(GuiGraphics ctx, Minecraft mc, OIConfig cfg,
                                       float frameRot, int r) {
         float R = r * 0.85f;
         cardinal(ctx, mc, cfg, frameRot, 0f, 1f, R, "N");   // north = -Z → +dz in our convention
@@ -446,7 +446,7 @@ public final class RadarHud {
         cardinal(ctx, mc, cfg, frameRot, 1f, 0f, R, "W");
     }
 
-    private static void cardinal(GuiGraphicsExtractor ctx, Minecraft mc, OIConfig cfg,
+    private static void cardinal(GuiGraphics ctx, Minecraft mc, OIConfig cfg,
                                  float frameRot, float vx, float vz, float R, String letter) {
         Matrix3x2fStack pose = ctx.pose();
         pose.pushMatrix();
@@ -462,7 +462,7 @@ public final class RadarHud {
     }
 
     /** Slim needle marking your view direction on the dial. */
-    private static void drawFacingChevron(GuiGraphicsExtractor ctx, OIConfig cfg, float yaw) {
+    private static void drawFacingChevron(GuiGraphics ctx, OIConfig cfg, float yaw) {
         Matrix3x2fStack pose = ctx.pose();
         pose.pushMatrix();
         // The dial frame is world-aligned, so the marker just turns with
@@ -491,7 +491,7 @@ public final class RadarHud {
         return CleanFont.active() ? CleanFont.width(text) : mc.font.width(text);
     }
 
-    private static void queueLabel(GuiGraphicsExtractor ctx, Minecraft mc, List<RadarLabel> labels,
+    private static void queueLabel(GuiGraphics ctx, Minecraft mc, List<RadarLabel> labels,
                                    String key, String text, float cx, float y, int color, boolean fixed) {
         var pose = ctx.pose();
         float scale = (float) Math.hypot(pose.m00(), pose.m01());
@@ -509,7 +509,7 @@ public final class RadarHud {
                 origin.y - LABEL_PAD, width, height, fixed), text, color, scale));
     }
 
-    private static void drawLabels(GuiGraphicsExtractor ctx, Minecraft mc, OIConfig cfg,
+    private static void drawLabels(GuiGraphics ctx, Minecraft mc, OIConfig cfg,
                                    List<RadarLabel> labels, HudLayout.Frame frame) {
         var pose = ctx.pose();
         var byKey = new LinkedHashMap<String, RadarLabel>();
@@ -545,12 +545,12 @@ public final class RadarHud {
     }
 
     /** Radar text through the clean font when it's enabled. */
-    private static void lbl(GuiGraphicsExtractor ctx, Minecraft mc, String s,
+    private static void lbl(GuiGraphics ctx, Minecraft mc, String s,
                             float cx, float y, int color) {
         if (CleanFont.active()) {
             CleanFont.drawCentered(ctx, s, cx, y, color);
         } else {
-            ctx.centeredText(mc.font, s,
+            ctx.drawCenteredString(mc.font, s,
                     Math.round(cx), Math.round(y), color);
         }
     }

@@ -1,7 +1,7 @@
 package dev.openintel.gui;
 
 import dev.openintel.OpenIntelClient;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -91,10 +91,10 @@ public class JunkItemPickerScreen extends Screen {
     }
 
     @Override
-    public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
         ctx.fill(0, 0, width, height, 0xC0101015);
-        super.extractRenderState(ctx, mouseX, mouseY, delta);
-        ctx.centeredText(font, "Junk items — click to toggle",
+        super.render(ctx, mouseX, mouseY, delta);
+        ctx.drawCenteredString(font, "Junk items — click to toggle",
                 width / 2, 8, 0xFFFFFFFF);
 
         int cols = cols();
@@ -111,9 +111,9 @@ public class JunkItemPickerScreen extends Screen {
             ctx.fill(x + 1, y + 1, x + CELL - 1, y + CELL - 1,
                     sel ? 0x8834A800 : (hov ? 0x33FFFFFF : 0x22000000));
             if (sel)
-                ctx.outline(x + 1, y + 1, CELL - 2, CELL - 2, 0xFF64FF64);
+                ctx.renderOutline(x + 1, y + 1, CELL - 2, CELL - 2, 0xFF64FF64);
             ItemStack st = new ItemStack(view.get(i));
-            ctx.item(st, x + 2, y + 2);
+            ctx.renderItem(st, x + 2, y + 2);
             if (hov) hovered = st;
         }
         ctx.disableScissor();
@@ -126,7 +126,7 @@ public class JunkItemPickerScreen extends Screen {
             int y = gridY + (gridH - h) * scroll / max;
             ctx.fill(track, y, track + 3, y + h, 0x88AAAAAA);
         }
-        ctx.centeredText(font, junk.size() + " selected",
+        ctx.drawCenteredString(font, junk.size() + " selected",
                 width / 2, height - 46, 0xFFAAAAAA);
         if (hovered != null)
             ctx.setTooltipForNextFrame(font, hovered, mouseX, mouseY);
@@ -163,7 +163,7 @@ public class JunkItemPickerScreen extends Screen {
     @Override
     public void onClose() {
         OpenIntelClient.config().save();
-        minecraft.gui.setScreen(parent);
+        minecraft.setScreen(parent);
     }
 
     @Override

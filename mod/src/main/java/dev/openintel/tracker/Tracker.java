@@ -454,12 +454,12 @@ public class Tracker {
         client.execute(() -> {
             if (client.player == null) return;
             client.player.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), 1.0f, 0.6f);
-            client.player.sendSystemMessage(Component.literal("[OpenIntel] ")
+            client.player.displayClientMessage(Component.literal("[OpenIntel] ")
                     .withStyle(ChatFormatting.GOLD)
                     .append(Component.literal("⚠ Enemy " + rp.name + " spotted at "
                                     + (int) rp.x + ", " + (int) rp.z
                                     + " (by " + rp.reporter + ")")
-                            .withStyle(ChatFormatting.RED)));
+                            .withStyle(ChatFormatting.RED)), false);
         });
     }
 }

@@ -5,7 +5,7 @@ import dev.openintel.config.OIConfig;
 import dev.openintel.gui.HudEditorScreen;
 import dev.openintel.render.HudLayout;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -154,10 +154,10 @@ public final class HudApi {
         else config.save();
     }
 
-    public void renderAll(GuiGraphicsExtractor context, float tickDelta) {
+    public void renderAll(GuiGraphics context, float tickDelta) {
         Minecraft client = requireClientThread();
         Objects.requireNonNull(context, "context");
-        if (rendering || client.gui.screen() instanceof HudEditorScreen || client.gui.hud.isHidden()) return;
+        if (rendering || client.screen instanceof HudEditorScreen || client.options.hideGui) return;
         List<RenderJob> jobs = new ArrayList<>();
         synchronized (this) {
             synchronizeConfigIfClientThread();
@@ -170,7 +170,7 @@ public final class HudApi {
         }
     }
 
-    public void renderPreview(Identifier id, GuiGraphicsExtractor context, int viewportWidth, int viewportHeight, float tickDelta) {
+    public void renderPreview(Identifier id, GuiGraphics context, int viewportWidth, int viewportHeight, float tickDelta) {
         requireClientThread();
         validateId(id);
         Objects.requireNonNull(context, "context");
@@ -186,7 +186,7 @@ public final class HudApi {
         invoke(job, context, viewportWidth, viewportHeight, tickDelta);
     }
 
-    private void invoke(RenderJob job, GuiGraphicsExtractor context, int viewportWidth, int viewportHeight, float tickDelta) {
+    private void invoke(RenderJob job, GuiGraphics context, int viewportWidth, int viewportHeight, float tickDelta) {
         synchronized (this) {
             if (entries.get(job.entry.id) != job.entry || job.entry.failed) return;
             if (!job.preview && !job.entry.enabled) return;
@@ -197,7 +197,7 @@ public final class HudApi {
         rendering = true;
         try (ElementDrawContext local = new ElementDrawContext(context, frame, job.descriptor.size())) {
             job.renderer.render(local, job.descriptor.size(), tickDelta);
-            local.extractDeferredElements(0, 0, tickDelta);
+            local.renderDeferredElements();
         } catch (VirtualMachineError | ThreadDeath fatal) {
             throw fatal;
         } catch (Throwable failure) {
@@ -312,10 +312,10 @@ public final class HudApi {
         }
     }
 
-    private static final class ElementDrawContext extends GuiGraphicsExtractor implements AutoCloseable {
+    private static final class ElementDrawContext extends GuiGraphics implements AutoCloseable {
         private int scissorDepth;
 
-        private ElementDrawContext(GuiGraphicsExtractor parent, HudLayout.Frame frame, HudSize size) {
+        private ElementDrawContext(GuiGraphics parent, HudLayout.Frame frame, HudSize size) {
             super(Minecraft.getInstance(), parent.guiRenderState, -1, -1);
             pose().set(parent.pose());
             pose().pushMatrix();

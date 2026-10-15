@@ -1,5 +1,7 @@
 plugins {
-    id 'net.fabricmc.fabric-loom' version '1.18-SNAPSHOT'
+    // 1.21.11 is still obfuscated. fabric-loom remaps with official Mojang mappings.
+    // net.fabricmc.fabric-loom is the no-remap plugin used by unobfuscated 26.x.
+    id 'fabric-loom' version '1.18-SNAPSHOT'
     id 'java'
     id 'maven-publish'
 }
@@ -16,20 +18,24 @@ repositories {
 }
 
 dependencies {
-    // 26.x ships unobfuscated: no mappings, no remapping.
+    // 1.21.11 ships obfuscated. Official Mojang mappings, Java 21.
+    // mod* configurations remap intermediary jars onto those names and pull Mixin
+    // from the loader installer JSON.
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
-    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
     // JourneyMap fullscreen-map integration — compile-time only, optional at runtime.
-    compileOnly "info.journeymap:journeymap-api-fabric:26.3-2.0.0"
+    modCompileOnly "info.journeymap:journeymap-api-fabric:2.0.0-1.21.11"
     // Xaero World Map API — compile-time only, optional at runtime.
-    compileOnly("xaero.map:xaeroworldmap-common-26.3:1.46.4") { transitive = false }
-    compileOnly "xaero.lib:xaerolib-common-26.3:1.7.17"
+    // The 1.21.11 jars are already official-named; remapping leaves those types alone.
+    modCompileOnly("xaero.map:xaeroworldmap-common-1.21.11:1.47.0") { transitive = false }
+    modCompileOnly "xaero.lib:xaerolib-common-1.21.11:1.7.3"
     // Mod Menu config button — compile-time only; entrypoint loads only when Mod Menu is present.
-    compileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
-    // Chest Tracker + Where Is It — optional at runtime; jars live in libs/ for compileOnly.
-    compileOnly files("libs/chesttracker-2.8.4+26.3.jar")
-    compileOnly files("libs/whereisit-2.7.5.2+26.3.jar")
+    modCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
+    // Chest Tracker + Where Is It — optional at runtime; jars live in libs/.
+    modCompileOnly files("libs/chesttracker-2.8.4+1.21.11.jar")
+    modCompileOnly files("libs/whereisit-2.7.5.2+1.21.11.jar")
 }
 
 processResources {
@@ -38,11 +44,11 @@ processResources {
 }
 
 tasks.withType(JavaCompile).configureEach {
-    it.options.release = 25
+    it.options.release = 21
 }
 
 java {
-    toolchain.languageVersion = JavaLanguageVersion.of(25)
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
     withSourcesJar()
 }
 
@@ -174,7 +180,26 @@ tasks.register('eventFeedLayoutTest', JavaExec) {
     enableAssertions = true
 }
 
-check.dependsOn snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest
+tasks.register('versionPinTest') {
+    def propertiesFile = layout.projectDirectory.file('gradle.properties')
+    def modJson = layout.projectDirectory.file('src/main/resources/fabric.mod.json')
+    inputs.file(propertiesFile)
+    inputs.file(modJson)
+    doLast {
+        def props = new Properties()
+        propertiesFile.asFile.withInputStream { props.load(it) }
+        def minecraft = props.getProperty('minecraft_version')
+        if (minecraft != '1.21.11') {
+            throw new GradleException("minecraft_version is '${minecraft}', expected 1.21.11")
+        }
+        def manifest = modJson.asFile.getText('UTF-8')
+        if (!manifest.contains('"minecraft": "~1.21.11"')) {
+            throw new GradleException("fabric.mod.json must depend on minecraft ~1.21.11")
+        }
+    }
+}
+
+check.dependsOn versionPinTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest
 
 publishing {
     publications {

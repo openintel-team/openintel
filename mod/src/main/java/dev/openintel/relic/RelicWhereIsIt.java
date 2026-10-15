@@ -47,7 +47,7 @@ public final class RelicWhereIsIt {
         request.accept(new AnyOfCriterion(matchers).compact());
         if (!request.hasCriteria()) return false;
 
-        client.gui.setScreen(null);
+        client.setScreen(null);
         return SearchInvoker.doSearch(request);
     }
 }

@@ -3,7 +3,7 @@ package dev.openintel.ping;
 import dev.openintel.render.ColoredQuadsElement;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.navigation.ScreenRectangle;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.KeyMapping;
@@ -16,7 +16,7 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix3x2f;
 import org.joml.Matrix3x2fc;
 import org.joml.Vector2f;
-import org.lwjgl.sdl.SDLMouse;
+import org.lwjgl.glfw.GLFW;
 
 /**
  * Radial ping wheel: hold the bound key, flick the mouse at a wedge,
@@ -59,15 +59,14 @@ public class PingWheelScreen extends Screen {
         this.holdMode = holdMode;
     }
 
-    /** Physical held-state of the bound key, queried straight from SDL. */
+    /** Physical held-state of the bound key, queried straight from GLFW. */
     public static boolean physicallyHeld(KeyMapping key) {
+        var window = Minecraft.getInstance().getWindow();
         InputConstants.Key bound = InputConstants.getKey(key.saveString());
         if (bound.getType() == InputConstants.Type.MOUSE) {
-            int buttons = SDLMouse.SDL_GetMouseState(null, null);
-            int button = bound.getValue();
-            return button > 0 && (buttons & (1 << (button - 1))) != 0;
+            return GLFW.glfwGetMouseButton(window.handle(), bound.getValue()) == GLFW.GLFW_PRESS;
         }
-        return InputConstants.isKeyDown(bound.getValue());
+        return InputConstants.isKeyDown(window, bound.getValue());
     }
 
     @Override
@@ -151,17 +150,17 @@ public class PingWheelScreen extends Screen {
     // ------------------------------------------------------------ render ---
 
     @Override
-    public void extractBackground(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
+    public void renderBackground(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
         // No dim/blur — the wheel floats over the live world.
     }
 
     @Override
-    public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
         float cx = width / 2f, cy = height / 2f;
         hovered = slotAt(mouseX - cx, mouseY - cy);
 
         Matrix3x2f pose = new Matrix3x2f(ctx.pose()).translate(cx, cy);
-        ctx.guiRenderState.addGuiElement(new ColoredQuadsElement(
+        ctx.guiRenderState.submitGuiElement(new ColoredQuadsElement(
                 pose, vc -> paint(vc, pose),
                 new ScreenRectangle(-(int) (OUTER + 4), -(int) (OUTER + 4),
                         (int) (OUTER * 2 + 8), (int) (OUTER * 2 + 8))
@@ -175,11 +174,11 @@ public class PingWheelScreen extends Screen {
             int ly = Math.round(cy + (float) Math.sin(mid) * r);
             int color = i == hovered ? 0xFFFFFFFF
                     : (SLOTS[i].argb & 0x00FFFFFF) | 0xDD000000;
-            ctx.centeredText(font, SLOTS[i].label, lx, ly - 4, color);
+            ctx.drawCenteredString(font, SLOTS[i].label, lx, ly - 4, color);
         }
 
         String center = hovered >= 0 ? SLOTS[hovered].label : "—";
-        ctx.centeredText(font, center,
+        ctx.drawCenteredString(font, center,
                 Math.round(cx), Math.round(cy) - 4, 0xFFDDDDDD);
     }
 

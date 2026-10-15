@@ -23,7 +23,7 @@ public final class ExampleOpenIntelIntegration implements OpenIntelIntegration, 
                 event -> contactCount = event.current().size());
         HudRenderer renderer = (context, size, tickDelta) -> {
             context.fill(0, 0, size.width(), size.height(), 0x990C1420);
-            context.text(Minecraft.getInstance().font,
+            context.drawString(Minecraft.getInstance().font,
                     "Contacts: " + contactCount, 4, 4, 0xFFFFFFFF);
         };
         contacts = OpenIntelApi.hud().register(Identifier.fromNamespaceAndPath("examplemod", "contacts"),

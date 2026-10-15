@@ -1,11 +1,9 @@
 package dev.openintel;
 
+import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL33C;
-import org.lwjgl.sdl.SDLError;
-import org.lwjgl.sdl.SDLInit;
-import org.lwjgl.sdl.SDLVideo;
-import org.lwjgl.system.FunctionProvider;
+import org.lwjgl.system.MemoryUtil;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -13,24 +11,17 @@ import java.nio.charset.StandardCharsets;
 public final class CleanFontShaderTest {
     public static void main(String[] args) throws Exception {
         long window = 0;
-        long context = 0;
         int vertex = 0, fragment = 0, program = 0;
         try {
-            check(SDLInit.SDL_Init(SDLInit.SDL_INIT_VIDEO), "SDL initialization: " + SDLError.SDL_GetError());
-            SDLVideo.SDL_GL_SetAttribute(SDLVideo.SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-            SDLVideo.SDL_GL_SetAttribute(SDLVideo.SDL_GL_CONTEXT_MINOR_VERSION, 3);
-            SDLVideo.SDL_GL_SetAttribute(SDLVideo.SDL_GL_CONTEXT_PROFILE_MASK, SDLVideo.SDL_GL_CONTEXT_PROFILE_CORE);
-            window = SDLVideo.SDL_CreateWindow("OpenIntel shader tests", 128, 128,
-                    SDLVideo.SDL_WINDOW_OPENGL | SDLVideo.SDL_WINDOW_HIDDEN);
-            check(window != 0, "Hidden OpenGL window: " + SDLError.SDL_GetError());
-            context = SDLVideo.SDL_GL_CreateContext(window);
-            check(context != 0, "Hidden OpenGL context: " + SDLError.SDL_GetError());
-            check(SDLVideo.SDL_GL_MakeCurrent(window, context), "OpenGL context current: " + SDLError.SDL_GetError());
-            GL.create(new FunctionProvider() {
-                @Override public long getFunctionAddress(ByteBuffer functionName) {
-                    return SDLVideo.SDL_GL_GetProcAddress(functionName);
-                }
-            });
+            check(GLFW.glfwInit(), "GLFW initialization");
+            GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, 3);
+            GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MINOR, 3);
+            GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_PROFILE, GLFW.GLFW_OPENGL_CORE_PROFILE);
+            GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_FORWARD_COMPAT, GLFW.GLFW_TRUE);
+            GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
+            window = GLFW.glfwCreateWindow(128, 128, "OpenIntel shader tests", MemoryUtil.NULL, MemoryUtil.NULL);
+            check(window != 0, "Hidden OpenGL window");
+            GLFW.glfwMakeContextCurrent(window);
             GL.createCapabilities();
             vertex = compile(GL33C.GL_VERTEX_SHADER, "/assets/minecraft/shaders/core/position_tex_color.vsh");
             for (boolean intensity : new boolean[]{false, true}) {
@@ -66,10 +57,9 @@ public final class CleanFontShaderTest {
             if (program != 0) GL33C.glDeleteProgram(program);
             if (fragment != 0) GL33C.glDeleteShader(fragment);
             if (vertex != 0) GL33C.glDeleteShader(vertex);
-            if (context != 0) SDLVideo.SDL_GL_DestroyContext(context);
-            if (window != 0) SDLVideo.SDL_DestroyWindow(window);
+            if (window != 0) GLFW.glfwDestroyWindow(window);
             GL.destroy();
-            SDLInit.SDL_Quit();
+            GLFW.glfwTerminate();
         }
     }
 

@@ -1,10 +1,10 @@
 package dev.openintel.render;
 
-import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
 import dev.openintel.OpenIntelClient;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.Identifier;
 
 public final class LogoHud {
@@ -12,8 +12,8 @@ public final class LogoHud {
     private static final RenderPipeline PIPELINE = RenderPipeline.builder(RenderPipelines.GUI_TEXTURED_SNIPPET)
             .withLocation(Identifier.fromNamespaceAndPath("openintel", "pipeline/logo"))
             .withFragmentShader(Identifier.fromNamespaceAndPath("openintel", "core/logo"))
-            .withDepthStencilState(new com.mojang.renderpearl.api.pipeline.DepthStencilState(
-                    com.mojang.renderpearl.api.pipeline.CompareOp.ALWAYS_PASS, false))
+            .withDepthTestFunction(com.mojang.blaze3d.platform.DepthTestFunction.NO_DEPTH_TEST)
+            .withDepthWrite(false)
             .build();
 
     public record Bounds(float x, float y, float width, float height) { }
@@ -33,11 +33,11 @@ public final class LogoHud {
         return new Bounds((pixelWidth - margin - size) * sx, (pixelHeight - margin - size) * sy, size * sx, size * sy);
     }
 
-    public static void render(GuiGraphicsExtractor context) {
+    public static void render(GuiGraphics context) {
         var config = OpenIntelClient.config();
         var client = Minecraft.getInstance();
         if (config == null || !config.logoHudEnabled || client.player == null || client.level == null
-                || client.gui.hud.isHidden() || client.gui.screen() != null) return;
+                || client.options.hideGui || client.screen != null) return;
         var bounds = layout(context.guiWidth(), context.guiHeight(),
                 client.getWindow().getWidth(), client.getWindow().getHeight());
         if (bounds.width <= 0 || bounds.height <= 0) return;

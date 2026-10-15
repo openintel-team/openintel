@@ -3,7 +3,7 @@ package dev.openintel.render;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.config.OIConfig;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 
@@ -22,14 +22,14 @@ public final class ArmorHud {
         return cfg.armorHudLayout == OIConfig.ArmorHudLayout.VERTICAL ? 80 : 26;
     }
 
-    public static void render(GuiGraphicsExtractor ctx) {
+    public static void render(GuiGraphics ctx) {
         UiFont.withHudFont(() -> renderHud(ctx));
     }
 
-    private static void renderHud(GuiGraphicsExtractor ctx) {
+    private static void renderHud(GuiGraphics ctx) {
         OIConfig cfg = OpenIntelClient.config();
         Minecraft mc = Minecraft.getInstance();
-        if (!cfg.armorHudEnabled || mc.player == null || mc.gui.hud.isHidden()) return;
+        if (!cfg.armorHudEnabled || mc.player == null || mc.options.hideGui) return;
 
         boolean vertical = cfg.armorHudLayout == OIConfig.ArmorHudLayout.VERTICAL;
         var layout = layout(mc, cfg);
@@ -42,7 +42,7 @@ public final class ArmorHud {
                 int itemX = vertical ? 0 : layout.offset + i * layout.stride;
                 int itemY = vertical ? i * 20 : 0;
                 if (stack.isEmpty()) continue;
-                ctx.item(stack, itemX, itemY);
+                ctx.renderItem(stack, itemX, itemY);
                 if (!stack.isDamageableItem()) continue;
                 int remaining = stack.getMaxDamage() - stack.getDamageValue();
                 int percent = Math.round(remaining * 100f / stack.getMaxDamage());
@@ -57,22 +57,22 @@ public final class ArmorHud {
         }
     }
 
-    private static void drawLabel(GuiGraphicsExtractor ctx, Minecraft mc, boolean vertical,
+    private static void drawLabel(GuiGraphics ctx, Minecraft mc, boolean vertical,
                                   int itemX, int itemY, String text, int color) {
         if (vertical) {
-            ctx.text(mc.font, text, itemX + 18, itemY + 4, color);
+            ctx.drawString(mc.font, text, itemX + 18, itemY + 4, color);
         } else {
             // "100%" is wider than the 16px icon; shrink it so neighbors don't touch.
             var pose = ctx.pose();
             pose.pushMatrix();
             pose.translate(itemX + 8, itemY + 18);
             pose.scale(0.8f, 0.8f);
-            ctx.centeredText(mc.font, text, 0, 0, color);
+            ctx.drawCenteredString(mc.font, text, 0, 0, color);
             pose.popMatrix();
         }
     }
 
-    private static void drawBar(GuiGraphicsExtractor ctx, ItemStack stack, boolean vertical,
+    private static void drawBar(GuiGraphics ctx, ItemStack stack, boolean vertical,
                                 int itemX, int itemY) {
         // Draw for every damageable piece — a HUD readout wants a full bar on
         // undamaged items, unlike the vanilla overlay that hides it.

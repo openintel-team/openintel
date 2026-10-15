@@ -8,7 +8,7 @@ import dev.openintel.config.OIConfig;
 import dev.openintel.render.HudLayout;
 import dev.openintel.render.HudLayouts;
 import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
@@ -146,7 +146,7 @@ public class HudEditorScreen extends Screen {
     public void onClose() {
         finishDrag();
         HudApi.getInstance().saveLayout();
-        minecraft.gui.setScreen(parent);
+        minecraft.setScreen(parent);
     }
 
     @Override
@@ -156,15 +156,15 @@ public class HudEditorScreen extends Screen {
     }
 
     @Override
-    public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
-        extractTransparentBackground(ctx);
+    public void render(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
+        renderTransparentBackground(ctx);
         if (height >= font.lineHeight + 8) {
-            ctx.centeredText(font, font.plainSubstrByWidth(title.getString(), Math.max(0, width - 8)),
+            ctx.drawCenteredString(font, font.plainSubstrByWidth(title.getString(), Math.max(0, width - 8)),
                     width / 2, 4, 0xFFFFFFFF);
         }
         if (height >= font.lineHeight * 2 + 12) {
             String help = "Drag to move; right-click external HUDs to toggle. Markers stay on their edge.";
-            ctx.centeredText(font, font.plainSubstrByWidth(help, Math.max(0, width - 8)),
+            ctx.drawCenteredString(font, font.plainSubstrByWidth(help, Math.max(0, width - 8)),
                     width / 2, font.lineHeight + 7, 0xFFAAAAAA);
         }
 
@@ -173,14 +173,14 @@ public class HudEditorScreen extends Screen {
 
         for (Box box : boxes()) drawBox(ctx, box, mouseX, mouseY);
         for (ExternalBox box : externalBoxes()) drawExternalBox(ctx, box, mouseX, mouseY, delta);
-        super.extractRenderState(ctx, mouseX, mouseY, delta);
+        super.render(ctx, mouseX, mouseY, delta);
     }
 
-    private void drawBox(GuiGraphicsExtractor ctx, Box box, int mouseX, int mouseY) {
+    private void drawBox(GuiGraphics ctx, Box box, int mouseX, int mouseY) {
         boolean active = box.element == dragging || box.contains(mouseX, mouseY);
         int bg = active ? 0xD02B3545 : 0xB018202C;
         ctx.fill(box.x, box.y, box.x + box.w, box.y + box.h, bg);
-        ctx.outline(box.x, box.y, box.w, box.h, active ? 0xFFFFFFFF : box.color);
+        ctx.renderOutline(box.x, box.y, box.w, box.h, active ? 0xFFFFFFFF : box.color);
         ctx.enableScissor(box.x, box.y, box.x + box.w, box.y + box.h);
         try {
             drawBoxLabel(ctx, box);
@@ -190,7 +190,7 @@ public class HudEditorScreen extends Screen {
     }
 
     /** Single line when it fits; one word per line inside narrow boxes. */
-    private void drawBoxLabel(GuiGraphicsExtractor ctx, Box box) {
+    private void drawBoxLabel(GuiGraphics ctx, Box box) {
         String[] words = font.width(box.label) <= box.w - 4 || !box.label.contains(" ")
                 ? new String[]{box.label} : box.label.split(" ");
         int blockW = 1;
@@ -204,7 +204,7 @@ public class HudEditorScreen extends Screen {
         pose.scale(scale, scale);
         int ty = 0;
         for (String word : words) {
-            ctx.centeredText(font, word, 0, ty, box.color);
+            ctx.drawCenteredString(font, word, 0, ty, box.color);
             ty += font.lineHeight + 2;
         }
         pose.popMatrix();
@@ -221,17 +221,17 @@ public class HudEditorScreen extends Screen {
         return boxes;
     }
 
-    private void drawExternalBox(GuiGraphicsExtractor ctx, ExternalBox box, int mouseX, int mouseY, float delta) {
+    private void drawExternalBox(GuiGraphics ctx, ExternalBox box, int mouseX, int mouseY, float delta) {
         HudElementDescriptor descriptor = box.descriptor;
         boolean active = descriptor.id().equals(selectedExternalId) || box.contains(mouseX, mouseY);
         int color = descriptor.runtimeFailed() ? 0xFFFF5555 : descriptor.enabled() ? 0xFF55FFFF : 0xFF888888;
         ctx.fill(box.x, box.y, box.x + box.w, box.y + box.h, active ? 0xD02B3545 : 0xB018202C);
         HudApi.getInstance().renderPreview(descriptor.id(), ctx, width, height, delta);
-        ctx.outline(box.x, box.y, box.w, box.h, active ? 0xFFFFFFFF : color);
+        ctx.renderOutline(box.x, box.y, box.w, box.h, active ? 0xFFFFFFFF : color);
         String label = descriptor.name() + (descriptor.runtimeFailed() ? " [error: reset]" : descriptor.enabled() ? "" : " [off]");
         ctx.enableScissor(box.x, box.y, box.x + box.w, box.y + box.h);
         try {
-            ctx.text(font, label, box.x + 3, box.y + 3, color);
+            ctx.drawString(font, label, box.x + 3, box.y + 3, color);
         } finally {
             ctx.disableScissor();
         }

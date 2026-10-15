@@ -3,7 +3,7 @@ package dev.openintel.gui;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -190,16 +190,16 @@ public class ColorPickerScreen extends Screen {
 
     @Override
     public void onClose() {
-        minecraft.gui.setScreen(parent);
+        minecraft.setScreen(parent);
     }
 
     @Override
-    public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
         // In-world screens must not call extractBackground — its blur pass can
         // only run once per frame. extractTransparentBackground darkens without it.
-        extractTransparentBackground(ctx);
+        renderTransparentBackground(ctx);
         ctx.fill(sx - 8, sy - 24, hx + HUE_W + 8, ay + ALPHA_H + 12 + 24 + 24, 0xC0101015);
-        ctx.centeredText(font, title, width / 2, sy - 16, 0xFFFFFFFF);
+        ctx.drawCenteredString(font, title, width / 2, sy - 16, 0xFFFFFFFF);
 
         // SV square + hue bar.
         ctx.blit(RenderPipelines.GUI_TEXTURED, svId, sx, sy, 0, 0, SV, SV, SV, SV);
@@ -208,7 +208,7 @@ public class ColorPickerScreen extends Screen {
         // Selection markers: ring on the SV square, bars on the strips.
         int px = sx + Math.round(sat * SV);
         int py = sy + Math.round((1f - val) * SV);
-        ctx.outline(px - 3, py - 3, 6, 6, 0xFFFFFFFF);
+        ctx.renderOutline(px - 3, py - 3, 6, 6, 0xFFFFFFFF);
         int hy = sy + Math.round((1f - hue) * SV);
         ctx.fill(hx - 2, hy, hx + HUE_W + 2, hy + 1, 0xFFFFFFFF);
 
@@ -230,9 +230,9 @@ public class ColorPickerScreen extends Screen {
         // Preview swatch next to the hex field.
         int pw = 24;
         ctx.fill(hx + HUE_W - pw, ay + ALPHA_H + 14, hx + HUE_W, ay + ALPHA_H + 14 + 16, argb());
-        ctx.outline(hx + HUE_W - pw, ay + ALPHA_H + 14, pw, 16, 0xFFFFFFFF);
+        ctx.renderOutline(hx + HUE_W - pw, ay + ALPHA_H + 14, pw, 16, 0xFFFFFFFF);
 
-        super.extractRenderState(ctx, mouseX, mouseY, delta);
+        super.render(ctx, mouseX, mouseY, delta);
     }
 
     @Override

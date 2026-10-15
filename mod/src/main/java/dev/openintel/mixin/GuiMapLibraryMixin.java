@@ -5,7 +5,7 @@ import dev.openintel.relic.GuiMapCamera;
 import dev.openintel.relic.RelicCarryHint;
 import dev.openintel.relic.RelicLibraryVisit;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.input.MouseButtonEvent;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -68,8 +68,8 @@ public abstract class GuiMapLibraryMixin {
                 (int) mx, (int) my);
     }
 
-    @Inject(method = "extractRenderState", at = @At("TAIL"))
-    private void openintel$drawLasso(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta,
+    @Inject(method = "render", at = @At("TAIL"))
+    private void openintel$drawLasso(GuiGraphics graphics, int mouseX, int mouseY, float delta,
                                      CallbackInfo ci) {
         RelicCarryHint.draw(graphics, ((GuiMap) (Object) this).width);
         RelicLibraryVisit visit = RelicLibraryVisit.current();

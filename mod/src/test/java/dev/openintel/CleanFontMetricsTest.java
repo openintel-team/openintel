@@ -149,7 +149,7 @@ public final class CleanFontMetricsTest {
         boundsMethod.setAccessible(true);
         var pose = new org.joml.Matrix3x2f().translate(10.25f, 20.5f).scale(1.2f, 1.2f);
         var bounds = (net.minecraft.client.gui.navigation.ScreenRectangle) boundsMethod.invoke(null, "A A", 0.25f, 0.5f, pose);
-        var state = (net.minecraft.client.renderer.state.gui.GuiElementRenderState) constructor.newInstance(
+        var state = (net.minecraft.client.gui.render.state.GuiElementRenderState) constructor.newInstance(
                 pose, net.minecraft.client.gui.render.TextureSetup.noTexture(), "A A", 0.25f, 0.5f, -1, null, bounds);
         var vertices = new java.util.ArrayList<org.joml.Vector2f>();
         int[] uvCount = {0};
@@ -175,7 +175,7 @@ public final class CleanFontMetricsTest {
         vertices.clear();
         uvCount[0] = 0;
         var fallbackBounds = (net.minecraft.client.gui.navigation.ScreenRectangle) boundsMethod.invoke(null, "\uD83D\uDCE1", 0f, 0f, pose);
-        var fallback = (net.minecraft.client.renderer.state.gui.GuiElementRenderState) constructor.newInstance(
+        var fallback = (net.minecraft.client.gui.render.state.GuiElementRenderState) constructor.newInstance(
                 pose, net.minecraft.client.gui.render.TextureSetup.noTexture(), "\uD83D\uDCE1", 0f, 0f, -1, null, fallbackBounds);
         fallback.buildVertices(consumer);
         check(vertices.size() == 4 && uvCount[0] == 4, "Unsupported supplementary character draws one fallback, not two");
@@ -198,7 +198,7 @@ public final class CleanFontMetricsTest {
             for (var instruction : pass.instructions) {
                 if (instruction instanceof org.objectweb.asm.tree.MethodInsnNode call) {
                     check(!call.name.equals("blit"), "Component batching does not submit a GUI state per glyph");
-                    if (call.name.equals("addGuiElement")) submissions++;
+                    if (call.name.equals("submitGuiElement")) submissions++;
                 }
             }
             check(submissions == 1, "Each text run has a single GUI-state submission");
@@ -269,16 +269,14 @@ public final class CleanFontMetricsTest {
         CleanFont.registerPipeline();
         var field = CleanFont.class.getDeclaredField("PIPELINE");
         field.setAccessible(true);
-        var pipeline = (com.mojang.renderpearl.api.pipeline.RenderPipeline) field.get(null);
+        var pipeline = (com.mojang.blaze3d.pipeline.RenderPipeline) field.get(null);
         var vanilla = net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED;
-        var vertex = com.mojang.renderpearl.api.pipeline.ShaderType.VERTEX;
-        var fragment = com.mojang.renderpearl.api.pipeline.ShaderType.FRAGMENT;
-        check(net.minecraft.client.renderer.RenderPipelines.requiredPipelines().contains(pipeline), "Font pipeline registered for resource reload");
-        check(pipeline.getColorTargetStates().getFirst().blendFunction().equals(vanilla.getColorTargetStates().getFirst().blendFunction()), "Font coverage uses standard alpha blending");
-        check(pipeline.getShaders().get(vertex).equals(vanilla.getShaders().get(vertex)), "Font uses compatible GUI vertex shader");
-        check(pipeline.getVertexFormatBinding(0).equals(vanilla.getVertexFormatBinding(0)), "Font uses compatible GUI vertices");
-        check(!pipeline.getDepthStencilState().writeDepth(), "Transparent padding does not write depth");
-        check(pipeline.getShaders().get(fragment).toString().equals("openintel:core/clean_font"), "Font uses coverage shader");
+        check(net.minecraft.client.renderer.RenderPipelines.getStaticPipelines().contains(pipeline), "Font pipeline registered for resource reload");
+        check(pipeline.getBlendFunction().equals(vanilla.getBlendFunction()), "Font coverage uses standard alpha blending");
+        check(pipeline.getVertexShader().equals(vanilla.getVertexShader()), "Font uses compatible GUI vertex shader");
+        check(pipeline.getVertexFormat().equals(vanilla.getVertexFormat()), "Font uses compatible GUI vertices");
+        check(!pipeline.isWriteDepth(), "Transparent padding does not write depth");
+        check(pipeline.getFragmentShader().toString().equals("openintel:core/clean_font"), "Font uses coverage shader");
         try (var input = CleanFont.class.getResourceAsStream("/assets/openintel/shaders/core/clean_font.fsh")) {
             check(input != null && input.readAllBytes().length > 0, "Font shader is packaged");
         }

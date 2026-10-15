@@ -3,7 +3,7 @@ package dev.openintel.render;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.config.OIConfig;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.world.effect.MobEffectInstance;
 
 import java.util.ArrayList;
@@ -13,14 +13,14 @@ import java.util.List;
 public final class PotionHud {
     private PotionHud() { }
 
-    public static void render(GuiGraphicsExtractor ctx) {
+    public static void render(GuiGraphics ctx) {
         UiFont.withHudFont(() -> renderHud(ctx));
     }
 
-    private static void renderHud(GuiGraphicsExtractor ctx) {
+    private static void renderHud(GuiGraphics ctx) {
         OIConfig cfg = OpenIntelClient.config();
         Minecraft mc = Minecraft.getInstance();
-        if (!cfg.potionHudEnabled || mc.player == null || mc.gui.hud.isHidden()) return;
+        if (!cfg.potionHudEnabled || mc.player == null || mc.options.hideGui) return;
 
         List<MobEffectInstance> effects = new ArrayList<>(mc.player.getActiveEffects());
         effects.sort(Comparator.comparing(e -> e.getEffect().value().getDisplayName().getString()));
@@ -39,8 +39,8 @@ public final class PotionHud {
                 name = mc.font.plainSubstrByWidth(name, Math.max(0, width - durationWidth - 12));
                 int color = 0xFF000000 | effect.getEffect().value().getColor();
                 ctx.fill(0, y + 2, 3, y + mc.font.lineHeight, color);
-                ctx.text(mc.font, name, 6, y, 0xFFFFFFFF);
-                ctx.text(mc.font, duration, width - durationWidth, y, 0xFFAAAAAA);
+                ctx.drawString(mc.font, name, 6, y, 0xFFFFFFFF);
+                ctx.drawString(mc.font, duration, width - durationWidth, y, 0xFFAAAAAA);
                 y += mc.font.lineHeight + 3;
             }
         }

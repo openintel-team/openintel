@@ -6,7 +6,7 @@ import dev.openintel.api.hud.HudSize;
 import dev.openintel.allegiance.AllegianceManager.Allegiance;
 import dev.openintel.config.OIConfig;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.world.entity.Entity;
 
@@ -141,12 +141,12 @@ public final class EventFeed {
 
     // ------------------------------------------------------------ render ---
 
-    public static void render(GuiGraphicsExtractor ctx) {
+    public static void render(GuiGraphics ctx) {
         OIConfig cfg = OpenIntelClient.config();
         if (!cfg.eventFeedEnabled || entries.isEmpty()) return;
 
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null || client.gui.hud.isHidden()) return;
+        if (client.player == null || client.options.hideGui) return;
 
         long now = System.currentTimeMillis();
         long holdMs = cfg.eventFeedSeconds * 1000L;
@@ -176,7 +176,7 @@ public final class EventFeed {
                 float tw = (float) Math.ceil(measure.applyAsDouble(line.text()));
                 int x = lineX(cfg.eventFeedAlign, size.width(), tw);
                 if (cf) CleanFont.draw(ctx, line.text(), x, y, line.color(), true);
-                else ctx.text(client.font, line.text(), x, y, line.color(), true);
+                else ctx.drawString(client.font, line.text(), x, y, line.color(), true);
                 y += lineHeight;
             }
         }

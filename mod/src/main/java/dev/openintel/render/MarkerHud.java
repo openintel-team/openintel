@@ -9,7 +9,7 @@ import dev.openintel.xaero.RelicMapMath;
 import dev.openintel.xaero.RelicMapScanner;
 import dev.openintel.xaero.RelicProximity;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.navigation.ScreenRectangle;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.world.phys.Vec3;
@@ -78,10 +78,10 @@ public final class MarkerHud {
     private record Glyph(float x, float y, String text, int color) { }
     private record EdgeEntry(String label, int color, double dist, int opacityGroup) { }
 
-    public static void render(GuiGraphicsExtractor ctx) {
+    public static void render(GuiGraphics ctx) {
         OIConfig cfg = OpenIntelClient.config();
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null || client.level == null || client.gui.hud.isHidden()) return;
+        if (client.player == null || client.level == null || client.options.hideGui) return;
 
         String myDim = client.level.dimension().identifier().toString();
         long now = System.currentTimeMillis();
@@ -203,7 +203,7 @@ public final class MarkerHud {
         // ---- project + classify --------------------------------------------
         float cx = w / 2f, cy = h / 2f;
 
-        var camera = client.gameRenderer.mainCamera();
+        var camera = client.gameRenderer.getMainCamera();
         Vec3 camPos = camera.position();
         Quaternionf worldToCam = new Quaternionf(camera.rotation()).conjugate();
 
@@ -301,7 +301,7 @@ public final class MarkerHud {
         arrows.sort(Comparator.comparingInt(a -> a.color >>> 24));
         if (!shapes.isEmpty() || !arrows.isEmpty()) {
             Matrix3x2f pose = new Matrix3x2f(ctx.pose());
-            ctx.guiRenderState.addGuiElement(new ColoredQuadsElement(
+            ctx.guiRenderState.submitGuiElement(new ColoredQuadsElement(
                     pose, vc -> {
                         for (Shape s : shapes) {
                             // Scale around each marker's own anchor — edges
@@ -328,7 +328,7 @@ public final class MarkerHud {
             pose.translate(g.x, g.y);
             pose.scale(1.05f * scale, 1.05f * scale);
             if (cf) CleanFont.drawCentered(ctx, g.text, 0, -tr.lineHeight / 2, g.color);
-            else ctx.centeredText(tr, g.text, 0, -tr.lineHeight / 2, g.color);
+            else ctx.drawCenteredString(tr, g.text, 0, -tr.lineHeight / 2, g.color);
             pose.popMatrix();
         }
         labels.sort(Comparator.comparingInt(l -> l.color >>> 24));
@@ -345,7 +345,7 @@ public final class MarkerHud {
             pose.translate(x, y);
             pose.scale(fitted, fitted);
             if (cf) CleanFont.draw(ctx, l.text, -tw / 2f, 0, l.color, true);
-            else ctx.text(tr, l.text, Math.round(-tw / 2f), 0, l.color, true);
+            else ctx.drawString(tr, l.text, Math.round(-tw / 2f), 0, l.color, true);
             pose.popMatrix();
         }
     }
