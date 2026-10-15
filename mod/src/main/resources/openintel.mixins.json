@@ -1,6 +1,7 @@
 {
   "required": true,
   "package": "dev.openintel.mixin",
+  "plugin": "dev.openintel.mixin.OpenIntelMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "minVersion": "0.8",
   "client": [
@@ -17,7 +18,10 @@
     "FocusGlowMixin",
     "KeyBindingAccessor",
     "PlayerNameplateMixin",
-    "PickupAnimMixin"
+    "PickupAnimMixin",
+    "ChestTrackerScreenMixin",
+    "GuiMapCameraAccessor",
+    "GuiMapLibraryMixin"
   ],
   "injectors": {
     "defaultRequire": 1

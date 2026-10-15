@@ -24,6 +24,9 @@ dependencies {
     // Xaero World Map API — compile-time only, optional at runtime.
     compileOnly("xaero.map:xaeroworldmap-common-26.3:1.46.4") { transitive = false }
     compileOnly "xaero.lib:xaerolib-common-26.3:1.7.17"
+    // Chest Tracker + Where Is It — optional at runtime; jars live in libs/ for compileOnly.
+    compileOnly files("libs/chesttracker-2.8.4+26.3.jar")
+    compileOnly files("libs/whereisit-2.7.5.2+26.3.jar")
 }
 
 processResources {
@@ -133,7 +136,14 @@ tasks.register('relicMapTest', JavaExec) {
     enableAssertions = true
 }
 
-check.dependsOn snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest
+tasks.register('relicLibraryTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.relic.RelicLibraryModelTest'
+    enableAssertions = true
+}
+
+check.dependsOn snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, relicLibraryTest
 
 publishing {
     publications {
