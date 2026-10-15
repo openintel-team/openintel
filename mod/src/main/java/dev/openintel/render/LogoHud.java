@@ -1,6 +1,6 @@
 package dev.openintel.render;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import dev.openintel.OpenIntelClient;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -12,8 +12,8 @@ public final class LogoHud {
     private static final RenderPipeline PIPELINE = RenderPipeline.builder(RenderPipelines.GUI_TEXTURED_SNIPPET)
             .withLocation(Identifier.fromNamespaceAndPath("openintel", "pipeline/logo"))
             .withFragmentShader(Identifier.fromNamespaceAndPath("openintel", "core/logo"))
-            .withDepthStencilState(new com.mojang.blaze3d.pipeline.DepthStencilState(
-                    com.mojang.blaze3d.platform.CompareOp.ALWAYS_PASS, false))
+            .withDepthStencilState(new com.mojang.renderpearl.api.pipeline.DepthStencilState(
+                    com.mojang.renderpearl.api.pipeline.CompareOp.ALWAYS_PASS, false))
             .build();
 
     public record Bounds(float x, float y, float width, float height) { }

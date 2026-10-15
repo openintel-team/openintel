@@ -1,5 +1,5 @@
 plugins {
-    id 'net.fabricmc.fabric-loom' version '1.16-SNAPSHOT'
+    id 'net.fabricmc.fabric-loom' version '1.18-SNAPSHOT'
     id 'java'
     id 'maven-publish'
 }
@@ -9,7 +9,9 @@ group = project.maven_group
 
 base { archivesName = project.archives_base_name }
 
-repositories {}
+repositories {
+    maven { url = 'https://maven.blamejared.com' }
+}
 
 dependencies {
     // 26.x ships unobfuscated: no mappings, no remapping.
@@ -17,7 +19,7 @@ dependencies {
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
     // JourneyMap fullscreen-map integration — compile-time only, optional at runtime.
-    compileOnly files('libs/journeymap-api-fabric-26.2-2.0.0.jar')
+    compileOnly "info.journeymap:journeymap-api-fabric:26.3-2.0.0"
     // Xaero World Map overlay bridge — compile-time only, optional at runtime.
     compileOnly files('libs/xaero-world-map-bridge-0.1.2+26.2-fabric.jar')
 }
@@ -117,6 +119,8 @@ tasks.register('warTableTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'dev.openintel.WarTableTest'
+    // Raster checks use Graphics2D. Headless keeps the macOS AWT thread from holding the JVM open.
+    systemProperty 'java.awt.headless', 'true'
 }
 
 check.dependsOn snitchDimensionTest, apiContractTest, cleanFontMetricsTest, relicMapNameTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest

@@ -16,7 +16,7 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix3x2f;
 import org.joml.Matrix3x2fc;
 import org.joml.Vector2f;
-import org.lwjgl.glfw.GLFW;
+import org.lwjgl.sdl.SDLMouse;
 
 /**
  * Radial ping wheel: hold the bound key, flick the mouse at a wedge,
@@ -59,15 +59,15 @@ public class PingWheelScreen extends Screen {
         this.holdMode = holdMode;
     }
 
-    /** Physical held-state of the bound key, queried straight from GLFW. */
+    /** Physical held-state of the bound key, queried straight from SDL. */
     public static boolean physicallyHeld(KeyMapping key) {
-        var window = Minecraft.getInstance().getWindow();
         InputConstants.Key bound = InputConstants.getKey(key.saveString());
         if (bound.getType() == InputConstants.Type.MOUSE) {
-            return GLFW.glfwGetMouseButton(window.handle(), bound.getValue())
-                    == GLFW.GLFW_PRESS;
+            int buttons = SDLMouse.SDL_GetMouseState(null, null);
+            int button = bound.getValue();
+            return button > 0 && (buttons & (1 << (button - 1))) != 0;
         }
-        return InputConstants.isKeyDown(window, bound.getValue());
+        return InputConstants.isKeyDown(bound.getValue());
     }
 
     @Override
@@ -89,7 +89,7 @@ public class PingWheelScreen extends Screen {
 
     @Override
     public boolean keyPressed(net.minecraft.client.input.KeyEvent input) {
-        if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
+        if (input.key() == InputConstants.KEY_ESCAPE) {
             onClose();
             return true;
         }

@@ -1,7 +1,7 @@
 package dev.openintel;
 
 import com.google.gson.JsonParser;
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.serialization.JsonOps;
 import dev.openintel.render.UiFont;
 import net.minecraft.client.gui.font.providers.GlyphProviderDefinition;
@@ -279,7 +279,7 @@ public final class UiFontTest {
         net.minecraft.client.gui.font.glyphs.BakedSheetGlyph.class.getDeclaredMethod("createEffect", float.class, float.class,
                 float.class, float.class, float.class, int.class, int.class, float.class);
         check(net.minecraft.client.gui.font.glyphs.BakedSheetGlyph.class.getDeclaredField("textureView").getType()
-                == com.mojang.blaze3d.textures.GpuTextureView.class, "Shadow hook can identify the clean-font atlas");
+                == com.mojang.renderpearl.api.textures.GpuTextureView.class, "Shadow hook can identify the clean-font atlas");
         var chat = net.minecraft.client.gui.components.ChatComponent.class;
         chat.getDeclaredMethod("refreshTrimmedMessages");
         chat.getDeclaredMethod("extractRenderState", net.minecraft.client.gui.GuiGraphicsExtractor.class,
@@ -302,7 +302,7 @@ public final class UiFontTest {
         var selector = net.minecraft.client.gui.Font.class.getDeclaredMethod("getGlyphSource", FontDescription.class);
         check(selector.getReturnType() == net.minecraft.client.gui.GlyphSource.class, "Component selection hook matches this Minecraft version");
         var element = net.minecraft.client.renderer.state.gui.GlyphRenderState.class;
-        check(element.getDeclaredMethod("pipeline").getReturnType() == com.mojang.blaze3d.pipeline.RenderPipeline.class,
+        check(element.getDeclaredMethod("pipeline").getReturnType() == com.mojang.renderpearl.api.pipeline.RenderPipeline.class,
                 "GUI font pipeline hook matches");
         check(element.getDeclaredMethod("textureSetup").getReturnType() == net.minecraft.client.gui.render.TextureSetup.class,
                 "GUI font sampler hook matches");
