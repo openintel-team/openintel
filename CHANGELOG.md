@@ -1,5 +1,23 @@
 # Changelog
 
+## 3.1.0+takoyakifan.mc26.2 — investigation and overlay improvements
+
+- Refresh the relic-map library with a compact vertical layout, taller entries,
+  clearer selection/capacity states, and search preserved across window resizes.
+- Toggle individual relic selections from the list or the fullscreen Xaero map
+  without clearing other selections; retain Shift-drag area selection.
+- Correct mouse-button handling in the HUD editor and Investigate event list.
+- Render Investigate and coverage overlays through dedicated Fabric pipelines
+  registered with Iris. Keep faces on exact block boundaries, use GPU depth bias
+  for surface overlays, and preserve terrain depth for shader packs.
+- Highlight player names, actions, and focused coordinates in the Investigate
+  caption, with wrapped descriptions and a different-dimension notice.
+- Add Pan (default), Snap, and Off camera-focus modes under Investigate settings.
+  Pan duration defaults to 350 ms and is adjustable from 100–2000 ms; mouse look
+  cancels a pan and camera control releases when the turn finishes.
+- Expand regression coverage for geometry, depth policies, camera transitions,
+  caption emphasis, settings persistence, and event-selection lifecycle.
+
 ## 3.0.1+takoyakifan.mc26.2 — defaults and compatibility
 
 - New installs use Minecraft's font by default. Clean font remains available
