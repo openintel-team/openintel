@@ -5,7 +5,7 @@
 <h1 align="center">OpenIntel — takoyakifan fork</h1>
 
 <p align="center">
-  Fabric client <strong>3.0.0+takoyakifan.mc26.3</strong> for Minecraft <strong>26.3</strong> and Java 25.<br>
+  Fabric client <strong>3.0.1+takoyakifan.mc26.3</strong> for Minecraft <strong>26.3</strong> and Java 25.<br>
   A fork of <a href="https://github.com/hiimcapri/openintel">hiimcapri/openintel</a> with Civ map, relic, and coverage changes on top of the shared relay client.
 </p>
 
@@ -15,7 +15,7 @@ Public source and release jars are token-neutral. Set your own relay address, Mi
 
 Supported branches: [`26.3`](https://github.com/takoyakifan/openintel/tree/26.3) (default), [`26.2`](https://github.com/takoyakifan/openintel/tree/26.2), [`26.1.2`](https://github.com/takoyakifan/openintel/tree/26.1.2), and [`1.21.11`](https://github.com/takoyakifan/openintel/tree/1.21.11). This branch targets Minecraft **26.3**.
 
-Fork releases use `3.0.0+takoyakifan.mc<version>` so the installed version and jar filename identify this fork and its Minecraft target. The mod ID remains `openintel` and the integration API remains major version **1**. Install one OpenIntel variant at a time.
+Fork releases use `3.0.1+takoyakifan.mc<version>` so the installed version and jar filename identify this fork and its Minecraft target. The mod ID remains `openintel` and the integration API remains major version **1**. Install one OpenIntel variant at a time.
 
 ## Contents
 
@@ -83,7 +83,7 @@ From `mod/`:
 gradlew.bat build        # Windows
 ```
 
-The jar is `mod/build/libs/openintel-3.0.0+takoyakifan.mc26.3.jar`. Put it in `.minecraft/mods` with Fabric API. On first launch the mod writes `config/openintel.json`.
+The jar is `mod/build/libs/openintel-3.0.1+takoyakifan.mc26.3.jar`. Put it in `.minecraft/mods` with Fabric API. On first launch the mod writes `config/openintel.json`.
 
 Open `/oi settings` → **General** and set:
 
@@ -368,7 +368,7 @@ Administrative actions append JSON lines to `relay/audit.jsonl` and a readable c
 
 ## Integration API
 
-The public Java API is `dev.openintel.api`, major version **1**. The installed mod version is **3.0.0+takoyakifan.mc26.3**. Use `OpenIntelApi` as the entry point. Do not link against `tracker`, `net`, `render`, or `api.internal`.
+The public Java API is `dev.openintel.api`, major version **1**. The installed mod version is **3.0.1+takoyakifan.mc26.3**. Use `OpenIntelApi` as the entry point. Do not link against `tracker`, `net`, `render`, or `api.internal`.
 
 This is a client Fabric API for Minecraft 26.3 with official Mojang names. It is separate from the Discord bot and the admin HTTP API.
 
@@ -383,7 +383,7 @@ cd mod
 repositories { mavenLocal() }
 
 dependencies {
-    modImplementation "dev.openintel:openintel:3.0.0+takoyakifan.mc26.3"
+    modImplementation "dev.openintel:openintel:3.0.1+takoyakifan.mc26.3"
 }
 ```
 
