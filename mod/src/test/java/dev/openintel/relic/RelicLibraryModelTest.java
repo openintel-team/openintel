@@ -67,7 +67,7 @@ public final class RelicLibraryModelTest {
         picks.clickRow("a", false);
         assert picks.selectedIds().isEmpty();
         picks.clickRow("a", false);
-        picks.clickRow("b", true);
+        picks.clickRow("b", false);
         picks.clickRow("c", true);
         assert picks.selectedIds().equals(Set.of("a", "b", "c"));
         picks.clickRow("b", false);
@@ -75,7 +75,7 @@ public final class RelicLibraryModelTest {
         assert picks.isSelected("a");
         assert picks.isSelected("c");
         picks.clickRow("d", false);
-        assert picks.selectedIds().equals(Set.of("d"));
+        assert picks.selectedIds().equals(Set.of("a", "c", "d"));
         picks.clearSelection();
         assert picks.selectedIds().isEmpty();
 
@@ -132,6 +132,25 @@ public final class RelicLibraryModelTest {
         swap.finishLasso(2, 0, 0);
         assert swap.selectedIds().size() == 2;
         assert swap.isSelected("b");
+
+        // Map pins share the list selection and collapse duplicate site copies.
+        RelicLibraryVisit map = RelicLibraryVisit.start(all, java.util.Map.of());
+        assert map.clickSite(a.siteKey(), 2);
+        assert map.isSelected("a");
+        assert map.clickSite(b.siteKey(), 2);
+        assert map.isSelected("a") && map.isSelected("b");
+        assert !map.clickSite(e.siteKey(), 2);
+        assert map.clickSite(a.siteKey(), 2);
+        assert !map.isSelected("a") && map.isSelected("b");
+        map.selectIds(Set.of("a", "c", "b"));
+        assert map.clickSite(a.siteKey(), 0);
+        assert map.selectedIds().equals(Set.of("b"));
+        assert !map.clickSite("missing", 2);
+        assert !map.clickSite(null, 2);
+        assert !clicks.clickRow("b", false, 0);
+        clicks.selectOnly("a");
+        assert clicks.clickRow("a", false, 0);
+        assert clicks.selectedIds().isEmpty();
 
         System.out.println("RelicLibraryModelTest OK");
     }

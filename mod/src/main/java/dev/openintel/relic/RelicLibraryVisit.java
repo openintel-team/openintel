@@ -80,37 +80,37 @@ public final class RelicLibraryVisit {
         if (!selected.add(id)) selected.remove(id);
     }
 
-    /**
-     * Plain click selects that map, or drops it when it is already selected.
-     * Shift-click toggles one map without clearing the others.
-     */
+    /** Plain and Shift-click both toggle one map without clearing other selections. */
     public void clickRow(String id, boolean shift) {
         clickRow(id, shift, Integer.MAX_VALUE);
     }
 
-    /**
-     * @param maxTotal empty inventory slots; shift-click will not select past this
-     * @return false when a shift-click could not add the map because every slot is taken
-     */
+    /** Returns false when adding the map would exceed the live empty-slot count. */
     public boolean clickRow(String id, boolean shift, int maxTotal) {
         if (id == null) return false;
-        if (maxTotal < 0) maxTotal = 0;
-        if (!shift) {
-            if (isSelected(id)) {
-                selected.remove(id);
-                return true;
-            }
-            if (maxTotal <= 0) return false;
-            selectOnly(id);
-            return true;
-        }
         if (isSelected(id)) {
             selected.remove(id);
             return true;
         }
-        if (selected.size() >= maxTotal) return false;
+        if (selected.size() >= Math.max(0, maxTotal)) return false;
         selected.add(id);
         return true;
+    }
+
+    /**
+     * Map pins collapse duplicate copies of a relic site. Select one copy, or
+     * deselect every selected copy at that site so the pin visibly turns off.
+     */
+    public boolean clickSite(String siteKey, int maxTotal) {
+        if (siteKey == null) return false;
+        List<RelicLibraryEntry> site = entries.stream()
+                .filter(e -> e.located() && e.siteKey().equals(siteKey)).toList();
+        if (site.isEmpty()) return false;
+        if (site.stream().anyMatch(e -> isSelected(e.id()))) {
+            for (RelicLibraryEntry entry : site) selected.remove(entry.id());
+            return true;
+        }
+        return clickRow(site.getFirst().id(), false, maxTotal);
     }
 
     /**

@@ -1,5 +1,6 @@
 package dev.openintel.relic;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import dev.openintel.xaero.RelicCatalog;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -24,15 +25,19 @@ import java.util.Set;
  * item slots, and the standard scrollbar.
  */
 public final class RelicLibraryScreen extends Screen {
-    private static final int ROW_H = 20;
+    private static final int ROW_H = 40;
     private static final int SCROLL_W = 6;
     private static final int PANEL_FILL = 0xFFC6C6C6;
     private static final int PANEL_SHADE = 0xFF555555;
     private static final int PANEL_HIGHLIGHT = 0xFFFFFFFF;
-    private static final int INSET_FILL = 0xFF8B8B8B;
+    private static final int INSET_FILL = 0xFFAAAAAA;
     private static final int INSET_SHADE = 0xFF373737;
     private static final int TITLE_COLOR = 0xFF404040;
-    private static final int ROW_HOVER = 0xFF9A9A9A;
+    private static final int ROW_HOVER = 0xFFB8B8B8;
+    private static final int ROW_ALTERNATE = 0xFFA4A4A4;
+    private static final int ROW_SELECTED = 0xFFD8DEC9;
+    private static final int ACCENT = 0xFF52653A;
+    private static final int SECONDARY_COLOR = 0xFF505050;
     private static final Identifier SLOT = Identifier.withDefaultNamespace("container/slot");
     private static final Identifier SCROLLER = Identifier.withDefaultNamespace("widget/scroller");
     private static final Identifier SCROLLER_BG = Identifier.withDefaultNamespace("widget/scroller_background");
@@ -60,66 +65,55 @@ public final class RelicLibraryScreen extends Screen {
     @Override
     protected void init() {
         layout();
-        search = new EditBox(font, panelX + 8, panelY + 18, panelW - 16, 20,
+        String query = search == null ? "" : search.getValue();
+        search = new EditBox(font, panelX + 10, panelY + 36, panelW - 20, 20,
                 Component.translatable("openintel.relic.library.search"));
         search.setHint(Component.translatable("openintel.relic.library.search_hint"));
+        search.setValue(query);
         search.setResponder(q -> refreshView());
         addRenderableWidget(search);
 
-        int innerX = panelX + 8;
-        int innerW = panelW - 16;
+        int innerX = panelX + 10;
+        int innerW = panelW - 20;
         int gap = 4;
-        int doneW = 64;
-        int clearW = 96;
-        int actionW = Math.max(40, (innerW - doneW - clearW - gap * 3) / 2);
-        addRenderableWidget(Button.builder(Component.translatable("openintel.relic.library.show_map"),
-                b -> showOnMap()).bounds(innerX, buttonY, actionW, 20).build());
+        int actionW = (innerW - gap) / 2;
+        Button mapButton = Button.builder(Component.translatable("openintel.relic.library.show_map"),
+                b -> showOnMap()).bounds(innerX, buttonY, actionW, 20).build();
+        mapButton.active = RelicMapBridge.available();
+        addRenderableWidget(mapButton);
         showChestsButton = Button.builder(Component.translatable("openintel.relic.library.show_chests"),
-                b -> showChests()).bounds(innerX + actionW + gap, buttonY, actionW, 20).build();
+                b -> showChests()).bounds(innerX + actionW + gap, buttonY, innerW - actionW - gap, 20).build();
+        showChestsButton.setTooltip(Tooltip.create(Component.translatable("openintel.relic.library.chests_tooltip")));
         addRenderableWidget(showChestsButton);
         clearButton = Button.builder(Component.translatable("openintel.relic.library.clear"),
                 b -> {
                     visit.clearSelection();
                     syncButtons();
-                }).bounds(innerX + (actionW + gap) * 2, buttonY, clearW, 20).build();
+                }).bounds(innerX, buttonY + 24, actionW, 20).build();
         clearButton.setTooltip(Tooltip.create(Component.translatable("openintel.relic.library.clear_tooltip")));
         addRenderableWidget(clearButton);
         addRenderableWidget(Button.builder(Component.translatable("gui.done"),
-                b -> onClose()).bounds(innerX + innerW - doneW, buttonY, doneW, 20).build());
+                b -> onClose()).bounds(innerX + actionW + gap, buttonY + 24, innerW - actionW - gap, 20).build());
         reload();
     }
 
-    /** Centered stone window. The list shrinks when the game window is short. */
+    /** Portrait container with a flexible list and a fixed, two-row action area. */
     private void layout() {
-        int margin = 8;
-        panelW = Math.min(392, Math.max(280, width - margin * 2));
-        if (panelW > width - 4) panelW = Math.max(160, width - 4);
-
-        int insetOff = 42;
-        int buttonH = 20;
-        int buttonGap = 6;
-        int bottom = 7;
-        int desiredList = ROW_H * 7;
-        int desiredH = insetOff + desiredList + 4 + buttonGap + buttonH + bottom;
-        panelH = Math.min(desiredH, Math.max(120, height - margin * 2));
-        int listBudget = panelH - insetOff - 4 - buttonGap - buttonH - bottom;
-        if (listBudget < ROW_H) {
-            listBudget = ROW_H;
-            panelH = insetOff + listBudget + 4 + buttonGap + buttonH + bottom;
-        }
-
+        panelW = Math.min(268, Math.max(160, width - 16));
+        panelH = Math.min(400, Math.max(180, height - 16));
         panelX = (width - panelW) / 2;
         panelY = Math.max(0, (height - panelH) / 2);
-        insetX = panelX + 8;
-        insetY = panelY + insetOff;
-        insetW = panelW - 16;
-        insetH = listBudget + 4;
+        insetX = panelX + 10;
+        insetY = panelY + 64;
+        insetW = panelW - 20;
+        // Reserve a status line, two button rows, and the bottom container border.
+        insetH = panelH - 138;
         listX = insetX + 2;
         listY = insetY + 2;
-        listH = listBudget;
+        listH = insetH - 4;
         scrollX = insetX + insetW - 2 - SCROLL_W;
-        listW = Math.max(40, scrollX - 2 - listX);
-        buttonY = insetY + insetH + buttonGap;
+        listW = Math.max(40, scrollX - 3 - listX);
+        buttonY = panelY + panelH - 54;
     }
 
     private void reload() {
@@ -200,7 +194,7 @@ public final class RelicLibraryScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubled) {
         if (super.mouseClicked(event, doubled)) return true;
-        if (event.button() != 0 || doubled) return false;
+        if (event.button() != InputConstants.MOUSE_BUTTON_LEFT) return false;
         if (overScrollbar(event.x(), event.y())) {
             beginScrollDrag(event.y());
             return true;
@@ -219,7 +213,7 @@ public final class RelicLibraryScreen extends Screen {
 
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double offsetX, double offsetY) {
-        if (scrollbarDrag && event.button() == 0) {
+        if (scrollbarDrag && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             dragScroll(event.y());
             return true;
         }
@@ -228,7 +222,7 @@ public final class RelicLibraryScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
-        if (event.button() == 0 && scrollbarDrag) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && scrollbarDrag) {
             scrollbarDrag = false;
             return true;
         }
@@ -248,46 +242,61 @@ public final class RelicLibraryScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
         drawRaisedPanel(ctx, panelX, panelY, panelW, panelH);
         drawInset(ctx, insetX, insetY, insetW, insetH);
-        ctx.text(font, title, panelX + 8, panelY + 6, TITLE_COLOR);
-        String count = Component.translatable("openintel.relic.library.count",
-                view.size(), visit.selectedIds().size()).getString();
-        ctx.text(font, count, panelX + panelW - 8 - font.width(count), panelY + 6, TITLE_COLOR);
+        ctx.text(font, title, panelX + 10, panelY + 10, TITLE_COLOR, false);
+        ctx.text(font, fit(Component.translatable("openintel.relic.library.subtitle").getString(), panelW - 20),
+                panelX + 10, panelY + 23, SECONDARY_COLOR, false);
+        int statusY = insetY + insetH + 6;
+        String count = Component.translatable("openintel.relic.library.shown", view.size()).getString();
+        ctx.text(font, count, insetX, statusY, SECONDARY_COLOR, false);
+        int selectedCount = visit.selectedIds().size();
+        int free = RelicCarryHint.freeSlots(Minecraft.getInstance().player);
+        String capacity = Component.translatable(selectedCount >= free
+                ? "openintel.relic.library.selection_full" : "openintel.relic.library.selection",
+                selectedCount, free).getString();
+        ctx.text(font, capacity, insetX + insetW - font.width(capacity), statusY,
+                selectedCount >= free ? 0xFF795321 : ACCENT, false);
         super.extractRenderState(ctx, mouseX, mouseY, delta);
 
         ctx.enableScissor(listX, listY, listX + listW, listY + listH);
         int y = listY - scroll;
-        int textLimit = listW - 24;
+        int textLimit = listW - 34;
+        int row = 0;
         for (RelicLibraryEntry entry : view) {
             if (y + ROW_H >= listY && y < listY + listH) {
                 boolean selected = visit.isSelected(entry.id());
                 boolean hovered = mouseX >= listX && mouseX < listX + listW
                         && mouseY >= Math.max(listY, y) && mouseY < Math.min(listY + listH, y + ROW_H);
+                int fill = selected ? ROW_SELECTED : hovered ? ROW_HOVER
+                        : (row % 2 == 0 ? INSET_FILL : ROW_ALTERNATE);
+                ctx.fill(listX, y, listX + listW, y + ROW_H, fill);
+                ctx.fill(listX, y + ROW_H - 1, listX + listW, y + ROW_H, 0xFF969696);
                 if (selected) {
-                    ctx.fill(listX, y, listX + listW, y + ROW_H, PANEL_FILL);
-                    ctx.fill(listX, y, listX + listW, y + 1, PANEL_HIGHLIGHT);
-                } else if (hovered) {
-                    ctx.fill(listX, y, listX + listW, y + ROW_H, ROW_HOVER);
+                    ctx.fill(listX, y, listX + 2, y + ROW_H - 1, ACCENT);
                 }
-                ctx.blitSprite(RenderPipelines.GUI_TEXTURED, SLOT, listX + 1, y + 1, 18, 18);
+                // A small, explicit selection box complements the full-row highlight.
+                int checkX = listX + listW - 10;
+                ctx.fill(checkX, y + 6, checkX + 7, y + 13, INSET_SHADE);
+                ctx.fill(checkX + 1, y + 7, checkX + 6, y + 12, selected ? ACCENT : PANEL_FILL);
+                if (selected) ctx.fill(checkX + 2, y + 8, checkX + 5, y + 11, ROW_SELECTED);
+                ctx.blitSprite(RenderPipelines.GUI_TEXTURED, SLOT, listX + 5, y + 5, 18, 18);
                 RelicCatalog.Relic relic = RelicCatalog.find(entry.title());
                 if (relic != null) {
                     var texture = Identifier.fromNamespaceAndPath("openintel", "textures/relic/" + relic.texture());
                     int tex = relic.size();
-                    ctx.blit(RenderPipelines.GUI_TEXTURED, texture, listX + 2, y + 2,
+                    ctx.blit(RenderPipelines.GUI_TEXTURED, texture, listX + 6, y + 6,
                             0f, 0f, 16, 16, tex, tex, tex, tex);
                 } else {
-                    ctx.fill(listX + 3, y + 3, listX + 17, y + 17, 0xFFE8B84A);
+                    ctx.fill(listX + 7, y + 7, listX + 21, y + 21, 0xFFE8B84A);
                 }
                 String coords = entry.located()
                         ? entry.siteX() + ", " + entry.siteZ()
                         : Component.translatable("openintel.relic.library.unlocated").getString();
-                String line = entry.title()
-                        + (entry.enchantment().isEmpty() ? "" : "  |  " + entry.enchantment())
-                        + "  |  " + coords;
-                ctx.text(font, fit(line, textLimit), listX + 22, y + 6,
-                        selected ? TITLE_COLOR : PANEL_HIGHLIGHT, !selected);
+                ctx.text(font, fit(entry.title(), textLimit), listX + 28, y + 5, TITLE_COLOR, false);
+                ctx.text(font, fit(entry.enchantment(), textLimit), listX + 28, y + 16, SECONDARY_COLOR, false);
+                ctx.text(font, fit(coords, textLimit), listX + 28, y + 28, SECONDARY_COLOR, false);
             }
             y += ROW_H;
+            row++;
         }
         ctx.disableScissor();
 
@@ -295,7 +304,7 @@ public final class RelicLibraryScreen extends Screen {
             Component message = visit.entries().isEmpty()
                     ? Component.translatable("openintel.relic.library.empty")
                     : Component.translatable("openintel.relic.library.no_matches");
-            ctx.textWithWordWrap(font, message, listX + 4, listY + 6, listW - 8, PANEL_HIGHLIGHT);
+            ctx.textWithWordWrap(font, message, listX + 4, listY + 6, listW - 8, TITLE_COLOR);
         }
 
         ctx.blitSprite(RenderPipelines.GUI_TEXTURED, SCROLLER_BG, scrollX, listY, SCROLL_W, listH);
@@ -352,7 +361,7 @@ public final class RelicLibraryScreen extends Screen {
         String ellipsis = "...";
         int limit = Math.max(0, maxWidth - font.width(ellipsis));
         int end = line.length();
-        while (end > 0 && font.width(line.substring(0, end)) > limit) end--;
+        while (end > 0 && font.width(line.substring(0, end)) > limit) end = line.offsetByCodePoints(end, -1);
         return line.substring(0, end) + ellipsis;
     }
 

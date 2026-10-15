@@ -4,10 +4,12 @@ import com.mojang.blaze3d.platform.InputConstants;
 import dev.openintel.relic.GuiMapCamera;
 import dev.openintel.relic.RelicCarryHint;
 import dev.openintel.relic.RelicLibraryVisit;
+import dev.openintel.xaero.XaeroIntegration;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.input.MouseButtonEvent;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -16,21 +18,31 @@ import xaero.map.gui.GuiMap;
 
 /**
  * Shift + left-drag lasso while a relic-library map visit is open.
- * Left click uses the GLFW mouse-button index.
+ * Mouse button constants follow the input backend of this Minecraft version.
  */
 @Mixin(GuiMap.class)
 public abstract class GuiMapLibraryMixin {
+    @Unique private String openintel$pressedSite;
+    @Unique private double openintel$pressX;
+    @Unique private double openintel$pressY;
+    @Unique private boolean openintel$selecting;
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void openintel$lassoStart(MouseButtonEvent event, boolean doubled, CallbackInfoReturnable<Boolean> cir) {
         RelicLibraryVisit visit = RelicLibraryVisit.current();
         if (visit == null || !visit.isMapVisit()) return;
         if (event.button() != InputConstants.MOUSE_BUTTON_LEFT) return;
         Minecraft client = Minecraft.getInstance();
-        if (client == null || !client.hasShiftDown()) return;
+        if (client == null) return;
+        String site = XaeroIntegration.hoveredLibrarySite();
+        if (!client.hasShiftDown() && site == null) return;
+        openintel$pressedSite = site;
+        openintel$pressX = event.x();
+        openintel$pressY = event.y();
+        openintel$selecting = true;
         GuiMap map = (GuiMap) (Object) this;
         int wx = GuiMapCamera.mouseBlockX(map);
         int wz = GuiMapCamera.mouseBlockZ(map);
-        visit.beginLasso(wx, wz, (int) event.x(), (int) event.y());
+        if (client.hasShiftDown()) visit.beginLasso(wx, wz, (int) event.x(), (int) event.y());
         // Cancel so GuiMap never sets leftMouseButton.isDown (which drives panning).
         cir.setReturnValue(true);
     }
@@ -38,7 +50,7 @@ public abstract class GuiMapLibraryMixin {
     @Inject(method = "mouseReleased", at = @At("HEAD"), cancellable = true)
     private void openintel$lassoEnd(MouseButtonEvent event, CallbackInfoReturnable<Boolean> cir) {
         RelicLibraryVisit visit = RelicLibraryVisit.current();
-        if (visit == null || !visit.isLassoDragging()) return;
+        if (visit == null || !visit.isMapVisit() || !openintel$selecting) return;
         if (event.button() != InputConstants.MOUSE_BUTTON_LEFT) return;
         GuiMap map = (GuiMap) (Object) this;
         visit.updateLasso(GuiMapCamera.mouseBlockX(map), GuiMapCamera.mouseBlockZ(map),
@@ -49,7 +61,16 @@ public abstract class GuiMapLibraryMixin {
                 : Integer.MAX_VALUE;
         double px = client != null && client.player != null ? client.player.getX() : 0;
         double pz = client != null && client.player != null ? client.player.getZ() : 0;
-        visit.finishLasso(free, px, pz);
+        visit.enforceCapacity(free, px, pz);
+        boolean click = Math.hypot(event.x() - openintel$pressX, event.y() - openintel$pressY) < 4;
+        if (click) {
+            visit.clearLasso();
+            visit.clickSite(openintel$pressedSite, free);
+        } else if (visit.isLassoDragging()) {
+            visit.finishLasso(free, px, pz);
+        }
+        openintel$selecting = false;
+        openintel$pressedSite = null;
         cir.setReturnValue(true);
     }
 
@@ -91,5 +112,7 @@ public abstract class GuiMapLibraryMixin {
     private void openintel$endVisit(CallbackInfo ci) {
         RelicLibraryVisit visit = RelicLibraryVisit.current();
         if (visit != null) visit.endMapVisit();
+        openintel$selecting = false;
+        openintel$pressedSite = null;
     }
 }

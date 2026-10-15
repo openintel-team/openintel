@@ -12,6 +12,7 @@ public final class XaeroIntegration {
     private static boolean initialized;
     private static boolean failed;
     static long frames;
+    static String hoveredLibrarySite;
     static List<MapMarker> lastRendered = List.of();
 
     private XaeroIntegration() { }
@@ -26,6 +27,7 @@ public final class XaeroIntegration {
             if (!registered && !failed) tryRegister();
             if (client.level == null) {
                 lastRendered = List.of();
+                hoveredLibrarySite = null;
                 RelicMapScanner.clear();
             }
         });
@@ -44,6 +46,7 @@ public final class XaeroIntegration {
     }
 
     /** Integration diagnostics; these do not include any persistent map state. */
+    public static String hoveredLibrarySite() { return hoveredLibrarySite; }
     public static boolean isRegistered() { return registered; }
     public static long renderedFrames() { return frames; }
     public static List<MapMarker> lastRenderedMarkers() { return lastRendered; }
