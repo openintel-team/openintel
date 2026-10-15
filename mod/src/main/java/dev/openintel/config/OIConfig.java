@@ -292,6 +292,30 @@ public class OIConfig {
     /** Bastion horizontal radius in blocks. Default 10.5 (diameter 21). */
     public double vizBastionRadius = 10.5;
 
+    // ------------------------------------------------------- investigate ----
+
+    public enum InvestigateCameraMode {
+        PAN("options.openintel.investigate.camera.pan"),
+        SNAP("options.openintel.investigate.camera.snap"),
+        OFF("options.openintel.investigate.camera.off");
+
+        public final String translationKey;
+        InvestigateCameraMode(String key) { translationKey = key; }
+        public static InvestigateCameraMode byName(String name) {
+            for (var mode : values()) if (mode.name().equalsIgnoreCase(name)) return mode;
+            return PAN;
+        }
+    }
+
+    /** Turn toward a newly focused investigation event, then release camera control. */
+    public InvestigateCameraMode investigateCameraMode = InvestigateCameraMode.PAN;
+    public int investigatePanDurationMs = 350;
+
+    public static void applyInvestigateDefaults(OIConfig config) {
+        if (config.investigateCameraMode == null) config.investigateCameraMode = InvestigateCameraMode.PAN;
+        config.investigatePanDurationMs = Math.clamp(config.investigatePanDurationMs, 100, 2000);
+    }
+
     // -------------------------------------------------------- war table ----
 
     /** War Table screen: shared admin-drawn annotations over the live map. */
@@ -534,6 +558,15 @@ public class OIConfig {
                 } else {
                     c.vizBastionRadius = Math.clamp(c.vizBastionRadius, 1.0, 64.0);
                 }
+                if (!raw.has("investigateCameraMode") || c.investigateCameraMode == null) {
+                    c.investigateCameraMode = InvestigateCameraMode.PAN;
+                    defaults = true;
+                }
+                if (!raw.has("investigatePanDurationMs")) {
+                    c.investigatePanDurationMs = 350;
+                    defaults = true;
+                }
+                applyInvestigateDefaults(c);
                 // Before the explicit auto-color flag existed, -1 was the
                 // allegiance auto-color sentinel and the default. Preserve it
                 // under the flag; explicit colors keep their static value.

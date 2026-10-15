@@ -19,6 +19,7 @@
     "KeyBindingAccessor",
     "PlayerNameplateMixin",
     "PickupAnimMixin",
+    "InvestigateCameraMixin",
     "ChestTrackerScreenMixin",
     "GuiMapCameraAccessor",
     "GuiMapLibraryMixin"
