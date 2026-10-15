@@ -98,9 +98,10 @@ public final class ClickGui {
                         bool("options.openintel.relay.stale_decay", cfg.staleDecay, v -> cfg.staleDecay = v)),
                 new Option(tr("options.openintel.relay.enemy_alert"), "Chat alert when an enemy is spotted by the relay.",
                         bool("options.openintel.relay.enemy_alert", cfg.localEnemyAlert, v -> cfg.localEnemyAlert = v)),
-                new Option(tr("options.openintel.relay.opacity"), "Alpha applied to active relay markers and pings.",
-                        slider("options.openintel.relay.opacity", 151, 255, cfg.relayOpacity,
-                                "", v -> cfg.relayOpacity = v)),
+                new Option(tr("options.openintel.relay.opacity"), "Opacity of active relay markers and pings.",
+                        slider("options.openintel.relay.opacity", 0, 100,
+                                OIConfig.markerOpacityPercent(cfg.relayOpacity),
+                                "%", v -> cfg.relayOpacity = v)),
                 new Option(tr("options.openintel.relay.marker_scale"), "Size of over-head markers — chevron and name label together.",
                         slider("options.openintel.relay.marker_scale", 50, 200, (int) (cfg.markerScale * 100),
                                 "%", v -> cfg.markerScale = v / 100f)),
@@ -123,9 +124,21 @@ public final class ClickGui {
                                 cfg.warTableSanctuaries, v -> cfg.warTableSanctuaries = v)),
                 new Group("Waypoints"),
                 new Option(tr("options.openintel.wartable.pin_markers"),
-                        "Show synced War Table pins as in-world waypoints.",
+                        "Show synced War Table pins as in-world HUD waypoints.",
                         bool("options.openintel.wartable.pin_markers",
                                 cfg.warTablePinMarkers, v -> cfg.warTablePinMarkers = v)),
+                new Option(tr("options.openintel.wartable.pin_world_map"),
+                        "Draw War Table pins on Xaero's World Map as a colored marker with the name underneath.",
+                        bool("options.openintel.wartable.pin_world_map",
+                                cfg.warTablePinWorldMap, v -> cfg.warTablePinWorldMap = v)),
+                new Option(tr("options.openintel.wartable.label_world_map"),
+                        "Draw War Table place labels on Xaero's World Map as a colored marker with the name underneath.",
+                        bool("options.openintel.wartable.label_world_map",
+                                cfg.warTableLabelWorldMap, v -> cfg.warTableLabelWorldMap = v)),
+                new Option(tr("options.openintel.wartable.sanctuary_world_map"),
+                        "Draw sanctuary names on Xaero's World Map in the gold circle color.",
+                        bool("options.openintel.wartable.sanctuary_world_map",
+                                cfg.warTableSanctuaryWorldMap, v -> cfg.warTableSanctuaryWorldMap = v)),
                 new Option(tr("options.openintel.wartable.pin_opacity"),
                         "Static waypoint opacity; lower than active relay markers.",
                         slider("options.openintel.wartable.pin_opacity", 30, 150,
@@ -221,6 +234,10 @@ public final class ClickGui {
                 new Group("Event feed"),
                 new Option(tr("options.openintel.feed.enabled"), "Presence, sightings, and snitch events in a feed.",
                         bool("options.openintel.feed.enabled", cfg.eventFeedEnabled, v -> cfg.eventFeedEnabled = v)),
+                new Option(tr("options.openintel.feed.align"), "Align feed text to the left or right edge of the HUD box.",
+                        cycle("options.openintel.feed.align", OIConfig.FeedAlign.values(),
+                                a -> a.translationKey, OIConfig.FeedAlign::byName,
+                                cfg.eventFeedAlign, v -> cfg.eventFeedAlign = v)),
                 new Option(tr("options.openintel.feed.seconds"), "How long feed entries linger.",
                         slider("options.openintel.feed.seconds", 3, 30, cfg.eventFeedSeconds,
                                 "s", v -> cfg.eventFeedSeconds = v))
@@ -254,6 +271,57 @@ public final class ClickGui {
                                 }))
         )));
 
+        // -------------------------------------------------- visualizations
+        cats.add(new Category("viz", "Visualizations", List.of(
+                new Group("In-world ranges"),
+                new Option(tr("options.openintel.viz.enabled"),
+                        "Draw Civ+ snitch, bastion, and sanctuary coverage in the world.",
+                        bool("options.openintel.viz.enabled", cfg.vizEnabled, v -> cfg.vizEnabled = v)),
+                new Option(tr("options.openintel.viz.snitch"),
+                        "Block shell around each placed snitch. Radius is set below.",
+                        bool("options.openintel.viz.snitch", cfg.vizSnitch, v -> cfg.vizSnitch = v)),
+                new Option(tr("options.openintel.viz.snitch_radius"),
+                        "How far a snitch covers, block-center to block-center. Default 8. Other Civ servers may differ.",
+                        slider("options.openintel.viz.snitch_radius", 1, 32,
+                                Math.clamp(cfg.vizSnitchRadius, 1, 32),
+                                "", v -> cfg.vizSnitchRadius = v)),
+                new Option(tr("options.openintel.viz.bastion"),
+                        "Block ring and a 64-block column from the bastion upward. Protection continues above the column.",
+                        bool("options.openintel.viz.bastion", cfg.vizBastion, v -> cfg.vizBastion = v)),
+                new Option(tr("options.openintel.viz.bastion_radius"),
+                        "Horizontal bastion radius in half-block steps. Default 10.5 (diameter 21). Blocks below the bastion are not covered.",
+                        halfSlider("options.openintel.viz.bastion_radius", 2, 128,
+                                bastionHalf(cfg.vizBastionRadius),
+                                v -> cfg.vizBastionRadius = v / 2.0)),
+                new Option(tr("options.openintel.viz.sanctuary"),
+                        "Block ring for manually placed sanctuary shapes. Radius is per shape.",
+                        bool("options.openintel.viz.sanctuary", cfg.vizSanctuary, v -> cfg.vizSanctuary = v)),
+                new Option(tr("options.openintel.viz.live_sanctuaries"),
+                        "Block rings from the live-map API (same feed as the War Table).",
+                        bool("options.openintel.viz.live_sanctuaries",
+                                cfg.vizLiveSanctuaries, v -> cfg.vizLiveSanctuaries = v)),
+                new Option(tr("options.openintel.viz.see_through"),
+                        "Draw wireframes on top of terrain so buried fields stay visible.",
+                        bool("options.openintel.viz.see_through", cfg.vizSeeThrough, v -> cfg.vizSeeThrough = v)),
+                new Option("Edit shapes", "Add snitch / bastion / sanctuary shapes at the block you look at.",
+                        button("Edit shapes…", () -> Minecraft.getInstance()
+                                .setScreenAndShow(new VisualizationsScreen(self))))
+        )));
+
+        // ------------------------------------------------------ investigate
+        cats.add(new Category("investigate", "Investigate", List.of(
+                new Group("Log playback"),
+                new Option("Investigate logs",
+                        "Paste snitch or Discord logs, then watch break/place highlights in the world.",
+                        button("Open investigate…", () -> Minecraft.getInstance()
+                                .setScreenAndShow(new InvestigateScreen(self)))),
+                new Option("Stop watching", "Clear the active investigate playback session.",
+                        button("Clear session", () -> {
+                            dev.openintel.investigate.InvestigateSession.get().clear();
+                            OpenIntelClient.status("investigate cleared");
+                        }))
+        )));
+
         // ------------------------------------------------------------ pings
         cats.add(new Category("pings", "Pings", List.of(
                 new Group("Ping wheel"),
@@ -271,7 +339,14 @@ public final class ClickGui {
                         bool("options.openintel.jm.markers", cfg.jmMarkers, v -> cfg.jmMarkers = v)),
                 new Group("Xaero's World Map"),
                 new Option(tr("options.openintel.xaero.markers"), "Draw relay players, snitch hits and pings on Xaero's World Map screen.",
-                        bool("options.openintel.xaero.markers", cfg.xaeroMarkers, v -> cfg.xaeroMarkers = v))
+                        bool("options.openintel.xaero.markers", cfg.xaeroMarkers, v -> cfg.xaeroMarkers = v)),
+                new Option(tr("options.openintel.xaero.relic_maps"), "Show relic maps from your inventory on Xaero's World Map.",
+                        bool("options.openintel.xaero.relic_maps", cfg.xaeroRelicMaps, v -> cfg.xaeroRelicMaps = v)),
+                new Option(tr("options.openintel.relic.marker_range"), "How far away a carried relic map can be before the in-world pin appears.",
+                        slider("options.openintel.relic.marker_range", 50, 2000, cfg.relicMarkerRange,
+                                "m", v -> cfg.relicMarkerRange = v)),
+                new Option(tr("options.openintel.relic.sort_chest"), "When you open a chest, barrel, ender chest, or shulker, arrange located relic maps from closest to furthest. Other items stay put.",
+                        bool("options.openintel.relic.sort_chest", cfg.sortRelicMaps, v -> cfg.sortRelicMaps = v))
         )));
 
         // ----------------------------------------------------------- macros
@@ -361,6 +436,28 @@ public final class ClickGui {
                 new OptionInstance.IntRange(min, max, true),
                 current, v -> apply.accept(v))
                 .createButton(Minecraft.getInstance().options, 0, 0, 150);
+    }
+
+    /** Slider stored in half-block steps (21 → radius 10.5, diameter 21). */
+    private static AbstractWidget halfSlider(String key, int minHalf, int maxHalf, int current,
+                                              Consumer<Integer> apply) {
+        int clamped = Math.clamp(current, minHalf, maxHalf);
+        return new OptionInstance<>(key, OptionInstance.noTooltip(),
+                (text, v) -> text.copy().append(": " + halfText(v) + " (Ø " + v + ")"),
+                new OptionInstance.IntRange(minHalf, maxHalf, true),
+                clamped, v -> apply.accept(v))
+                .createButton(Minecraft.getInstance().options, 0, 0, 150);
+    }
+
+    private static String halfText(int half) {
+        int whole = half / 2;
+        if ((half & 1) == 0) return Integer.toString(whole);
+        return whole + ".5";
+    }
+
+    private static int bastionHalf(double radius) {
+        if (!Double.isFinite(radius)) return 21;
+        return (int) Math.round(Math.clamp(radius, 1.0, 64.0) * 2.0);
     }
 
     /** 0–20000 slider that reads "unlimited" at 0. */

@@ -23,7 +23,10 @@ import java.util.Map;
  */
 public class OIConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final Path PATH = FabricLoader.getInstance().getConfigDir().resolve("openintel.json");
+
+    private static Path path() {
+        return FabricLoader.getInstance().getConfigDir().resolve("openintel.json");
+    }
     private static final String OLD_SNITCH_PATTERN = "(?i)entered snitch|snitch at|you have entered";
     private static final String DEFAULT_SNITCH_PATTERN = OLD_SNITCH_PATTERN
             + "|opened container|logged in at|logged out at|damaged sanctuary|broke block|placed block";
@@ -86,18 +89,54 @@ public class OIConfig {
     /** Master switch for every relay-driven overlay (markers, chevrons, nameplates). */
     public boolean relayRendering = true;
 
-    /** Opacity of active relay markers (players, pings, chevrons), 151–255. */
-    public int relayOpacity = 230;
+    /** Nearest percent to the previous 151/255 marker alpha. */
+    public static final int DEFAULT_RELAY_OPACITY_PERCENT = 59;
+
+    /** Default over-head marker scale, as a fraction (60%). */
+    public static final float DEFAULT_MARKER_SCALE = 0.6f;
+
+    /** Opacity of active relay markers (players, pings, chevrons), 0–100 percent. */
+    public int relayOpacity = DEFAULT_RELAY_OPACITY_PERCENT;
+
+    /**
+     * Stored marker opacity is a percent from 0 to 100. Values above 100 are
+     * the old 151–255 alpha and convert to the nearest percent.
+     */
+    public static int markerOpacityPercent(int stored) {
+        if (stored > 100) stored = Math.round(stored * 100f / 255f);
+        return Math.clamp(stored, 0, 100);
+    }
+
+    /** Alpha byte for a stored marker-opacity percent. Legacy alpha is accepted. */
+    public static int markerAlpha(int stored) {
+        return Math.round(markerOpacityPercent(stored) * 255f / 100f);
+    }
+
+    /**
+     * Fills a missing marker opacity or scale, and converts a legacy alpha into
+     * a percent. An explicit saved scale stays as it was.
+     */
+    public static void applyMarkerDefaults(OIConfig config, boolean hasRelayOpacity, boolean hasMarkerScale) {
+        if (!hasRelayOpacity) config.relayOpacity = DEFAULT_RELAY_OPACITY_PERCENT;
+        else config.relayOpacity = markerOpacityPercent(config.relayOpacity);
+        if (!hasMarkerScale || !Float.isFinite(config.markerScale) || config.markerScale <= 0f) {
+            config.markerScale = DEFAULT_MARKER_SCALE;
+        } else {
+            config.markerScale = Math.clamp(config.markerScale, 0.5f, 2.0f);
+        }
+    }
 
     /** Fade relay blips/markers out as their intel approaches staleAfterMs. */
     public boolean staleDecay = true;
 
     /** Scale of over-head markers — chevron/diamond and the name label together. */
-    public float markerScale = 1.0f;
+    public float markerScale = DEFAULT_MARKER_SCALE;
 
     /** Clean TTF text on OpenIntel surfaces instead of the vanilla bitmap font. */
     public boolean cleanFont = true;
-    public boolean logoHudEnabled = true;
+
+    /** Bottom-right watermark. Off until turned on under HUD → Elements. */
+    public boolean logoHudEnabled = false;
 
     // ---------------------------------------------------------- presence ----
 
@@ -133,6 +172,23 @@ public class OIConfig {
     public int eventFeedSeconds = 8;
     public int eventFeedX = -1;
     public int eventFeedY = 4;
+
+    /** Horizontal alignment of event-feed text within its HUD box. */
+    public FeedAlign eventFeedAlign = FeedAlign.RIGHT;
+
+    /** Event feed text alignment inside the HUD box. */
+    public enum FeedAlign {
+        LEFT("options.openintel.feed.align.left"),
+        RIGHT("options.openintel.feed.align.right");
+
+        public final String translationKey;
+        FeedAlign(String key) { this.translationKey = key; }
+
+        public static FeedAlign byName(String name) {
+            for (FeedAlign f : values()) if (f.name().equalsIgnoreCase(name)) return f;
+            return RIGHT;
+        }
+    }
 
     public boolean armorHudEnabled = true;
     public int armorHudX = 8;
@@ -203,8 +259,38 @@ public class OIConfig {
     /** Draw snitch hits + shared pings on JourneyMap's fullscreen map (soft dep). */
     public boolean jmMarkers = true;
 
-    /** Draw snitch hits + shared pings on Xaero's Level Map screen (soft dep). */
+    /** Draw snitch hits + shared pings on Xaero's World Map screen (soft dep). */
     public boolean xaeroMarkers = true;
+
+    /** Draw Civ+ relic maps from the local inventory on Xaero's World Map. */
+    public boolean xaeroRelicMaps = true;
+
+    /** Horizontal range (blocks) for nearby relic HUD pins; clamped 50–2000. */
+    public int relicMarkerRange = 300;
+
+    /** Arrange relic maps in an opened chest from closest to furthest. */
+    public boolean sortRelicMaps = true;
+
+    // -------------------------------------------------- visualizations ----
+
+    /** Master switch for in-world snitch / bastion / sanctuary range overlays. */
+    public boolean vizEnabled = true;
+
+    public boolean vizSnitch = true;
+    public boolean vizBastion = true;
+    public boolean vizSanctuary = true;
+
+    /** Draw sanctuary circles from the live-map API feed. */
+    public boolean vizLiveSanctuaries = true;
+
+    /** Draw range wireframes on top of terrain (see through walls). */
+    public boolean vizSeeThrough = true;
+
+    /** Snitch Euclidean radius in blocks (block-center distance). Default 8. */
+    public int vizSnitchRadius = 8;
+
+    /** Bastion horizontal radius in blocks. Default 10.5 (diameter 21). */
+    public double vizBastionRadius = 10.5;
 
     // -------------------------------------------------------- war table ----
 
@@ -220,8 +306,17 @@ public class OIConfig {
     /** Draw sanctuary boundaries over the War Table map. */
     public boolean warTableSanctuaries = true;
 
-    /** Render synced War Table pins as in-world waypoint markers. */
+    /** Render synced War Table pins as in-world HUD waypoint markers. */
     public boolean warTablePinMarkers = true;
+
+    /** Draw War Table pins on Xaero's World Map (independent of the HUD toggle). */
+    public boolean warTablePinWorldMap = true;
+
+    /** Draw War Table place labels on Xaero's World Map. */
+    public boolean warTableLabelWorldMap = true;
+
+    /** Draw live-map sanctuary names on Xaero's World Map. */
+    public boolean warTableSanctuaryWorldMap = true;
 
     /** Static waypoint opacity, 30–150, independent of active relay markers. */
     public int warTablePinOpacity = 150;
@@ -362,8 +457,9 @@ public class OIConfig {
 
     public static OIConfig load() {
         try {
-            if (Files.exists(PATH)) {
-                String json = Files.readString(PATH);
+            Path path = path();
+            if (Files.exists(path)) {
+                String json = Files.readString(path);
                 OIConfig c = GSON.fromJson(json, OIConfig.class);
                 JsonObject raw = GSON.fromJson(json, JsonObject.class);
                 if (c == null || raw == null) return new OIConfig();
@@ -374,15 +470,70 @@ public class OIConfig {
                 if (c.radarPlayerFilter == null) c.radarPlayerFilter = RadarBlipFilter.EVERYONE;
                 if (c.armorHudLayout == null) c.armorHudLayout = ArmorHudLayout.HORIZONTAL;
                 if (c.armorHudMode == null) c.armorHudMode = ArmorHudMode.PERCENT;
+                if (c.eventFeedAlign == null) c.eventFeedAlign = FeedAlign.RIGHT;
                 // The old default (4096) silently hid teammates across the map.
                 // Migrate it to unlimited; explicit non-default caps survive.
                 if (c.maxMarkerDistance == 4096) c.maxMarkerDistance = 0;
                 if (OLD_SNITCH_PATTERN.equals(c.snitchPattern)) c.snitchPattern = DEFAULT_SNITCH_PATTERN;
-                // Marker opacity is role-banded so static intel cannot collide
-                // with active relay intel merely because a stale config overlapped.
-                c.relayOpacity = Math.clamp(c.relayOpacity, 151, 255);
                 c.snitchMarkerOpacity = Math.clamp(c.snitchMarkerOpacity, 30, 150);
                 c.warTablePinOpacity = Math.clamp(c.warTablePinOpacity, 30, 150);
+                // Gson leaves a missing boolean false. Relic maps / world-map
+                // pins stay on for configs saved before those toggles existed.
+                boolean defaults = false;
+                int opacityBefore = c.relayOpacity;
+                float scaleBefore = c.markerScale;
+                applyMarkerDefaults(c, raw.has("relayOpacity"), raw.has("markerScale"));
+                if (c.relayOpacity != opacityBefore || Float.compare(c.markerScale, scaleBefore) != 0) {
+                    defaults = true;
+                }
+                if (!raw.has("xaeroRelicMaps")) {
+                    c.xaeroRelicMaps = true;
+                    defaults = true;
+                }
+                // Gson leaves a missing int at 0; migrate to the 300-block default.
+                if (!raw.has("relicMarkerRange")) {
+                    c.relicMarkerRange = 300;
+                    defaults = true;
+                } else {
+                    c.relicMarkerRange = Math.clamp(c.relicMarkerRange, 50, 2000);
+                }
+                if (!raw.has("sortRelicMaps")) {
+                    c.sortRelicMaps = true;
+                    defaults = true;
+                }
+                if (!raw.has("warTablePinWorldMap")) {
+                    c.warTablePinWorldMap = true;
+                    defaults = true;
+                }
+                if (!raw.has("warTableLabelWorldMap")) {
+                    c.warTableLabelWorldMap = true;
+                    defaults = true;
+                }
+                if (!raw.has("warTableSanctuaryWorldMap")) {
+                    c.warTableSanctuaryWorldMap = true;
+                    defaults = true;
+                }
+                // Gson leaves a missing boolean false and a missing number at 0.
+                // Visualization toggles and radii stay at their defaults for
+                // configs saved before those keys existed.
+                if (!raw.has("vizEnabled")) { c.vizEnabled = true; defaults = true; }
+                if (!raw.has("vizSnitch")) { c.vizSnitch = true; defaults = true; }
+                if (!raw.has("vizBastion")) { c.vizBastion = true; defaults = true; }
+                if (!raw.has("vizSanctuary")) { c.vizSanctuary = true; defaults = true; }
+                if (!raw.has("vizLiveSanctuaries")) { c.vizLiveSanctuaries = true; defaults = true; }
+                if (!raw.has("vizSeeThrough")) { c.vizSeeThrough = true; defaults = true; }
+                if (!raw.has("vizSnitchRadius")) {
+                    c.vizSnitchRadius = 8;
+                    defaults = true;
+                } else {
+                    c.vizSnitchRadius = Math.clamp(c.vizSnitchRadius, 1, 32);
+                }
+                if (!raw.has("vizBastionRadius") || !Double.isFinite(c.vizBastionRadius)) {
+                    c.vizBastionRadius = 10.5;
+                    defaults = true;
+                } else {
+                    c.vizBastionRadius = Math.clamp(c.vizBastionRadius, 1.0, 64.0);
+                }
                 // Before the explicit auto-color flag existed, -1 was the
                 // allegiance auto-color sentinel and the default. Preserve it
                 // under the flag; explicit colors keep their static value.
@@ -390,8 +541,9 @@ public class OIConfig {
                 if (!raw.has("snitchMarkerColorAuto") && raw.has("snitchMarkerColor")) {
                     c.snitchMarkerColorAuto = c.snitchMarkerColor == -1;
                     if (c.snitchMarkerColorAuto) c.snitchMarkerColor = 0xFFAAAAAA;
-                    c.save();
+                    defaults = true;
                 }
+                if (defaults) c.save();
                 return c;
             }
         } catch (Exception ignored) {
@@ -403,8 +555,9 @@ public class OIConfig {
 
     public void save() {
         try {
-            Files.createDirectories(PATH.getParent());
-            Files.writeString(PATH, GSON.toJson(this));
+            Path path = path();
+            Files.createDirectories(path.getParent());
+            Files.writeString(path, GSON.toJson(this));
         } catch (IOException ignored) {
         }
     }

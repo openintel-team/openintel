@@ -8,6 +8,12 @@ import dev.openintel.api.internal.ApiBridge;
 import dev.openintel.config.OIConfig;
 import dev.openintel.gui.ClickGuiScreen;
 import dev.openintel.gui.HudEditorScreen;
+import dev.openintel.gui.InvestigateScreen;
+import dev.openintel.gui.VisualizationsScreen;
+import dev.openintel.investigate.InvestigateOverlay;
+import dev.openintel.investigate.InvestigateSession;
+import dev.openintel.viz.RangeOverlay;
+import dev.openintel.viz.RangeStore;
 import dev.openintel.macro.AttackMacro;
 import dev.openintel.macro.HoldKeyMacro;
 import dev.openintel.junk.JunkRejector;
@@ -17,7 +23,6 @@ import dev.openintel.net.RelayClient;
 import dev.openintel.ping.PingManager;
 import dev.openintel.ping.PingWheelScreen;
 import dev.openintel.radar.RadarHud;
-import dev.openintel.relic.RelicMaps;
 import dev.openintel.render.ArmorHud;
 import dev.openintel.render.CleanFont;
 import dev.openintel.render.EventFeed;
@@ -28,7 +33,9 @@ import dev.openintel.render.UiFont;
 import dev.openintel.tracker.Tracker;
 import dev.openintel.wartable.WarTable;
 import dev.openintel.wartable.WarTableScreen;
-import dev.openintel.xaero.XaeroBridge;
+import dev.openintel.xaero.RelicChestSort;
+import dev.openintel.xaero.RelicMapScanner;
+import dev.openintel.xaero.XaeroIntegration;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -39,7 +46,6 @@ import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.KeyMapping;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -52,7 +58,6 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.ChatFormatting;
 import net.minecraft.resources.Identifier;
 
-import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -81,6 +86,9 @@ public class OpenIntelClient implements ClientModInitializer {
     private static KeyMapping iceRoadKey;
     private static KeyMapping pingKey;
     private static KeyMapping warTableKey;
+    private static KeyMapping investigatePrevKey;
+    private static KeyMapping investigateNextKey;
+    private static KeyMapping investigatePlayKey;
     private AttackMacro attackMacro;
     private IntervalMacro useMacro;
     private HoldKeyMacro holdAttackMacro;
@@ -95,7 +103,8 @@ public class OpenIntelClient implements ClientModInitializer {
     /** All mod keybinds, for display in config screens. */
     public static KeyMapping[] allKeys() {
         return new KeyMapping[]{radarToggleKey, attackToggleKey, useToggleKey,
-                holdAttackKey, holdUseKey, iceRoadKey, pingKey, warTableKey};
+                holdAttackKey, holdUseKey, iceRoadKey, pingKey, warTableKey,
+                investigatePrevKey, investigateNextKey, investigatePlayKey};
     }
 
     @Override
@@ -103,6 +112,7 @@ public class OpenIntelClient implements ClientModInitializer {
         CleanFont.registerPipeline();
         dev.openintel.render.LogoHud.registerPipeline();
         config = OIConfig.load();
+        RangeStore.get().load();
         UiFont.initialize(config.cleanFont);
         tracker = new Tracker();
         allegiances = new AllegianceManager();
@@ -127,8 +137,11 @@ public class OpenIntelClient implements ClientModInitializer {
             PingManager.tick();
             Runnable jm = jmTick;
             if (jm != null) jm.run();
-            RelicMaps.tick(client);
+            RelicChestSort.tick(client);
             EventFeed.tick(client);
+            // Gizmos are collected while Minecraft wraps tick() — submit here.
+            RangeOverlay.tick(client);
+            InvestigateOverlay.tick(client);
             ApiBridge.settingsChanged();
             while (radarToggleKey.consumeClick()) {
                 config.radarEnabled = !config.radarEnabled;
@@ -144,6 +157,15 @@ public class OpenIntelClient implements ClientModInitializer {
                 if (config.warTableEnabled && client.gui.screen() == null) {
                     client.gui.setScreen(new WarTableScreen());
                 }
+            }
+            while (investigatePrevKey.consumeClick()) {
+                if (InvestigateSession.get().isWatching()) InvestigateSession.get().previous();
+            }
+            while (investigateNextKey.consumeClick()) {
+                if (InvestigateSession.get().isWatching()) InvestigateSession.get().next();
+            }
+            while (investigatePlayKey.consumeClick()) {
+                if (InvestigateSession.get().isWatching()) InvestigateSession.get().togglePlay();
             }
         });
 
@@ -165,21 +187,23 @@ public class OpenIntelClient implements ClientModInitializer {
                 (ctx, tickCounter) -> dev.openintel.render.LogoHud.render(ctx));
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("openintel", "integrations"),
                 (ctx, tickCounter) -> OpenIntelApi.hud().renderAll(ctx, tickCounter.getGameTimeDeltaPartialTick(true)));
+        HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("openintel", "investigate"),
+                (ctx, tickCounter) -> InvestigateOverlay.renderHud(ctx));
 
         ClientEntityEvents.ENTITY_LOAD.register(EventFeed::onEntityLoad);
         ClientEntityEvents.ENTITY_UNLOAD.register(EventFeed::onEntityUnload);
         ClientReceiveMessageEvents.GAME.register(SnitchRelay::onGameMessage);
-        ClientReceiveMessageEvents.GAME.register(RelicMaps::onGameMessage);
         // Plugins can deliver alerts through either channel — catch both.
         // The 10s text dedupe in SnitchRelay covers any double-fire.
         ClientReceiveMessageEvents.CHAT.register((message, signed, sender, params, instant) ->
                 SnitchRelay.onGameMessage(message, false));
         ClientReceiveMessageEvents.MODIFY_GAME.register(SnitchRelay::restyleForChat);
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            // Manual coverage shapes in RangeStore persist across join and disconnect.
             tracker.clear();
             PingManager.clear();
             EventFeed.clear();
-            RelicMaps.reset();
+            RelicMapScanner.clear();
             SnitchRelay.reset();
             reconnectRelay();
         });
@@ -187,23 +211,19 @@ public class OpenIntelClient implements ClientModInitializer {
             relay.disconnect();
             EventFeed.clear();
             PingManager.clear();
-            RelicMaps.reset();
+            RelicMapScanner.clear();
             SnitchRelay.reset();
+            InvestigateSession.get().stopWatching();
             WarTable.reset();
             tracker.clear();
             allegiances.replaceAll(java.util.List.of(), java.util.List.of(), java.util.List.of(), java.util.List.of());
         });
 
-        // Xaero Level Map overlay — same soft-dep contract as JourneyMap:
-        // dev.openintel.xaero is only loaded when the bridge mod is present.
-        if (FabricLoader.getInstance().isModLoaded("xaero_world_map_bridge")) {
-            try {
-                XaeroBridge.register();
-            } catch (Throwable ignored) { }
-        }
-
         registerCommands();
-        ClientLifecycleEvents.CLIENT_STARTED.register(client -> ApiBridge.initialize());
+        ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
+            ApiBridge.initialize();
+            XaeroIntegration.initialize();
+        });
     }
 
     public static boolean reconnectRelay() {
@@ -247,14 +267,17 @@ public class OpenIntelClient implements ClientModInitializer {
     }
 
     private void registerKeybinds() {
-        radarToggleKey = keybind("key.openintel.radar", GLFW.GLFW_KEY_R);
-        holdAttackKey = keybind("key.openintel.hold_attack", GLFW.GLFW_KEY_MINUS);
-        holdUseKey = keybind("key.openintel.hold_use", GLFW.GLFW_KEY_EQUAL);
-        attackToggleKey = keybind("key.openintel.attack_macro", GLFW.GLFW_KEY_0);
-        useToggleKey = keybind("key.openintel.use_macro", GLFW.GLFW_KEY_RIGHT_BRACKET);
-        iceRoadKey = keybind("key.openintel.ice_road", GLFW.GLFW_KEY_BACKSPACE);
-        pingKey = keybind("key.openintel.ping", GLFW.GLFW_KEY_G);
-        warTableKey = keybind("key.openintel.wartable", GLFW.GLFW_KEY_O);
+        radarToggleKey = keybind("key.openintel.radar", InputConstants.KEY_R);
+        holdAttackKey = keybind("key.openintel.hold_attack", InputConstants.KEY_MINUS);
+        holdUseKey = keybind("key.openintel.hold_use", InputConstants.KEY_EQUALS);
+        attackToggleKey = keybind("key.openintel.attack_macro", InputConstants.KEY_0);
+        useToggleKey = keybind("key.openintel.use_macro", InputConstants.KEY_RBRACKET);
+        iceRoadKey = keybind("key.openintel.ice_road", InputConstants.KEY_BACKSPACE);
+        pingKey = keybind("key.openintel.ping", InputConstants.KEY_G);
+        warTableKey = keybind("key.openintel.wartable", InputConstants.KEY_O);
+        investigatePrevKey = keybind("key.openintel.investigate_prev", InputConstants.KEY_LEFT);
+        investigateNextKey = keybind("key.openintel.investigate_next", InputConstants.KEY_RIGHT);
+        investigatePlayKey = keybind("key.openintel.investigate_play", InputConstants.KEY_DOWN);
 
         attackMacro = new AttackMacro(attackToggleKey);
         useMacro = new IntervalMacro(useToggleKey,
@@ -269,7 +292,7 @@ public class OpenIntelClient implements ClientModInitializer {
 
     private static KeyMapping keybind(String id, int key) {
         return KeyMappingHelper.registerKeyMapping(
-                new KeyMapping(id, InputConstants.Type.KEYSYM, key, OI_CATEGORY));
+                new KeyMapping(id, InputConstants.Type.KEYBOARD, key, OI_CATEGORY));
     }
 
     private static int setRelayCut(String action) {
@@ -325,6 +348,24 @@ public class OpenIntelClient implements ClientModInitializer {
                         .then(ClientCommands.literal("settings").executes(c -> {
                             Minecraft.getInstance().execute(() ->
                                     Minecraft.getInstance().gui.setScreen(new ClickGuiScreen(null)));
+                            return 1;
+                        }))
+                        .then(ClientCommands.literal("viz").executes(c -> {
+                            Minecraft.getInstance().execute(() ->
+                                    Minecraft.getInstance().gui.setScreen(
+                                            new ClickGuiScreen(null, "viz")));
+                            return 1;
+                        }))
+                        .then(ClientCommands.literal("visualizations").executes(c -> {
+                            Minecraft.getInstance().execute(() ->
+                                    Minecraft.getInstance().gui.setScreen(
+                                            new VisualizationsScreen(null)));
+                            return 1;
+                        }))
+                        .then(ClientCommands.literal("investigate").executes(c -> {
+                            Minecraft.getInstance().execute(() ->
+                                    Minecraft.getInstance().gui.setScreen(
+                                            new InvestigateScreen(null)));
                             return 1;
                         }))
                         .then(ClientCommands.literal("hud").executes(c -> {
