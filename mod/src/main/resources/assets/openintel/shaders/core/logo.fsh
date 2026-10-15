@@ -1,11 +1,13 @@
 #version 330
 #extension GL_ARB_separate_shader_objects : require
 
+// Member order must match 1.21.11 position_tex_color.vsh. A mismatched block
+// fails to link during startup pipeline compile and leaves a black window.
 layout(std140) uniform DynamicTransforms {
     mat4 ModelViewMat;
-    mat4 TextureMat;
     vec4 ColorModulator;
     vec3 ModelOffset;
+    mat4 TextureMat;
 };
 
 uniform sampler2D Sampler0;

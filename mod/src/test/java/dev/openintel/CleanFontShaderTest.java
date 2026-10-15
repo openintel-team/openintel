@@ -107,11 +107,11 @@ public final class CleanFontShaderTest {
             GL33C.glVertexAttribPointer(uv, 2, GL33C.GL_FLOAT, false, 20, 12L);
             GL33C.glVertexAttrib4f(GL33C.glGetAttribLocation(program, "Color"), 1f, 0.5f, 0.25f, 1f);
             float[] identity = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
-            // std140 DynamicTransforms: ModelViewMat, TextureMat, ColorModulator, ModelOffset.
+            // std140 DynamicTransforms on 1.21.11: ModelViewMat, ColorModulator, ModelOffset, TextureMat.
             float[] dynamic = new float[40];
             System.arraycopy(identity, 0, dynamic, 0, 16);
-            System.arraycopy(identity, 0, dynamic, 16, 16);
-            java.util.Arrays.fill(dynamic, 32, 36, 1f);
+            java.util.Arrays.fill(dynamic, 16, 20, 1f);
+            System.arraycopy(identity, 0, dynamic, 24, 16);
             GL33C.glBindBuffer(GL33C.GL_UNIFORM_BUFFER, transforms);
             GL33C.glBufferData(GL33C.GL_UNIFORM_BUFFER, dynamic, GL33C.GL_STATIC_DRAW);
             GL33C.glBindBufferBase(GL33C.GL_UNIFORM_BUFFER, 0, transforms);
