@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.1+takoyakifan.mc26.1.2 — defaults and compatibility
+
+- New installs use Minecraft's font by default. Clean font remains available
+  under HUD → Text → Font. Existing saved font preferences are preserved.
+- The Minecraft 1.21.11 build corrects the font and logo shader uniform layout
+  to match that version's GUI rendering pipeline.
+- Provide fresh Fabric builds for Minecraft 26.3, 26.2, 26.1.2, and 1.21.11
+  together in one fork release. The mod ID and integration API stay unchanged.
+
 ## 3.0.0+takoyakifan.mc26.1.2 — takoyakifan fork
 
 - Establish the 3.0 fork release line, with the account and Minecraft target in
@@ -14,8 +23,6 @@
   and access to settings through Mod Menu.
 - Keep source/base jars token-neutral and resolve optional compile dependencies
   from their public releases. Mod ID and integration API major version stay unchanged.
-- Default HUD text to Minecraft's font. Clean font stays available under
-  HUD → Text → Font.
 
 ## 1.7.0 — War Table
 
