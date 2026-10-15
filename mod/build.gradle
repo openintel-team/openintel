@@ -167,6 +167,13 @@ tasks.register('worldOverlayTest', JavaExec) {
     enableAssertions = true
 }
 
+tasks.register('investigatePresentationTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.investigate.InvestigatePresentationTest'
+    enableAssertions = true
+}
+
 tasks.register('investigateLogTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
@@ -214,7 +221,7 @@ tasks.register('versionPinTest') {
     }
 }
 
-check.dependsOn worldOverlayTest, versionPinTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest
+check.dependsOn investigatePresentationTest, worldOverlayTest, versionPinTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest
 
 publishing {
     publications {

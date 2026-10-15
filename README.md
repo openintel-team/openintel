@@ -679,3 +679,9 @@ Third-party integration API jars retain their respective licenses.
 Coverage and Investigate use dedicated Fabric render pipelines, registered with Iris when installed. Faces stay on exact block boundaries; depth-tested coverage uses GPU depth bias instead of expanded geometry. See-through passes preserve world depth for shader packs.
 
 `gradlew worldOverlayTest` checks geometry, shared edges, vertex batches, and depth policies. The optional `gradlew worldOverlayShaderTest` uses a hidden OpenGL window to check coplanar fill visibility, terrain occlusion, unchanged pixel boundaries, and preserved world depth. It does not run Iris or a shader pack. In-game checks should cover shaders off/on, see-through off/on, grazing angles, walking through highlights, overlapping events, and dimension changes.
+
+### Investigate caption and camera focus
+
+The top caption highlights the player in blue, the action by event type (red for breaks, green for placement, orange for sanctuary events), and the focused coordinates in gold. Snitch names and dimensions use quieter text, with a warning when the event is in another dimension. Descriptions wrap to fit the viewport.
+
+Under `/oi settings` → Investigate → Camera focus, **Focus transition** selects **Pan** (default), **Snap**, or **Off**. Pan duration defaults to 350 ms and is adjustable from 100–2000 ms. Starting Watch, stepping events, selecting a row, and autoplay aim at the focused block's center. The camera releases control after the turn; mouse look cancels an active pan. Menus, inactive windows, spectating other entities, and events in other dimensions suspend camera movement. Player position stays unchanged.

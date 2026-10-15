@@ -79,19 +79,26 @@ public final class InvestigateOverlay {
         InvestigateSession session = InvestigateSession.get();
         if (!session.isWatching()) return;
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.options.hideGui || mc.screen != null) return;
+        if (mc.player == null || mc.level == null || mc.options.hideGui || mc.screen != null) return;
         renderSelectedLabel(ctx, mc, session.current());
         InvestigateSession.Event cur = session.current();
-        String line = cur == null
-                ? "Investigate: empty"
-                : "Investigate " + (session.index() + 1) + "/" + session.size()
-                + (session.isPlaying() ? " [play]" : " [paused]")
-                + "  " + cur.detail();
+        if (cur == null) return;
         var font = mc.font;
-        int w = font.width(line);
-        int x = Math.max(4, (ctx.guiWidth() - w) / 2);
-        int y = 8;
-        ctx.fill(x - 4, y - 2, x + w + 4, y + 12, 0xC0101015);
-        ctx.drawString(font, line, x, y, 0xFFFFFFFF, false);
+        int maxWidth = Math.max(1, Math.min(640, ctx.guiWidth() - 24));
+        java.util.List<net.minecraft.util.FormattedCharSequence> lines = new java.util.ArrayList<>();
+        lines.addAll(font.split(InvestigateCaption.header(session.index(), session.size(), session.isPlaying()), maxWidth));
+        lines.addAll(font.split(InvestigateCaption.detail(cur), maxWidth));
+        var notice = InvestigateCaption.dimensionNotice(cur, mc.level.dimension().identifier().toString());
+        if (notice != null) lines.addAll(font.split(notice, maxWidth));
+        int width = lines.stream().mapToInt(font::width).max().orElse(0);
+        int x = (ctx.guiWidth() - width) / 2, y = 8;
+        int lineHeight = font.lineHeight + 2;
+        int bottom = y + lines.size() * lineHeight;
+        ctx.fill(x - 6, y - 4, x + width + 6, bottom + 2, 0xDE101015);
+        ctx.fill(x - 6, y - 4, x + width + 6, y - 2, 0xFF000000 | InvestigateCaption.actionColor(cur.kind()));
+        for (var line : lines) {
+            ctx.drawString(font, line, x, y, 0xFFFFFFFF, false);
+            y += lineHeight;
+        }
     }
 }
