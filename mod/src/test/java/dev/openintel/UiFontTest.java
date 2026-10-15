@@ -18,6 +18,8 @@ import java.nio.charset.StandardCharsets;
 
 public final class UiFontTest {
     public static void main(String[] args) throws Exception {
+        check(!new dev.openintel.config.OIConfig().cleanFont,
+                "Minecraft font is the default until Clean font is turned on");
         UiFont.initialize(false);
         check(UiFont.select(FontDescription.DEFAULT) == FontDescription.DEFAULT, "Disabled clean font preserves vanilla");
         check(UiFont.setEnabled(true), "Toggle reports font layout change");

@@ -127,7 +127,7 @@ The optional Discord bot is separate from the webhooks. Setup is under [Discord 
 | Markers | Relay rendering master switch, edge chevrons, stale fade, enemy alert, marker opacity (0–100%, default 59%), marker scale (default 60%), marker range (`0` = unlimited) |
 | War Table | Shared map, sanctuary overlay on that map, HUD pins, world-map pins, place labels, sanctuary names, waypoint opacity |
 | Radar | Enable, north-up, distance compression, items, boats and minecarts, which players appear, pings, size, range, rings, icon and text scale, colors |
-| HUD | HUD editor, Clean font / Minecraft font, logo, armor layout and durability mode, potions, roster, event feed alignment and duration |
+| HUD | HUD editor, font (Minecraft font by default, or Clean font), logo, armor layout and durability mode, potions, roster, event feed alignment and duration |
 | Snitch | Forward alerts to the relay, marker lifetime, range, opacity, allegiance color or a fixed color |
 | Visualizations | Snitch, bastion, and sanctuary shells, radii, live-map sanctuaries, see-through wireframes, shape editor |
 | Investigate | Paste logs, or clear the playback session |
@@ -141,7 +141,7 @@ The optional Discord bot is separate from the webhooks. Setup is under [Discord 
 
 **Forward snitch alerts** controls sending only. Local detection, the feed, and markers keep working when forwarding is off or the relay is down.
 
-**Clean font** applies immediately and reflows chat without clearing it. It covers OpenIntel HUDs, chat and the chat input, the action bar, titles, and OpenIntel-owned map labels. Inventories, other menus, and other mods keep their fonts.
+**Font** defaults to Minecraft's font. Clean font applies immediately and reflows chat without clearing it. It covers OpenIntel HUDs, chat and the chat input, the action bar, titles, and OpenIntel-owned map labels. Inventories, other menus, and other mods keep their fonts.
 
 Positions from `/oi hud` are stored as anchors against a reference window size. Resizing the game does not rewrite them.
 

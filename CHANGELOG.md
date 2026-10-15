@@ -14,6 +14,8 @@
   and access to settings through Mod Menu.
 - Keep source/base jars token-neutral and resolve optional compile dependencies
   from their public releases. Mod ID and integration API major version stay unchanged.
+- Default HUD text to Minecraft's font. Clean font stays available under
+  HUD → Text → Font.
 
 ## 1.7.0 — War Table
 
