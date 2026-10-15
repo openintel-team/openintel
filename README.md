@@ -2,9 +2,9 @@
   <img src="mod/src/main/resources/assets/openintel/icon.png" alt="OpenIntel logo" width="128">
 </p>
 
-<h1 align="center">OpenIntel</h1>
+<h1 align="center">OpenIntel — takoyakifan fork</h1>
 
-OpenIntel **2.3.0** is an open-source Fabric intelligence client for
+OpenIntel **3.0.0+takoyakifan.mc26.2** is an open-source Fabric intelligence client for
 **Minecraft 26.3 / Java 25**. It combines nearby-player radar, responsive
 HUDs, clean text, local snitch/relic tracking, and optional team intelligence
 through a self-hosted relay. It does not add its own minimap, waypoint
@@ -16,6 +16,8 @@ included. Configure your own relay if you want shared intelligence; local
 features do not require a relay connection.
 
 Supported branches: [`26.3`](https://github.com/takoyakifan/openintel/tree/26.3) (default), [`26.2`](https://github.com/takoyakifan/openintel/tree/26.2), [`26.1.2`](https://github.com/takoyakifan/openintel/tree/26.1.2), and [`1.21.11`](https://github.com/takoyakifan/openintel/tree/1.21.11). This branch targets Minecraft **26.2**.
+
+Fork releases use `3.0.0+takoyakifan.mc<version>` so the installed version and jar filename identify this fork and its Minecraft target. The mod ID remains `openintel` and the integration API remains major version **1**. Install one OpenIntel variant at a time.
 
 ## Features
 
