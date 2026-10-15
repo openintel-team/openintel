@@ -210,7 +210,7 @@ With Chest Tracker installed, its screen grows a **Relic maps** button beside th
 | Bastion | Radius 10.5 (diameter 21) | Horizontal disk. Blocks below the bastion are uncovered. A 64-block column is drawn upward. Protection continues above that column |
 | Sanctuary | Radius per shape | Same block-center disk. Live-map sanctuaries use the War Table feed and do not need a manual shape |
 
-Snitches on this server are skulk sensors by default and are often disguised, commonly as obsidian. Bastions are sponge. Sanctuaries are beacons. The editor places a shape on the block you are looking at. `/oi visualizations` opens it. See-through draws the wireframe over terrain.
+Snitches on this server are skulk sensors by default and are often disguised, commonly as obsidian. Bastions are sponge. Sanctuaries are beacons. The editor places a shape on the block you are looking at. `/oi visualizations` opens it. See-through draws the wireframe and fill over terrain. Coverage and Investigate use dedicated Fabric render pipelines, registered with Iris when installed. Faces sit on exact block boundaries; depth-tested coverage uses GPU depth bias instead of expanding blocks. These passes preserve world depth for shader packs.
 
 ### Investigate
 
@@ -443,7 +443,9 @@ cd mod && ./gradlew build
 cd relay && npm test
 ```
 
-`npm test` runs the relay handlers in-process with fake sockets. It does not contact Discord or edit live users. `gradlew build` includes the headless Java checks (API contract, snitch dimensions, fonts, radar layout, relic map math, coverage shapes, investigate parsing, and the offline-intel split). `gradlew cleanFontShaderTest` compiles the font shaders in a hidden OpenGL 3.3 window and is not part of `build`.
+`npm test` runs the relay handlers in-process with fake sockets. It does not contact Discord or edit live users. `gradlew build` includes the headless Java checks (API contract, snitch dimensions, fonts, radar layout, relic map math, coverage shapes, investigate parsing, and the offline-intel split). `gradlew worldOverlayTest` checks exact overlay coordinates, shared edges, vertex batches, and depth policies. The optional `gradlew worldOverlayShaderTest` uses a hidden OpenGL window to check coplanar fill visibility, terrain occlusion, unchanged pixel boundaries, and preserved world depth; it does not run Iris or a shader pack. On macOS it launches on the first thread. In-game verification should cover shaders off/on, see-through off/on, walking through a highlight, grazing angles, overlapping events, and dimension changes.
+
+`gradlew cleanFontShaderTest` compiles the font shaders in a hidden OpenGL 3.3 window and is not part of `build`.
 
 ## Fair play
 
