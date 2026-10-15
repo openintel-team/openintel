@@ -3,6 +3,7 @@ package dev.openintel.api.internal;
 import com.google.gson.JsonObject;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.api.*;
+import dev.openintel.config.OIConfig;
 import dev.openintel.gui.ClickGuiScreen;
 import dev.openintel.gui.HudEditorScreen;
 import dev.openintel.ping.PingManager;
@@ -113,7 +114,7 @@ public final class ApiBridge {
                         c.radarShowVehicles, false, c.radarIconSize, c.radarTextSize,
                         c.radarBgColor, c.radarFgColor),
                 new SettingsApi.Markers(c.relayRendering, c.markVisiblePlayers, c.edgeChevrons,
-                        c.relayOpacity, c.staleDecay, c.staleAfterMs, c.maxMarkerDistance,
+                        OIConfig.markerAlpha(c.relayOpacity), c.staleDecay, c.staleAfterMs, c.maxMarkerDistance,
                         c.edgeTopXPct, c.edgeBottomXPct, c.edgeLeftYPct, c.edgeRightYPct,
                         c.edgeRowInset, c.edgeColumnInset),
                 new SettingsApi.Snitches(c.snitchRelay, c.snitchMarkerSeconds, c.snitchMarkerRange,

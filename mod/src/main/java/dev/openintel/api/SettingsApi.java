@@ -10,6 +10,7 @@ public interface SettingsApi {
     record Radar(boolean enabled, int x, int y, int radius, double range, int rings,
                  boolean northUp, boolean logarithmic, boolean showItems, boolean showVehicles,
                  boolean showRelay, float iconScale, float textScale, int backgroundColor, int foregroundColor) { }
+    /** {@code opacity} is the marker alpha, 0–255. The settings slider stores 0–100 percent. */
     record Markers(boolean enabled, boolean visiblePlayers, boolean edgeChevrons, int opacity,
                    boolean staleDecay, int staleAfterMs, double maxDistance, int topXPct,
                    int bottomXPct, int leftYPct, int rightYPct, int rowInset, int columnInset) { }

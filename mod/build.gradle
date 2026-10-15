@@ -136,13 +136,6 @@ tasks.register('relicMapTest', JavaExec) {
     enableAssertions = true
 }
 
-tasks.register('relicLibraryTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'dev.openintel.relic.RelicLibraryModelTest'
-    enableAssertions = true
-}
-
 tasks.register('rangeShapeTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
@@ -157,6 +150,20 @@ tasks.register('investigateLogTest', JavaExec) {
     enableAssertions = true
 }
 
+tasks.register('relicLibraryTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.relic.RelicLibraryModelTest'
+    enableAssertions = true
+}
+
+tasks.register('markerSettingsTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.config.MarkerSettingsTest'
+    enableAssertions = true
+}
+
 tasks.register('eventFeedLayoutTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
@@ -164,7 +171,7 @@ tasks.register('eventFeedLayoutTest', JavaExec) {
     enableAssertions = true
 }
 
-check.dependsOn snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, relicLibraryTest, rangeShapeTest, investigateLogTest, eventFeedLayoutTest
+check.dependsOn snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest
 
 publishing {
     publications {

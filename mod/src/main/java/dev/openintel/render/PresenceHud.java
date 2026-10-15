@@ -96,7 +96,7 @@ public final class PresenceHud {
         int padX = 4, padY = 4, dot = 4;
         boolean cf = CleanFont.active();
         int panelW = size.width(), panelH = size.height();
-        float opacity = cfg.relayOpacity / 255f;
+        float opacity = OIConfig.markerOpacityPercent(cfg.relayOpacity) / 100f;
         ctx.fill(0, 0, panelW, panelH, scaleAlpha(BG, opacity));
         ctx.fill(0, 0, panelW, 1, scaleAlpha(RIM, opacity));
         int y = padY;
