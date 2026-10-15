@@ -143,7 +143,14 @@ tasks.register('relicLibraryTest', JavaExec) {
     enableAssertions = true
 }
 
-check.dependsOn snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, relicLibraryTest
+tasks.register('rangeShapeTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.viz.RangeShapeTest'
+    enableAssertions = true
+}
+
+check.dependsOn snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, relicLibraryTest, rangeShapeTest
 
 publishing {
     publications {
