@@ -13,6 +13,7 @@ repositories {
     maven { url = 'https://chocolateminecraft.com/maven' }
     maven { url = 'https://maven.blamejared.com' }
     maven { name = 'Terraformers'; url = 'https://maven.terraformersmc.com/' }
+    maven { url = 'https://api.modrinth.com/maven' }
 }
 
 dependencies {
@@ -27,9 +28,9 @@ dependencies {
     compileOnly "xaero.lib:xaerolib-common-26.1.2:1.7.3"
     // Mod Menu config button — compile-time only; entrypoint loads only when Mod Menu is present.
     compileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
-    // Chest Tracker + Where Is It — optional at runtime; jars live in libs/ for compileOnly.
-    compileOnly files("libs/chesttracker-2.8.4+26.1.2.jar")
-    compileOnly files("libs/whereisit-2.7.5.2+26.1.jar")
+    // Chest Tracker + Where Is It — public compile-time dependencies, optional at runtime.
+    compileOnly "maven.modrinth:chest-tracker-port:9dKA1FrM"
+    compileOnly "maven.modrinth:where-is-it-port:4EL9FgKT"
 }
 
 processResources {
