@@ -14,6 +14,7 @@ import net.minecraft.client.KeyMapping;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -446,7 +447,7 @@ public class ClickGuiScreen extends Screen implements ClickGui.RebindHandler {
     @Override
     public boolean keyPressed(KeyEvent input) {
         if (listeningFor != null) {
-            if (input.key() != InputConstants.KEY_ESCAPE) {
+            if (input.key() != GLFW.GLFW_KEY_ESCAPE) {
                 listeningFor.setKey(InputConstants.getKey(input));
             }
             finishRebind();

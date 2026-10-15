@@ -1,12 +1,12 @@
 package dev.openintel.render;
 
 import dev.openintel.OpenIntelClient;
-import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.renderpearl.api.textures.AddressMode;
-import com.mojang.renderpearl.api.textures.FilterMode;
-import com.mojang.renderpearl.api.textures.GpuTexture;
-import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.blaze3d.textures.AddressMode;
+import com.mojang.blaze3d.textures.FilterMode;
+import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.blaze3d.GpuFormat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -52,8 +52,8 @@ public final class CleanFont {
     private static final RenderPipeline PIPELINE = RenderPipeline.builder(RenderPipelines.GUI_TEXTURED_SNIPPET)
             .withLocation(Identifier.fromNamespaceAndPath("openintel", "pipeline/clean_font"))
             .withFragmentShader(Identifier.fromNamespaceAndPath("openintel", "core/clean_font"))
-            .withDepthStencilState(new com.mojang.renderpearl.api.pipeline.DepthStencilState(
-                    com.mojang.renderpearl.api.pipeline.CompareOp.ALWAYS_PASS, false))
+            .withDepthStencilState(new com.mojang.blaze3d.pipeline.DepthStencilState(
+                    com.mojang.blaze3d.platform.CompareOp.ALWAYS_PASS, false))
             .build();
     private static final int ATLAS = 1024;
     private static final int MIP_LEVELS = 4;

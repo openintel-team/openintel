@@ -15,7 +15,7 @@ import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import com.mojang.blaze3d.platform.InputConstants;
+import org.lwjgl.glfw.GLFW;
 
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -959,7 +959,7 @@ public class WarTableScreen extends Screen {
 
     @Override
     public boolean keyPressed(net.minecraft.client.input.KeyEvent input) {
-        if (labeling && input.key() == InputConstants.KEY_RETURN) {
+        if (labeling && input.key() == GLFW.GLFW_KEY_ENTER) {
             String text = labelField.getValue().trim();
             Stroke.Tool committed = labelTool == UiTool.PIN
                     ? Stroke.Tool.MARKER : Stroke.Tool.LABEL;
@@ -971,11 +971,11 @@ public class WarTableScreen extends Screen {
             endLabeling();
             return true;
         }
-        if (input.key() == InputConstants.KEY_Z && input.hasControlDownWithQuirk()) {
+        if (input.key() == GLFW.GLFW_KEY_Z && input.hasControlDownWithQuirk()) {
             if (admin) WarTable.undoOwn();
             return true;
         }
-        if (input.key() == InputConstants.KEY_ESCAPE) {
+        if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
             if (labeling) { endLabeling(); return true; }
             if (!draft.isEmpty()) { draft.clear(); dragging = false; return true; }
             onClose();

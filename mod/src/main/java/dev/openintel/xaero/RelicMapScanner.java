@@ -63,7 +63,7 @@ public final class RelicMapScanner {
         }
         BundleContents bundle = stack.get(DataComponents.BUNDLE_CONTENTS);
         if (bundle != null) {
-            bundle.itemCopies().forEach(inner -> consider(found, inner, client, depth + 1));
+            bundle.itemCopyStream().forEach(inner -> consider(found, inner, client, depth + 1));
         }
     }
 

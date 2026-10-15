@@ -1,36 +1,27 @@
 package dev.openintel;
 
+import org.lwjgl.glfw.GLFW;
+import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL33C;
-import org.lwjgl.sdl.SDLError;
-import org.lwjgl.sdl.SDLInit;
-import org.lwjgl.sdl.SDLVideo;
-import org.lwjgl.system.FunctionProvider;
 
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
 public final class CleanFontShaderTest {
     public static void main(String[] args) throws Exception {
+        var errors = GLFWErrorCallback.createPrint(System.err);
+        GLFW.glfwSetErrorCallback(errors);
         long window = 0;
-        long context = 0;
         int vertex = 0, fragment = 0, program = 0;
         try {
-            check(SDLInit.SDL_Init(SDLInit.SDL_INIT_VIDEO), "SDL initialization: " + SDLError.SDL_GetError());
-            SDLVideo.SDL_GL_SetAttribute(SDLVideo.SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-            SDLVideo.SDL_GL_SetAttribute(SDLVideo.SDL_GL_CONTEXT_MINOR_VERSION, 3);
-            SDLVideo.SDL_GL_SetAttribute(SDLVideo.SDL_GL_CONTEXT_PROFILE_MASK, SDLVideo.SDL_GL_CONTEXT_PROFILE_CORE);
-            window = SDLVideo.SDL_CreateWindow("OpenIntel shader tests", 128, 128,
-                    SDLVideo.SDL_WINDOW_OPENGL | SDLVideo.SDL_WINDOW_HIDDEN);
-            check(window != 0, "Hidden OpenGL window: " + SDLError.SDL_GetError());
-            context = SDLVideo.SDL_GL_CreateContext(window);
-            check(context != 0, "Hidden OpenGL context: " + SDLError.SDL_GetError());
-            check(SDLVideo.SDL_GL_MakeCurrent(window, context), "OpenGL context current: " + SDLError.SDL_GetError());
-            GL.create(new FunctionProvider() {
-                @Override public long getFunctionAddress(ByteBuffer functionName) {
-                    return SDLVideo.SDL_GL_GetProcAddress(functionName);
-                }
-            });
+            check(GLFW.glfwInit(), "GLFW initialization");
+            GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
+            GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, 3);
+            GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MINOR, 3);
+            GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_PROFILE, GLFW.GLFW_OPENGL_CORE_PROFILE);
+            window = GLFW.glfwCreateWindow(128, 128, "OpenIntel shader tests", 0, 0);
+            check(window != 0, "Hidden OpenGL context");
+            GLFW.glfwMakeContextCurrent(window);
             GL.createCapabilities();
             vertex = compile(GL33C.GL_VERTEX_SHADER, "/assets/minecraft/shaders/core/position_tex_color.vsh");
             for (boolean intensity : new boolean[]{false, true}) {
@@ -66,10 +57,10 @@ public final class CleanFontShaderTest {
             if (program != 0) GL33C.glDeleteProgram(program);
             if (fragment != 0) GL33C.glDeleteShader(fragment);
             if (vertex != 0) GL33C.glDeleteShader(vertex);
-            if (context != 0) SDLVideo.SDL_GL_DestroyContext(context);
-            if (window != 0) SDLVideo.SDL_DestroyWindow(window);
-            GL.destroy();
-            SDLInit.SDL_Quit();
+            if (window != 0) GLFW.glfwDestroyWindow(window);
+            GLFW.glfwTerminate();
+            GLFW.glfwSetErrorCallback(null);
+            errors.free();
         }
     }
 
@@ -83,8 +74,7 @@ public final class CleanFontShaderTest {
             check(input != null, "Shader resource present: " + resource);
             source = new String(input.readAllBytes(), StandardCharsets.UTF_8);
         }
-        if (intensity) source = source.replace("#extension GL_ARB_separate_shader_objects : require",
-                "#extension GL_ARB_separate_shader_objects : require\n#define FONT_INTENSITY");
+        if (intensity) source = source.replace("#version 330", "#version 330\n#define FONT_INTENSITY");
         int shader = GL33C.glCreateShader(type);
         GL33C.glShaderSource(shader, source);
         GL33C.glCompileShader(shader);
@@ -117,11 +107,10 @@ public final class CleanFontShaderTest {
             GL33C.glVertexAttribPointer(uv, 2, GL33C.GL_FLOAT, false, 20, 12L);
             GL33C.glVertexAttrib4f(GL33C.glGetAttribLocation(program, "Color"), 1f, 0.5f, 0.25f, 1f);
             float[] identity = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
-            // std140 DynamicTransforms: ModelViewMat, TextureMat, ColorModulator, ModelOffset.
             float[] dynamic = new float[40];
             System.arraycopy(identity, 0, dynamic, 0, 16);
-            System.arraycopy(identity, 0, dynamic, 16, 16);
-            java.util.Arrays.fill(dynamic, 32, 36, 1f);
+            java.util.Arrays.fill(dynamic, 16, 20, 1f);
+            System.arraycopy(identity, 0, dynamic, 24, 16);
             GL33C.glBindBuffer(GL33C.GL_UNIFORM_BUFFER, transforms);
             GL33C.glBufferData(GL33C.GL_UNIFORM_BUFFER, dynamic, GL33C.GL_STATIC_DRAW);
             GL33C.glBindBufferBase(GL33C.GL_UNIFORM_BUFFER, 0, transforms);

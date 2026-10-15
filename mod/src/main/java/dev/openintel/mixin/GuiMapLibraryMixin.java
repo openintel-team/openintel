@@ -16,7 +16,7 @@ import xaero.map.gui.GuiMap;
 
 /**
  * Shift + left-drag lasso while a relic-library map visit is open.
- * MC 26.3 uses SDL button indices: left = 1, right = 3.
+ * Left click uses InputConstants.MOUSE_BUTTON_LEFT so the index matches this Minecraft version.
  */
 @Mixin(GuiMap.class)
 public abstract class GuiMapLibraryMixin {

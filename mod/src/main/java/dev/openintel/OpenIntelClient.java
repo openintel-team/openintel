@@ -292,7 +292,7 @@ public class OpenIntelClient implements ClientModInitializer {
 
     private static KeyMapping keybind(String id, int key) {
         return KeyMappingHelper.registerKeyMapping(
-                new KeyMapping(id, InputConstants.Type.KEYBOARD, key, OI_CATEGORY));
+                new KeyMapping(id, InputConstants.Type.KEYSYM, key, OI_CATEGORY));
     }
 
     private static int setRelayCut(String action) {

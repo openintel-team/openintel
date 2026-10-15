@@ -1,7 +1,7 @@
 package dev.openintel.render;
 
-import com.mojang.renderpearl.api.pipeline.RenderPipeline;
-import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.GpuFormat;
 import net.minecraft.client.gui.font.glyphs.EffectGlyph;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -19,8 +19,8 @@ public final class UiFont {
             .withPrimitiveTopology(RenderPipelines.GUI_TEXT.getPrimitiveTopology())
             .withFragmentShader(Identifier.fromNamespaceAndPath("openintel", "core/clean_font"))
             .withShaderDefine("FONT_INTENSITY")
-            .withDepthStencilState(new com.mojang.renderpearl.api.pipeline.DepthStencilState(
-                    com.mojang.renderpearl.api.pipeline.CompareOp.ALWAYS_PASS, false))
+            .withDepthStencilState(new com.mojang.blaze3d.pipeline.DepthStencilState(
+                    com.mojang.blaze3d.platform.CompareOp.ALWAYS_PASS, false))
             .build();
 
     private static volatile boolean enabled;

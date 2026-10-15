@@ -1,6 +1,6 @@
 package dev.openintel.mixin;
 
-import com.mojang.renderpearl.api.textures.GpuTextureView;
+import com.mojang.blaze3d.textures.GpuTextureView;
 import dev.openintel.render.UiFont;
 import net.minecraft.client.gui.font.glyphs.BakedSheetGlyph;
 import org.spongepowered.asm.mixin.Final;
