@@ -81,7 +81,7 @@ public final class MarkerHud {
     public static void render(GuiGraphicsExtractor ctx) {
         OIConfig cfg = OpenIntelClient.config();
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null || client.level == null || client.gui.hud.isHidden()) return;
+        if (client.player == null || client.level == null || client.options.hideGui) return;
 
         String myDim = client.level.dimension().identifier().toString();
         long now = System.currentTimeMillis();
@@ -203,7 +203,7 @@ public final class MarkerHud {
         // ---- project + classify --------------------------------------------
         float cx = w / 2f, cy = h / 2f;
 
-        var camera = client.gameRenderer.mainCamera();
+        var camera = client.gameRenderer.getMainCamera();
         Vec3 camPos = camera.position();
         Quaternionf worldToCam = new Quaternionf(camera.rotation()).conjugate();
 

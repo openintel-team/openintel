@@ -31,7 +31,7 @@ public final class RelicMapBridge {
         if (camera == null) camera = client.player;
 
         GuiMap map = new GuiMap(parent, parent, processor, camera);
-        client.gui.setScreen(map);
+        client.setScreen(map);
         // Mark the visit after setScreen so a prior GuiMap.removed() cannot clear it.
         RelicLibraryVisit visit = RelicLibraryVisit.current();
         if (visit != null) visit.beginMapVisit();

@@ -146,7 +146,7 @@ public final class EventFeed {
         if (!cfg.eventFeedEnabled || entries.isEmpty()) return;
 
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null || client.gui.hud.isHidden()) return;
+        if (client.player == null || client.options.hideGui) return;
 
         long now = System.currentTimeMillis();
         long holdMs = cfg.eventFeedSeconds * 1000L;

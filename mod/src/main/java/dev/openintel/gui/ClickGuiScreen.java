@@ -12,6 +12,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.KeyMapping;
 import com.mojang.blaze3d.platform.InputConstants;
+import org.lwjgl.glfw.GLFW;
 import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
 
@@ -446,7 +447,7 @@ public class ClickGuiScreen extends Screen implements ClickGui.RebindHandler {
     @Override
     public boolean keyPressed(KeyEvent input) {
         if (listeningFor != null) {
-            if (input.key() != InputConstants.KEY_ESCAPE) {
+            if (input.key() != GLFW.GLFW_KEY_ESCAPE) {
                 listeningFor.setKey(InputConstants.getKey(input));
             }
             finishRebind();
@@ -505,7 +506,7 @@ public class ClickGuiScreen extends Screen implements ClickGui.RebindHandler {
 
     @Override
     public void onClose() {
-        minecraft.gui.setScreen(parent);
+        minecraft.setScreen(parent);
     }
 
     @Override

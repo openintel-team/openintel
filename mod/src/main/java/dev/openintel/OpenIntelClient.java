@@ -49,6 +49,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.KeyMapping;
 import com.mojang.blaze3d.platform.InputConstants;
+import org.lwjgl.glfw.GLFW;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.MapItem;
 import net.minecraft.world.item.ItemStack;
@@ -124,7 +125,7 @@ public class OpenIntelClient implements ClientModInitializer {
         registerKeybinds();
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if (UiFont.setEnabled(config.cleanFont)) client.gui.hud.getChat().rescaleChat();
+            if (UiFont.setEnabled(config.cleanFont)) client.gui.getChat().rescaleChat();
             dev.openintel.render.HudLayouts.flush();
             relay.tick();
             tracker.tick(client);
@@ -149,13 +150,13 @@ public class OpenIntelClient implements ClientModInitializer {
                 status("radar " + (config.radarEnabled ? "on" : "off"));
             }
             if (config.pingWheelEnabled && pingKey.consumeClick() && client.player != null
-                    && client.gui.screen() == null) {
-                client.gui.setScreen(new PingWheelScreen(pingKey,
+                    && client.screen == null) {
+                client.setScreen(new PingWheelScreen(pingKey,
                         PingWheelScreen.physicallyHeld(pingKey)));
             }
             while (warTableKey.consumeClick()) {
-                if (config.warTableEnabled && client.gui.screen() == null) {
-                    client.gui.setScreen(new WarTableScreen());
+                if (config.warTableEnabled && client.screen == null) {
+                    client.setScreen(new WarTableScreen());
                 }
             }
             while (investigatePrevKey.consumeClick()) {
@@ -267,17 +268,17 @@ public class OpenIntelClient implements ClientModInitializer {
     }
 
     private void registerKeybinds() {
-        radarToggleKey = keybind("key.openintel.radar", InputConstants.KEY_R);
-        holdAttackKey = keybind("key.openintel.hold_attack", InputConstants.KEY_MINUS);
-        holdUseKey = keybind("key.openintel.hold_use", InputConstants.KEY_EQUALS);
-        attackToggleKey = keybind("key.openintel.attack_macro", InputConstants.KEY_0);
-        useToggleKey = keybind("key.openintel.use_macro", InputConstants.KEY_RBRACKET);
-        iceRoadKey = keybind("key.openintel.ice_road", InputConstants.KEY_BACKSPACE);
-        pingKey = keybind("key.openintel.ping", InputConstants.KEY_G);
-        warTableKey = keybind("key.openintel.wartable", InputConstants.KEY_O);
-        investigatePrevKey = keybind("key.openintel.investigate_prev", InputConstants.KEY_LEFT);
-        investigateNextKey = keybind("key.openintel.investigate_next", InputConstants.KEY_RIGHT);
-        investigatePlayKey = keybind("key.openintel.investigate_play", InputConstants.KEY_DOWN);
+        radarToggleKey = keybind("key.openintel.radar", GLFW.GLFW_KEY_R);
+        holdAttackKey = keybind("key.openintel.hold_attack", GLFW.GLFW_KEY_MINUS);
+        holdUseKey = keybind("key.openintel.hold_use", GLFW.GLFW_KEY_EQUAL);
+        attackToggleKey = keybind("key.openintel.attack_macro", GLFW.GLFW_KEY_0);
+        useToggleKey = keybind("key.openintel.use_macro", GLFW.GLFW_KEY_RIGHT_BRACKET);
+        iceRoadKey = keybind("key.openintel.ice_road", GLFW.GLFW_KEY_BACKSPACE);
+        pingKey = keybind("key.openintel.ping", GLFW.GLFW_KEY_G);
+        warTableKey = keybind("key.openintel.wartable", GLFW.GLFW_KEY_O);
+        investigatePrevKey = keybind("key.openintel.investigate_prev", GLFW.GLFW_KEY_LEFT);
+        investigateNextKey = keybind("key.openintel.investigate_next", GLFW.GLFW_KEY_RIGHT);
+        investigatePlayKey = keybind("key.openintel.investigate_play", GLFW.GLFW_KEY_DOWN);
 
         attackMacro = new AttackMacro(attackToggleKey);
         useMacro = new IntervalMacro(useToggleKey,
@@ -292,7 +293,7 @@ public class OpenIntelClient implements ClientModInitializer {
 
     private static KeyMapping keybind(String id, int key) {
         return KeyMappingHelper.registerKeyMapping(
-                new KeyMapping(id, InputConstants.Type.KEYBOARD, key, OI_CATEGORY));
+                new KeyMapping(id, InputConstants.Type.KEYSYM, key, OI_CATEGORY));
     }
 
     private static int setRelayCut(String action) {
@@ -337,56 +338,56 @@ public class OpenIntelClient implements ClientModInitializer {
                             // Defer one tick — the chat screen closes itself
                             // after the command dispatches and would wipe it.
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(new ClickGuiScreen(null, "radar")));
+                                    Minecraft.getInstance().setScreen(new ClickGuiScreen(null, "radar")));
                             return 1;
                         }))
                         .then(ClientCommands.literal("macros").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(new ClickGuiScreen(null, "macros")));
+                                    Minecraft.getInstance().setScreen(new ClickGuiScreen(null, "macros")));
                             return 1;
                         }))
                         .then(ClientCommands.literal("settings").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(new ClickGuiScreen(null)));
+                                    Minecraft.getInstance().setScreen(new ClickGuiScreen(null)));
                             return 1;
                         }))
                         .then(ClientCommands.literal("viz").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(
+                                    Minecraft.getInstance().setScreen(
                                             new ClickGuiScreen(null, "viz")));
                             return 1;
                         }))
                         .then(ClientCommands.literal("visualizations").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(
+                                    Minecraft.getInstance().setScreen(
                                             new VisualizationsScreen(null)));
                             return 1;
                         }))
                         .then(ClientCommands.literal("investigate").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(
+                                    Minecraft.getInstance().setScreen(
                                             new InvestigateScreen(null)));
                             return 1;
                         }))
                         .then(ClientCommands.literal("hud").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(new HudEditorScreen(null)));
+                                    Minecraft.getInstance().setScreen(new HudEditorScreen(null)));
                             return 1;
                         }))
                         .then(ClientCommands.literal("ping").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(
+                                    Minecraft.getInstance().setScreen(
                                             new PingWheelScreen(pingKey, false)));
                             return 1;
                         }))
                         .then(ClientCommands.literal("map").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(new WarTableScreen()));
+                                    Minecraft.getInstance().setScreen(new WarTableScreen()));
                             return 1;
                         }))
                         .then(ClientCommands.literal("wartable").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().gui.setScreen(new WarTableScreen()));
+                                    Minecraft.getInstance().setScreen(new WarTableScreen()));
                             return 1;
                         }))
                         .then(ClientCommands.literal("snitchtest").executes(c -> {

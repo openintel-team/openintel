@@ -71,7 +71,7 @@ public final class LogoHudTest {
                     guards.add(call.name);
                 }
             }
-            check(guards.containsAll(java.util.List.of("logoHudEnabled", "isHidden", "screen")), "Logo respects visibility and open-screen guards");
+            check(guards.containsAll(java.util.List.of("logoHudEnabled", "hideGui", "screen")), "Logo respects visibility and open-screen guards");
         }
         LogoHud.registerPipeline();
         System.out.println("OpenIntel logo layout and asset tests passed");

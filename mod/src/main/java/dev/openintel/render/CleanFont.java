@@ -1,12 +1,12 @@
 package dev.openintel.render;
 
 import dev.openintel.OpenIntelClient;
-import com.mojang.renderpearl.api.pipeline.RenderPipeline;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.renderpearl.api.textures.AddressMode;
-import com.mojang.renderpearl.api.textures.FilterMode;
-import com.mojang.renderpearl.api.textures.GpuTexture;
-import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.blaze3d.textures.AddressMode;
+import com.mojang.blaze3d.textures.FilterMode;
+import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.blaze3d.textures.TextureFormat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -52,8 +52,8 @@ public final class CleanFont {
     private static final RenderPipeline PIPELINE = RenderPipeline.builder(RenderPipelines.GUI_TEXTURED_SNIPPET)
             .withLocation(Identifier.fromNamespaceAndPath("openintel", "pipeline/clean_font"))
             .withFragmentShader(Identifier.fromNamespaceAndPath("openintel", "core/clean_font"))
-            .withDepthStencilState(new com.mojang.renderpearl.api.pipeline.DepthStencilState(
-                    com.mojang.renderpearl.api.pipeline.CompareOp.ALWAYS_PASS, false))
+            .withDepthStencilState(new com.mojang.blaze3d.pipeline.DepthStencilState(
+                    com.mojang.blaze3d.platform.CompareOp.ALWAYS_PASS, false))
             .build();
     private static final int ATLAS = 1024;
     private static final int MIP_LEVELS = 4;
@@ -310,7 +310,7 @@ public final class CleanFont {
             var device = RenderSystem.getDevice();
             texture = device.createTexture("openintel-clean-font",
                     GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_COPY_DST,
-                    GpuFormat.RGBA8_UNORM, ATLAS, ATLAS, 1, MIP_LEVELS);
+                    TextureFormat.RGBA8, ATLAS, ATLAS, 1, MIP_LEVELS);
             try {
                 textureView = device.createTextureView(texture);
                 uploadMip(image, 0);
@@ -322,7 +322,7 @@ public final class CleanFont {
 
         private void uploadMip(NativeImage image, int level) {
             RenderSystem.getDevice().createCommandEncoder().writeToTexture(
-                    texture, image, level, 0, 0, 0);
+                    texture, image, level, 0, 0, 0, 0, image.getWidth(), image.getHeight(), 0);
             if (level + 1 < MIP_LEVELS) {
                 try (NativeImage next = downsample(image)) {
                     uploadMip(next, level + 1);

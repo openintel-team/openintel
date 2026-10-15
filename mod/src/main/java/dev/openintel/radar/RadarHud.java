@@ -64,7 +64,7 @@ public final class RadarHud {
         if (!cfg.radarEnabled) return;
 
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.level == null || mc.gui.hud.isHidden()) return;
+        if (mc.player == null || mc.level == null || mc.options.hideGui) return;
 
         int r = HudLayouts.radius(cfg);
         var frame = HudLayouts.bounds(HudLayouts.Element.RADAR, mc, cfg,

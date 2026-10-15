@@ -39,7 +39,7 @@ public final class PresenceHud {
         OIConfig cfg = OpenIntelClient.config();
         if (!cfg.presenceEnabled || !cfg.relayRendering) return;
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.level == null || mc.gui.hud.isHidden()) return;
+        if (mc.player == null || mc.level == null || mc.options.hideGui) return;
         List<Row> rows = rows(mc, cfg);
         if (rows.isEmpty()) return;
         HudSize size = measure(mc, rows);

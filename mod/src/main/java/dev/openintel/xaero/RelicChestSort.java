@@ -35,7 +35,7 @@ public final class RelicChestSort {
             reset();
             return;
         }
-        var screen = client.gui.screen();
+        var screen = client.screen;
         AbstractContainerMenu menu = player.containerMenu;
         if (screen == null || !storageMenu(menu)) {
             reset();

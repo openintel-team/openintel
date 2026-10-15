@@ -203,7 +203,7 @@ public final class ClickGui {
                 new Group("Layout"),
                 new Option("HUD editor", "Drag every HUD element into place on a live preview.",
                         button("Open HUD editor…", () ->
-                                Minecraft.getInstance().setScreenAndShow(new HudEditorScreen(self)))),
+                                Minecraft.getInstance().setScreen(new HudEditorScreen(self)))),
                 new Group("Text"),
                 new Option(tr("options.openintel.hud.font"),
                         "Switch between clean text and Minecraft/resource-pack fonts. Applies immediately; other menus and mods keep their fonts.",
@@ -305,7 +305,7 @@ public final class ClickGui {
                         bool("options.openintel.viz.see_through", cfg.vizSeeThrough, v -> cfg.vizSeeThrough = v)),
                 new Option("Edit shapes", "Add snitch / bastion / sanctuary shapes at the block you look at.",
                         button("Edit shapes…", () -> Minecraft.getInstance()
-                                .setScreenAndShow(new VisualizationsScreen(self))))
+                                .setScreen(new VisualizationsScreen(self))))
         )));
 
         // ------------------------------------------------------ investigate
@@ -314,7 +314,7 @@ public final class ClickGui {
                 new Option("Investigate logs",
                         "Paste snitch or Discord logs, then watch break/place highlights in the world.",
                         button("Open investigate…", () -> Minecraft.getInstance()
-                                .setScreenAndShow(new InvestigateScreen(self)))),
+                                .setScreen(new InvestigateScreen(self)))),
                 new Option("Stop watching", "Clear the active investigate playback session.",
                         button("Clear session", () -> {
                             dev.openintel.investigate.InvestigateSession.get().clear();
@@ -391,7 +391,7 @@ public final class ClickGui {
                         bool("options.openintel.junk.enabled", cfg.junkReject, v -> cfg.junkReject = v)),
                 new Option("Junk items", "Pick which blocks and items get thrown out.",
                         button("Pick items…", () -> Minecraft.getInstance()
-                                .setScreenAndShow(new JunkItemPickerScreen(self)))),
+                                .setScreen(new JunkItemPickerScreen(self)))),
                 new Option("Reset junk list", "Back to the default common blocks.",
                         button("Restore defaults", () ->
                                 cfg.junkItems = new ArrayList<>(OIConfig.DEFAULT_JUNK_ITEMS)))
@@ -419,7 +419,7 @@ public final class ClickGui {
 
     private static void applyFont(OIConfig config, boolean clean) {
         config.cleanFont = clean;
-        if (UiFont.setEnabled(clean)) Minecraft.getInstance().gui.hud.getChat().rescaleChat();
+        if (UiFont.setEnabled(clean)) Minecraft.getInstance().gui.getChat().rescaleChat();
         config.save();
     }
 
@@ -532,7 +532,7 @@ public final class ClickGui {
             ref[0].setMessage(Component.literal(v == -1 ? "auto" : String.format("#%08X", v)));
         };
         ref[0] = Button.builder(Component.literal(""), b ->
-                Minecraft.getInstance().setScreenAndShow(new ColorPickerScreen(self, label,
+                Minecraft.getInstance().setScreen(new ColorPickerScreen(self, label,
                         get.getAsInt() == -1 ? 0xFFFF5555 : get.getAsInt(),
                         apply, autoLabel, autoAction))).build();
         apply.accept(get.getAsInt());

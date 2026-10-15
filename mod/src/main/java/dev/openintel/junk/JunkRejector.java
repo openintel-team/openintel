@@ -24,7 +24,7 @@ public final class JunkRejector {
         var cfg = OpenIntelClient.config();
         if (!cfg.junkReject) return;
         if (client.player == null || client.gameMode == null) return;
-        if (client.gui.screen() != null) return;                 // never click under an open GUI
+        if (client.screen != null) return;                 // never click under an open GUI
         if (client.player.isCreative() || client.player.isSpectator()) return;
         if (!client.player.isAlive()) return;
 

@@ -163,7 +163,7 @@ public class JunkItemPickerScreen extends Screen {
     @Override
     public void onClose() {
         OpenIntelClient.config().save();
-        minecraft.gui.setScreen(parent);
+        minecraft.setScreen(parent);
     }
 
     @Override

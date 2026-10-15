@@ -16,7 +16,7 @@ import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
-import xaero.lib.client.graphics.XaeroBufferProvider;
+import net.minecraft.client.renderer.MultiBufferSource;
 import xaero.lib.client.graphics.XaeroRenderType;
 import xaero.map.WorldMap;
 import xaero.map.element.MapElementGraphics;
@@ -58,7 +58,7 @@ final class XaeroMarkerRenderer extends ElementRenderer<MapMarker, XaeroMarkerRe
     @Override public boolean shouldBeDimScaled() { return false; }
     @Override public int getOrder() { return 100; }
 
-    @Override public void preRender(ElementRenderInfo info, XaeroBufferProvider buffers,
+    @Override public void preRender(ElementRenderInfo info, MultiBufferSource.BufferSource buffers,
                                     MultiTextureRenderTypeRendererProvider textures, boolean shadow) {
         context.markers = snapshot(info.mapDimension == null ? null : info.mapDimension.identifier().toString());
         XaeroIntegration.lastRendered = List.of();
@@ -197,18 +197,18 @@ final class XaeroMarkerRenderer extends ElementRenderer<MapMarker, XaeroMarkerRe
         }
     }
 
-    @Override public void postRender(ElementRenderInfo info, XaeroBufferProvider buffers,
+    @Override public void postRender(ElementRenderInfo info, MultiBufferSource.BufferSource buffers,
                                      MultiTextureRenderTypeRendererProvider textures, boolean shadow) {
         XaeroIntegration.lastRendered = List.copyOf(context.drawn);
     }
 
     @Override public void renderElementShadow(MapMarker marker, boolean hovered, float scale,
             double offsetX, double offsetZ, ElementRenderInfo info, MapElementGraphics graphics,
-            XaeroBufferProvider buffers, MultiTextureRenderTypeRendererProvider textures) { }
+            MultiBufferSource.BufferSource buffers, MultiTextureRenderTypeRendererProvider textures) { }
 
     @Override public boolean renderElement(MapMarker marker, boolean hovered, double depth, float scale,
             double offsetX, double offsetZ, ElementRenderInfo info, MapElementGraphics graphics,
-            XaeroBufferProvider buffers, MultiTextureRenderTypeRendererProvider textures) {
+            MultiBufferSource.BufferSource buffers, MultiTextureRenderTypeRendererProvider textures) {
         var pose = graphics.pose();
         pose.pushPose();
         try {

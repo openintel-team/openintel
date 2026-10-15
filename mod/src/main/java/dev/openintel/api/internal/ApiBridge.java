@@ -264,7 +264,7 @@ public final class ApiBridge {
     private static CompletableFuture<ActionResult> screen(boolean editor) {
         return action(false, () -> {
             var client = Minecraft.getInstance();
-            client.setScreenAndShow(editor ? new HudEditorScreen(client.gui.screen()) : new ClickGuiScreen(client.gui.screen()));
+            client.setScreen(editor ? new HudEditorScreen(client.screen) : new ClickGuiScreen(client.screen));
             return completed("Screen opened");
         });
     }

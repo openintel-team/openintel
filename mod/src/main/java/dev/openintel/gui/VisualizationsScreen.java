@@ -285,7 +285,7 @@ public final class VisualizationsScreen extends Screen {
     @Override
     public void onClose() {
         RangeStore.get().save();
-        minecraft.gui.setScreen(parent);
+        minecraft.setScreen(parent);
     }
 
     @Override

@@ -112,7 +112,7 @@ public final class InvestigateScreen extends Screen {
         }
         session.watch();
         OpenIntelClient.status("investigate watching " + session.size() + " events");
-        minecraft.gui.setScreen(null);
+        minecraft.setScreen(null);
     }
 
     private void clear() {
@@ -189,7 +189,7 @@ public final class InvestigateScreen extends Screen {
 
     @Override
     public void onClose() {
-        minecraft.gui.setScreen(parent);
+        minecraft.setScreen(parent);
     }
 
     @Override

@@ -44,7 +44,7 @@ public abstract class ChestTrackerScreenMixin extends Screen {
                 new ItemStack(Items.FILLED_MAP),
                 this.left - MEMORY_ICON_OFFSET,
                 this.top + keyButtons * MEMORY_ICON_SPACING,
-                button -> Minecraft.getInstance().gui.setScreen(new RelicLibraryScreen(self)),
+                button -> Minecraft.getInstance().setScreen(new RelicLibraryScreen(self)),
                 ItemButton.Background.CUSTOM);
         relic.setTooltip(Tooltip.create(Component.translatable("openintel.relic.library.button")));
         this.addRenderableWidget(relic);

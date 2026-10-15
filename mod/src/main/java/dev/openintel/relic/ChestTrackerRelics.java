@@ -91,7 +91,7 @@ public final class ChestTrackerRelics {
         BundleContents bundle = stack.get(DataComponents.BUNDLE_CONTENTS);
         if (bundle != null) {
             int index = 0;
-            for (ItemStack inner : bundle.itemCopies().toList()) {
+            for (ItemStack inner : bundle.itemCopyStream().toList()) {
                 collect(entries, stacks, inner, memoryKey, chest, path + "b" + index++ + ":", client, depth + 1);
             }
         }

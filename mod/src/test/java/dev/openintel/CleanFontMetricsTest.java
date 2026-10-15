@@ -269,16 +269,15 @@ public final class CleanFontMetricsTest {
         CleanFont.registerPipeline();
         var field = CleanFont.class.getDeclaredField("PIPELINE");
         field.setAccessible(true);
-        var pipeline = (com.mojang.renderpearl.api.pipeline.RenderPipeline) field.get(null);
+        var pipeline = (com.mojang.blaze3d.pipeline.RenderPipeline) field.get(null);
         var vanilla = net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED;
-        var vertex = com.mojang.renderpearl.api.pipeline.ShaderType.VERTEX;
-        var fragment = com.mojang.renderpearl.api.pipeline.ShaderType.FRAGMENT;
-        check(net.minecraft.client.renderer.RenderPipelines.requiredPipelines().contains(pipeline), "Font pipeline registered for resource reload");
-        check(pipeline.getColorTargetStates().getFirst().blendFunction().equals(vanilla.getColorTargetStates().getFirst().blendFunction()), "Font coverage uses standard alpha blending");
-        check(pipeline.getShaders().get(vertex).equals(vanilla.getShaders().get(vertex)), "Font uses compatible GUI vertex shader");
-        check(pipeline.getVertexFormatBinding(0).equals(vanilla.getVertexFormatBinding(0)), "Font uses compatible GUI vertices");
+        check(net.minecraft.client.renderer.RenderPipelines.getStaticPipelines().contains(pipeline), "Font pipeline registered for resource reload");
+        check(pipeline.getColorTargetState().blendFunction().equals(vanilla.getColorTargetState().blendFunction()), "Font coverage uses standard alpha blending");
+        check(pipeline.getVertexShader().equals(vanilla.getVertexShader()), "Font uses compatible GUI vertex shader");
+        check(pipeline.getVertexFormat().equals(vanilla.getVertexFormat())
+                && pipeline.getVertexFormatMode() == vanilla.getVertexFormatMode(), "Font uses compatible GUI vertices");
         check(!pipeline.getDepthStencilState().writeDepth(), "Transparent padding does not write depth");
-        check(pipeline.getShaders().get(fragment).toString().equals("openintel:core/clean_font"), "Font uses coverage shader");
+        check(pipeline.getFragmentShader().toString().equals("openintel:core/clean_font"), "Font uses coverage shader");
         try (var input = CleanFont.class.getResourceAsStream("/assets/openintel/shaders/core/clean_font.fsh")) {
             check(input != null && input.readAllBytes().length > 0, "Font shader is packaged");
         }
