@@ -139,9 +139,7 @@ public class OpenIntelClient implements ClientModInitializer {
             if (jm != null) jm.run();
             RelicChestSort.tick(client);
             EventFeed.tick(client);
-            // Rebuild immutable geometry on ticks; transform it with the current camera each frame.
             InvestigateOverlay.tick(client);
-            dev.openintel.render.WorldOverlayRenderer.collect(client);
             ApiBridge.settingsChanged();
             while (radarToggleKey.consumeClick()) {
                 config.radarEnabled = !config.radarEnabled;
@@ -167,6 +165,8 @@ public class OpenIntelClient implements ClientModInitializer {
             while (investigatePlayKey.consumeClick()) {
                 if (InvestigateSession.get().isWatching()) InvestigateSession.get().togglePlay();
             }
+            // Include keyboard playhead changes in the same frame as the caption and camera focus.
+            dev.openintel.render.WorldOverlayRenderer.collect(client);
         });
 
         // Markers draw on the HUD layer; the camera is read from the game

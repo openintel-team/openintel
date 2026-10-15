@@ -315,6 +315,14 @@ public final class ClickGui {
                         "Paste snitch or Discord logs, then watch break/place highlights in the world.",
                         button("Open investigate…", () -> Minecraft.getInstance()
                                 .setScreen(new InvestigateScreen(self)))),
+                new Group("Camera focus"),
+                new Option("Focus transition", "Look at the selected event: pan smoothly, snap instantly, or leave the camera alone. Mouse look cancels an active pan.",
+                        cycle("options.openintel.investigate.camera", OIConfig.InvestigateCameraMode.values(),
+                                mode -> mode.translationKey, OIConfig.InvestigateCameraMode::byName,
+                                cfg.investigateCameraMode, value -> cfg.investigateCameraMode = value)),
+                new Option("Pan duration", "Time to turn toward the focused block. Applies to Pan mode.",
+                        slider("options.openintel.investigate.pan_duration", 100, 2000,
+                                cfg.investigatePanDurationMs, "ms", value -> cfg.investigatePanDurationMs = value)),
                 new Option("Stop watching", "Clear the active investigate playback session.",
                         button("Clear session", () -> {
                             dev.openintel.investigate.InvestigateSession.get().clear();

@@ -26,6 +26,11 @@ public final class InvestigateSession {
 
     private final List<Event> events = new ArrayList<>();
     private int index;
+    private long focusRevision;
+
+    public record Focus(boolean watching, Event event, long revision) { }
+
+    public synchronized Focus focus() { return new Focus(watching, current(), focusRevision); }
     private boolean watching;
     private boolean playing;
     private long nextAdvanceAt;
@@ -37,6 +42,7 @@ public final class InvestigateSession {
     public static InvestigateSession get() { return INSTANCE; }
 
     public synchronized void load(SnitchLogParser.ParseResult result, String defaultDim) {
+        focusRevision++;
         events.clear();
         index = 0;
         watching = false;
@@ -52,6 +58,7 @@ public final class InvestigateSession {
     }
 
     public synchronized void clear() {
+        focusRevision++;
         events.clear();
         index = 0;
         watching = false;
@@ -74,12 +81,14 @@ public final class InvestigateSession {
 
     public synchronized void watch() {
         if (events.isEmpty()) return;
+        focusRevision++;
         watching = true;
         playing = false;
         if (index < 0 || index >= events.size()) index = 0;
     }
 
     public synchronized void stopWatching() {
+        focusRevision++;
         watching = false;
         playing = false;
     }
@@ -95,19 +104,20 @@ public final class InvestigateSession {
 
     public synchronized void next() {
         if (events.isEmpty()) return;
-        index = Math.min(events.size() - 1, index + 1);
+        if (index < events.size() - 1) { index++; focusRevision++; }
         nextAdvanceAt = System.currentTimeMillis() + 500;
     }
 
     public synchronized void previous() {
         if (events.isEmpty()) return;
-        index = Math.max(0, index - 1);
+        if (index > 0) { index--; focusRevision++; }
         nextAdvanceAt = System.currentTimeMillis() + 500;
     }
 
     public synchronized void select(int i) {
         if (i < 0 || i >= events.size()) return;
         index = i;
+        focusRevision++;
     }
 
     /** Advance playhead when watching + playing. */
@@ -120,6 +130,7 @@ public final class InvestigateSession {
             return;
         }
         index++;
+        focusRevision++;
         nextAdvanceAt = now + 500;
     }
 

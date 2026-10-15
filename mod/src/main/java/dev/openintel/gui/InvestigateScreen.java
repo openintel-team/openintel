@@ -1,5 +1,7 @@
 package dev.openintel.gui;
 
+import com.mojang.blaze3d.platform.InputConstants;
+
 import dev.openintel.OpenIntelClient;
 import dev.openintel.investigate.InvestigateSession;
 import dev.openintel.snitch.SnitchLogParser;
@@ -124,7 +126,7 @@ public final class InvestigateScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
-        if (click.button() == 0) {
+        if (click.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             double mx = click.x(), my = click.y();
             if (mx >= listX && mx < listX + listW && my >= listY && my < listY + listH) {
                 List<InvestigateSession.Event> events = InvestigateSession.get().events();
