@@ -12,7 +12,6 @@ import dev.openintel.gui.InvestigateScreen;
 import dev.openintel.gui.VisualizationsScreen;
 import dev.openintel.investigate.InvestigateOverlay;
 import dev.openintel.investigate.InvestigateSession;
-import dev.openintel.viz.RangeOverlay;
 import dev.openintel.viz.RangeStore;
 import dev.openintel.macro.AttackMacro;
 import dev.openintel.macro.HoldKeyMacro;
@@ -140,9 +139,9 @@ public class OpenIntelClient implements ClientModInitializer {
             if (jm != null) jm.run();
             RelicChestSort.tick(client);
             EventFeed.tick(client);
-            // Gizmos are collected while Minecraft wraps tick() — submit here.
-            RangeOverlay.tick(client);
+            // Rebuild immutable geometry on ticks; transform it with the current camera each frame.
             InvestigateOverlay.tick(client);
+            dev.openintel.render.WorldOverlayRenderer.collect(client);
             ApiBridge.settingsChanged();
             while (radarToggleKey.consumeClick()) {
                 config.radarEnabled = !config.radarEnabled;
@@ -190,6 +189,8 @@ public class OpenIntelClient implements ClientModInitializer {
                 (ctx, tickCounter) -> OpenIntelApi.hud().renderAll(ctx, tickCounter.getGameTimeDeltaPartialTick(true)));
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("openintel", "investigate"),
                 (ctx, tickCounter) -> InvestigateOverlay.renderHud(ctx));
+
+        dev.openintel.render.WorldOverlayRenderer.register();
 
         ClientEntityEvents.ENTITY_LOAD.register(EventFeed::onEntityLoad);
         ClientEntityEvents.ENTITY_UNLOAD.register(EventFeed::onEntityUnload);
