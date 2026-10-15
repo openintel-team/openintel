@@ -12,8 +12,38 @@ public final class RangeShapeTest {
         bastionBlocks();
         sanctuaryBlocks();
         shells();
+        renderedShells();
         persistence();
         System.out.println("Range shape tests passed");
+    }
+
+    private static void renderedShells() {
+        var mesh = new dev.openintel.render.WorldOverlayMesh.Builder();
+        var eye = new net.minecraft.world.phys.Vec3(0.5, 64.5, 0.5);
+        RangeOverlay.drawSnitch(mesh, 0, 64, 0, 8, -1, 0x3300FFFF, eye, true);
+        var snitch = mesh.build();
+        assertFalse(snitch.faces().isEmpty(), "Actual snitch renderer emits a shell");
+        for (var f : snitch.faces()) {
+            assertTrue(f.onTop(), "See-through survives geometry collection");
+            for (var v : new net.minecraft.world.phys.Vec3[]{f.a(), f.b(), f.c(), f.d()}) {
+                assertEquals(Math.rint(v.x), v.x);
+                assertEquals(Math.rint(v.y), v.y);
+                assertEquals(Math.rint(v.z), v.z);
+            }
+        }
+        mesh = new dev.openintel.render.WorldOverlayMesh.Builder();
+        RangeOverlay.drawBastion(mesh, 0, 64, 0, 10.5, eye, false);
+        var bastion = mesh.build();
+        assertFalse(bastion.faces().isEmpty(), "Actual bastion renderer emits a disk");
+        for (var f : bastion.faces()) {
+            assertFalse(f.onTop(), "Depth-tested coverage stays depth-tested");
+            for (var v : new net.minecraft.world.phys.Vec3[]{f.a(), f.b(), f.c(), f.d()}) {
+                assertTrue(v.y >= 64 && v.y <= 65, "No coverage below the bastion block");
+            }
+        }
+        mesh = new dev.openintel.render.WorldOverlayMesh.Builder();
+        RangeOverlay.drawSnitch(mesh, 1000, 64, 0, 8, -1, -1, eye, true);
+        assertTrue(mesh.build().faces().isEmpty(), "Distant shapes stay culled");
     }
 
     private static void snitchBlocks() {

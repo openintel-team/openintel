@@ -673,3 +673,9 @@ OpenIntel code is MIT-licensed — see `LICENSE`.
 The bundled Noto fonts are licensed under the SIL Open Font License 1.1;
 see `mod/src/main/resources/assets/openintel/font/LICENSE-Noto.txt`.
 Third-party integration API jars retain their respective licenses.
+
+### Shader-compatible visualization rendering
+
+Coverage and Investigate use dedicated Fabric render pipelines, registered with Iris when installed. Faces stay on exact block boundaries; depth-tested coverage uses GPU depth bias instead of expanded geometry. See-through passes preserve world depth for shader packs.
+
+`gradlew worldOverlayTest` checks geometry, shared edges, vertex batches, and depth policies. The optional `gradlew worldOverlayShaderTest` uses a hidden OpenGL window to check coplanar fill visibility, terrain occlusion, unchanged pixel boundaries, and preserved world depth. It does not run Iris or a shader pack. In-game checks should cover shaders off/on, see-through off/on, grazing angles, walking through highlights, overlapping events, and dimension changes.
