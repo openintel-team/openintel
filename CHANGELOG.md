@@ -1,5 +1,20 @@
 # Changelog
 
+## 3.0.0+takoyakifan.mc1.21.11 — takoyakifan fork
+
+- Establish the 3.0 fork release line, with the account and Minecraft target in
+  each version string and the fork name visible in the installed mod metadata.
+- Support Minecraft 26.3, 26.2, 26.1.2, and 1.21.11 on separate branches.
+- Integrate directly with Xaero's fullscreen World Map; preserve independent
+  HUD/map marker settings, War Table labels, and relic presentation.
+- Add fixed nearby relic pins, Chest Tracker relic browsing, and inventory-slot
+  limits for library selections, with optional Where Is It chest highlights.
+- Add block-aligned coverage settings and offline snitch-log investigation.
+- Improve missing-world snitch markers, event-feed wrapping, marker opacity,
+  and access to settings through Mod Menu.
+- Keep source/base jars token-neutral and resolve optional compile dependencies
+  from their public releases. Mod ID and integration API major version stay unchanged.
+
 ## 1.7.0 — War Table
 
 - Added War Table, a shared annotation layer over the server's own live
