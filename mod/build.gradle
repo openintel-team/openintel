@@ -157,7 +157,14 @@ tasks.register('investigateLogTest', JavaExec) {
     enableAssertions = true
 }
 
-check.dependsOn snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, relicLibraryTest, rangeShapeTest, investigateLogTest
+tasks.register('eventFeedLayoutTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.render.EventFeedLayoutTest'
+    enableAssertions = true
+}
+
+check.dependsOn snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, relicLibraryTest, rangeShapeTest, investigateLogTest, eventFeedLayoutTest
 
 publishing {
     publications {
