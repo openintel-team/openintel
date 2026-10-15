@@ -38,3 +38,15 @@ port_translate.py
 all-imports.txt
 
 extract_map.py
+
+# Local metadata, credentials, build dependencies, and diagnostics
+.DS_Store
+.cursor/
+.codex/
+.agents/
+mod/libs/
+mod/build.txt
+mod/*errors*.txt
+mod/err*.txt
+mod/e[0-9]*.txt
+mod/te.txt

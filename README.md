@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/icon-dark.png">
-    <img src="mod/src/main/resources/assets/openintel/icon.png" alt="OpenIntel logo" width="128">
-  </picture>
+  <img src="mod/src/main/resources/assets/openintel/icon.png" alt="OpenIntel logo" width="128">
 </p>
 
 <h1 align="center">OpenIntel</h1>
@@ -17,6 +14,8 @@ Public source and base jars are token-neutral. No deployment-specific relay
 address, Minecraft-server address, Discord configuration, or user database is
 included. Configure your own relay if you want shared intelligence; local
 features do not require a relay connection.
+
+Supported branches: [`26.3`](https://github.com/takoyakifan/openintel/tree/26.3) (default), [`26.2`](https://github.com/takoyakifan/openintel/tree/26.2), [`26.1.2`](https://github.com/takoyakifan/openintel/tree/26.1.2), and [`1.21.11`](https://github.com/takoyakifan/openintel/tree/1.21.11). This branch targets Minecraft **1.21.11**.
 
 ## Features
 
@@ -190,52 +189,6 @@ features do not require a relay connection.
   rebinding — covering relay credentials, rendering, markers, radar, HUD,
   snitch, pings, integrations, macros, and keybinds. `/oi radar` and
   `/oi macros` open it pre-selected on their categories.
-
-## Screenshots
-
-![OpenIntel War Table: shared map with team annotations, snitch intel nameplates and markers](docs/wartable.png)
-
-These screenshots show an earlier build. Updated 1.6.1 clean-text and local-only
-radar screenshots will be added separately.
-
-![OpenIntel gameplay overview with radar, markers, roster and status HUDs](docs/openintel-overview.png)
-
-<table>
-  <tr>
-    <td align="center"><img src="docs/radar-modern.png" alt="Circular player radar"/><br/><strong>Radar</strong></td>
-    <td align="center"><img src="docs/presence-panel.png" alt="Relay presence panel"/><br/><strong>Relay roster</strong></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/relay-marker.png" alt="Live relay player marker"/><br/><strong>Live player marker</strong></td>
-    <td align="center"><img src="docs/snitch-marker.png" alt="Snitch hit marker with age and distance"/><br/><strong>Snitch intel</strong></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/armor-hud.png" alt="Armor durability HUD"/><br/><strong>Armor HUD</strong></td>
-    <td align="center"><img src="docs/potion-hud.png" alt="Potion effect HUD"/><br/><strong>Potion HUD</strong></td>
-  </tr>
-</table>
-
-<p align="center">
-  <img src="docs/event-feed.png" alt="OpenIntel event feed showing relayed snitch interactions"/><br/>
-  <strong>Event feed</strong> — relayed presence, alerts, and snitch interactions without chat spam
-</p>
-
-Off-screen contacts remain readable on independently positioned edge stacks:
-
-![Modern edge marker](docs/edge-marker-modern.png)
-
-Focus and enemy-alert behavior is shared across the relay:
-
-![Focus target marker in purple next to a friend marker](docs/focus-target.png)
-
-![Enemy spotted chat alert](docs/enemy-alert-chat.png)
-
-Snitch hits and pings can also be mirrored onto JourneyMap's fullscreen map:
-
-<p align="center">
-  <img src="docs/journeymap-bigmap.png" alt="Snitch hits on the JourneyMap fullscreen map"/><br/>
-  <strong>JourneyMap fullscreen map</strong> — allegiance-tinted snitch markers (optional integration)
-</p>
 
 ## Relay roles and focus targets
 
