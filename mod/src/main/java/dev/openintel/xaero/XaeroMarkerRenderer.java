@@ -62,6 +62,7 @@ final class XaeroMarkerRenderer extends ElementRenderer<MapMarker, XaeroMarkerRe
                                     MultiTextureRenderTypeRendererProvider textures, boolean shadow) {
         context.markers = snapshot(info.mapDimension == null ? null : info.mapDimension.identifier().toString());
         XaeroIntegration.lastRendered = List.of();
+        XaeroIntegration.hoveredLibrarySite = null;
         context.drawn.clear();
         XaeroIntegration.frames++;
     }
@@ -209,6 +210,9 @@ final class XaeroMarkerRenderer extends ElementRenderer<MapMarker, XaeroMarkerRe
     @Override public boolean renderElement(MapMarker marker, boolean hovered, double depth, float scale,
             double offsetX, double offsetZ, ElementRenderInfo info, MapElementGraphics graphics,
             XaeroBufferProvider buffers, MultiTextureRenderTypeRendererProvider textures) {
+        if (hovered && marker.id().startsWith("relic:library:") && RelicLibraryVisit.mapVisitActive()) {
+            XaeroIntegration.hoveredLibrarySite = marker.id().substring("relic:library:".length());
+        }
         var pose = graphics.pose();
         pose.pushPose();
         try {
