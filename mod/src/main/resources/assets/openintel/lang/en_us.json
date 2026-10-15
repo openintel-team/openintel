@@ -112,5 +112,10 @@
   "options.openintel.viz.live_sanctuaries": "Live-map sanctuaries",
   "options.openintel.viz.see_through": "See-through wireframes",
   "options.openintel.viz.snitch_radius": "Snitch radius",
-  "options.openintel.viz.bastion_radius": "Bastion radius"
+  "options.openintel.viz.bastion_radius": "Bastion radius",
+  "options.openintel.investigate.camera": "Focus transition",
+  "options.openintel.investigate.camera.pan": "Pan",
+  "options.openintel.investigate.camera.snap": "Snap",
+  "options.openintel.investigate.camera.off": "Off",
+  "options.openintel.investigate.pan_duration": "Pan duration"
 }

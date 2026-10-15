@@ -216,6 +216,10 @@ Snitches on this server are skulk sensors by default and are often disguised, co
 
 `/oi investigate` takes a paste of Discord or in-game snitch lines. Lines without coordinates are skipped. Parentheses and brackets follow the usual dimension rules. Previous, next, and play/pause step the highlights in the world (`Left`, `Right`, `Down` while a session is active). Clearing the session removes the highlights. Playback never enters the live snitch tracker.
 
+The top caption highlights the player in blue, the action by event type (red for breaks, green for placement, orange for sanctuary events), and the focused coordinates in gold. Snitch names and dimensions use quieter text, with a warning when the event is in another dimension. Descriptions wrap to fit the viewport.
+
+Under `/oi settings` → Investigate → Camera focus, **Focus transition** selects **Pan** (default), **Snap**, or **Off**. Pan duration defaults to 350 ms and is adjustable from 100–2000 ms. Starting Watch, stepping events, selecting a row, and autoplay aim at the focused block's center. The camera releases control after the turn; mouse look cancels an active pan. Menus, inactive windows, spectating other entities, and events in other dimensions suspend camera movement. Player position stays unchanged.
+
 ### HUDs that do not need the relay
 
 Radar contacts, armor and potion HUDs, fonts, settings, the HUD editor, macros, junk drop, relic scans, and snitch lines you actually see in chat all work in a world with no relay. Remote positions, other people's alerts, the roster, and focus edits need the relay and its permissions.
