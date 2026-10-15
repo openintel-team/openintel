@@ -7,8 +7,8 @@
 
 <h1 align="center">OpenIntel</h1>
 
-OpenIntel **1.7.0** is an open-source Fabric intelligence client for
-**Minecraft 1.21.11 / Java 21**. It combines nearby-player radar, responsive
+OpenIntel **2.3.0** is an open-source Fabric intelligence client for
+**Minecraft 26.3 / Java 25**. It combines nearby-player radar, responsive
 HUDs, clean text, local snitch/relic tracking, and optional team intelligence
 through a self-hosted relay. It does not add its own minimap, waypoint
 database, or navigation system.
@@ -68,17 +68,18 @@ features do not require a relay connection.
 
 ### Relic-map tracking
 
-- Compatible filled maps carrying a `minecraft:target_x` decoration are detected
-  from inventory data; no relay or world/loot scanning is involved.
-- Gold markers appear in-world and on the optional JourneyMap/Xaero overlays.
-  Labels use the first nonblank map lore line, then the item title as a fallback;
-  the world HUD also shows distance rather than exposing coordinates in the name.
-- Markers disappear when the map leaves your inventory. A compatible
-  `found a relic` actionbar message removes the nearest active relic in the
-  current dimension within 96 blocks and prevents its reappearance that session.
-- Tracking is session-scoped and uses overlays, not persistent map waypoints.
-  This requires a server supplying the compatible map data/claim message; it
-  is not a generic treasure finder for arbitrary servers.
+- Civ+ treasure maps ("Treasure Map") in your inventory are scanned locally;
+  no relay or world/loot scanning is involved.
+- On Xaero's World Map (Overworld), each located mark uses the relic's icon and
+  is labeled with the relic name and enchantment (or block coordinates when
+  there is no enchantment). JourneyMap gets the same inventory scan as gold
+  markers. Within 100 horizontal blocks, the HUD also pins a label on that
+  column (name, enchantment, distance), including an edge marker when off screen.
+- Opening a chest, barrel, ender chest, or shulker can arrange located relic
+  maps from closest to furthest through normal container clicks; other items
+  stay put (toggle under Integrations).
+- Markers last only while the map item is carried. They are not saved waypoints
+  and do not appear on Xaero's Minimap.
 
 ### Radar and shared pings
 
@@ -113,18 +114,19 @@ features do not require a relay connection.
 
 ### Xaero's World Map integration (optional)
 
-- With [xaero-world-map-bridge](https://github.com/billstark001/xaero-world-map-bridge)
-  installed alongside Xaero's World Map, relay player positions, snitch
-  hits, shared pings, and compatible relic targets draw onto the fullscreen
-  map (the `M` key). Players are small dots; focus targets, snitches, pings,
-  and gold relic targets are diamonds. Only OpenIntel-owned labels follow
-  the clean-font selection.
+- When [Xaero's World Map](https://chocolateminecraft.com/) is installed,
+  relay player positions, snitch hits, shared pings, War Table pins, and
+  inventory relic maps draw onto the fullscreen map (the `M` key). Players
+  are allegiance-colored circles labeled with name, distance, and reporter;
+  snitches and pings are outlined diamonds; relics use CivWiki icons. Only
+  OpenIntel-owned labels follow the clean-font selection.
 - Markers fade and expire with their HUD counterparts, and the map's
-  dimension switcher filters them correctly.
-- Strictly optional: OpenIntel needs neither Xaero's World Map nor the
-  bridge to run, and a bridge/Xaero version mismatch simply disables the
-  overlay. Toggle under `/oi settings` → Integrations →
-  *Xaero World Map markers*.
+  dimension switcher filters them correctly. Nothing is written as Xaero
+  waypoints, and the Minimap is untouched.
+- Strictly optional: OpenIntel does not require Xaero's World Map, and a
+  version mismatch simply disables the overlay. Toggles under `/oi settings`
+  → Integrations (*Xaero World Map markers*, *Relic maps*) and War Table
+  (*War Table pins on the world map*).
 
 ### Movable HUD
 
@@ -283,8 +285,8 @@ each change is announced in both the alerts and admin Discord channels.
 
 ## Repo layout
 
-- `mod/` — Fabric client mod (Java 21, Minecraft 1.21.11, Fabric API)
-- `mod/libs/` — vendored JourneyMap API + Xaero bridge jars, compile-time only (optional at runtime)
+- `mod/` — Fabric client mod (Java 25, Minecraft 26.3, Fabric API)
+- JourneyMap API — compile-time Maven dependency only (optional at runtime)
 - `relay/` — Node.js relay server + webhook integration
 
 ## Quick start
@@ -308,10 +310,9 @@ Drop the jar in `.minecraft/mods` alongside Fabric API. On first launch the
 mod writes `config/openintel.json` — set `relayUrl` (for example,
 `ws://your.server:8765`), `minecraftServer` (the allowed multiplayer address),
 and your personal `token`, then join that Minecraft server. These fields are
-also available under `/oi settings`. If JourneyMap or Xaero's World Map
-(via xaero-world-map-bridge) is installed, snitch hits and shared pings are
-additionally drawn on its fullscreen map — toggleable under `/oi settings` →
-Integrations.
+also available under `/oi settings`. If JourneyMap or Xaero's World Map is
+installed, shared players, snitch hits, pings, and relic maps are additionally
+drawn on its fullscreen map — toggleable under `/oi settings` → Integrations.
 
 ### Discord setup
 1. Create two webhooks (Server Settings → Integrations → Webhooks):
