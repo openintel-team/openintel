@@ -5,6 +5,9 @@ import dev.openintel.allegiance.AllegianceManager.Allegiance;
 import dev.openintel.config.OIConfig;
 import dev.openintel.ping.PingManager;
 import dev.openintel.tracker.Tracker.RemotePlayer;
+import dev.openintel.xaero.RelicMapMath;
+import dev.openintel.xaero.RelicMapScanner;
+import dev.openintel.xaero.RelicProximity;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.navigation.ScreenRectangle;
@@ -35,7 +38,7 @@ import java.util.List;
  * edge instead of a bitmap glyph. Component labels draw after the element so
  * they sit on top.
  *
- * Two multipliers ride on every alpha: `relayOpacity` (user slider) and a
+ * Two multipliers ride on every alpha: marker opacity (the 0–100% slider) and a
  * staleness fade toward `staleAfterMs`, so aging intel visibly cools before
  * Tracker drops it.
  */
@@ -46,10 +49,16 @@ public final class MarkerHud {
      *  kind: 0 = down-chevron (player), 1 = diamond (focus/ping), 2 = up-triangle (snitch). */
     private record Target(String key, String label, int color, int kind,
                           int opacityGroup, float markerScale,
-                          double x, double y, double z) {
+                          double x, double y, double z, boolean appendDistance) {
         private Target(String key, String label, int color, int kind,
                        int opacityGroup, double x, double y, double z) {
-            this(key, label, color, kind, opacityGroup, 1f, x, y, z);
+            this(key, label, color, kind, opacityGroup, 1f, x, y, z, true);
+        }
+
+        private Target(String key, String label, int color, int kind,
+                       int opacityGroup, float markerScale,
+                       double x, double y, double z) {
+            this(key, label, color, kind, opacityGroup, markerScale, x, y, z, true);
         }
     }
     /** A soft vector shape in screen space. */
@@ -71,17 +80,16 @@ public final class MarkerHud {
 
     public static void render(GuiGraphicsExtractor ctx) {
         OIConfig cfg = OpenIntelClient.config();
-        if (!cfg.relayRendering && !cfg.warTablePinMarkers) return;
-
         Minecraft client = Minecraft.getInstance();
         if (client.player == null || client.level == null || client.gui.hud.isHidden()) return;
 
         String myDim = client.level.dimension().identifier().toString();
         long now = System.currentTimeMillis();
-        int relayAlpha = Math.clamp(cfg.relayOpacity, 151, 255);
+        int relayPercent = OIConfig.markerOpacityPercent(cfg.relayOpacity);
+        int relayAlpha = OIConfig.markerAlpha(relayPercent);
         int snitchAlpha = Math.clamp(cfg.snitchMarkerOpacity, 30, 150);
         int pinAlpha = Math.clamp(cfg.warTablePinOpacity, 30, 150);
-        float opacity = relayAlpha / 255f;
+        float opacity = relayPercent / 100f;
         float snitchOpacity = snitchAlpha / 255f;
         float pinOpacity = pinAlpha / 255f;
         int w = ctx.guiWidth(), h = ctx.guiHeight();
@@ -152,20 +160,30 @@ public final class MarkerHud {
                         scaleAlpha(argb, snitchOpacity * fade), 2, snitchAlpha,
                         hit.x, hit.y + 2.4, hit.z));
             }
-            // Relic points: X/Z only, so the diamond rides at eye level —
-            // close enough to read, far ones live on the edge as direction.
-            for (var r : dev.openintel.relic.RelicMaps.all()) {
-                if (!r.dimension().equals(myDim)) continue;
-                targets.add(new Target("relic|" + myDim + "|" + r.x() + "|" + r.z(), r.name(),
-                        scaleAlpha(0xFFFFAA00, pinOpacity), 1, pinAlpha,
-                        r.x() + 0.5, client.player.getY() + 1.5, r.z() + 0.5));
+        }
+
+        // Nearby relic maps from inventory: X/Z only, so the diamond rides at
+        // eye level. Within cfg.relicMarkerRange they pin like snitch labels.
+        if (RelicMapMath.OVERWORLD.equals(myDim) && pinOpacity > 0) {
+            Vec3 feet = client.player.getPosition(tickDelta);
+            double anchorY = feet.y + 1.5;
+            for (var marker : RelicMapScanner.markers(client)) {
+                if (!myDim.equals(marker.dimension())) continue;
+                if (!RelicProximity.near(feet.x, feet.z, marker.x(), marker.z(), cfg.relicMarkerRange)) continue;
+                long meters = Math.round(Math.hypot(feet.x - marker.x(), feet.z - marker.z()));
+                String label = RelicProximity.label(marker.title(), marker.label()) + " | " + meters + "m";
+                // Distance is already in the label. The shared caption would add it again.
+                targets.add(new Target(
+                        "relic|" + myDim + "|" + marker.x() + "|" + marker.z(),
+                        label, scaleAlpha(marker.argb(), pinOpacity), 1, pinAlpha, 1f,
+                        marker.x(), anchorY, marker.z(), false));
             }
         }
 
         // War Table pins are persistent waypoints: shared while the relay is
         // live, local-only while offline. Same X/Z convention as relic points.
         if (cfg.warTablePinMarkers && pinOpacity > 0
-                && "minecraft:overworld".equals(myDim)) {
+                && RelicMapMath.OVERWORLD.equals(myDim)) {
             for (Stroke s : WarTable.waypointStrokes()) {
                 if (s.tool != Stroke.Tool.MARKER) continue;
                 String label = s.label != null ? s.label
@@ -220,7 +238,8 @@ public final class MarkerHud {
 
             // Snitch labels already carry "snitch | player | age" — pipe the
             // distance in too so it doesn't blend into the timestamp.
-            String text = t.label + (t.kind == 2 ? " | " : " ") + (int) dist + "m";
+            // Relic labels already end in their own horizontal distance.
+            String text = withDistance(t.label, t.kind, t.appendDistance(), dist);
 
             if (fwd > 0.02f && Math.abs(nx) <= 1f && Math.abs(ny) <= 1f) {
                 float sx = (nx * 0.5f + 0.5f) * w;
@@ -547,6 +566,12 @@ public final class MarkerHud {
     private static void vert(VertexConsumer vc, Matrix3x2fc pose, float x, float y, int c) {
         org.joml.Vector2f p = pose.transformPosition(x, y, new org.joml.Vector2f());
         vc.addVertex(p.x, p.y, 0).setColor(c);
+    }
+
+    /** Shared HUD caption. Relic pins pass {@code includeDistance=false} because they already measured it. */
+    public static String withDistance(String label, int kind, boolean includeDistance, double dist) {
+        if (!includeDistance) return label;
+        return label + (kind == 2 ? " | " : " ") + (int) dist + "m";
     }
 
     /** Live "time since" for snitch labels: 8s, 47s, 1m 05s, 2m+ gone by fade. */

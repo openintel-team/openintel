@@ -103,12 +103,13 @@ final class JmBridge implements Runnable {
                                 pos, p.dimension, rgb,
                                 "Ping: " + p.label, p.sender));
             }
-            for (var r : dev.openintel.relic.RelicMaps.all()) {
-                String label = r.name();
-                BlockPos pos = new BlockPos(r.x(), 64, r.z());
-                want.put("relic:" + r.x() + "," + r.z(),
-                        new Desired("relic|" + pos + "|" + r.dimension() + "|" + label,
-                                pos, r.dimension(), 0xFFAA00, label, label));
+            for (var r : dev.openintel.xaero.RelicMapScanner.markers(Minecraft.getInstance())) {
+                String title = r.title();
+                String detail = r.label() == null || r.label().isBlank() ? title : title + " | " + r.label();
+                BlockPos pos = BlockPos.containing(r.x(), r.y(), r.z());
+                want.put(r.id(),
+                        new Desired("relic|" + pos + "|" + r.dimension() + "|" + detail,
+                                pos, r.dimension(), r.argb() & 0xFFFFFF, title, detail));
             }
         }
 

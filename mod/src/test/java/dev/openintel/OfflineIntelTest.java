@@ -88,7 +88,8 @@ public final class OfflineIntelTest {
         check(calls(inbound, "dev/openintel/ping/PingManager", "clearRelay"), "Intel reset preserves local pings");
         check(calls(inbound, "dev/openintel/render/EventFeed", "clearRelay"), "Intel reset preserves local feed entries");
         check(client.methods.stream().anyMatch(m -> calls(m, "dev/openintel/tracker/Tracker", "clear")
-                && calls(m, "dev/openintel/ping/PingManager", "clear") && calls(m, "dev/openintel/relic/RelicMaps", "reset")),
+                && calls(m, "dev/openintel/ping/PingManager", "clear")
+                && calls(m, "dev/openintel/xaero/RelicMapScanner", "clear")),
                 "Level disconnect retains full cleanup");
     }
 

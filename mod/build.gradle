@@ -68,12 +68,6 @@ tasks.register('cleanFontShaderTest', JavaExec) {
     mainClass = 'dev.openintel.CleanFontShaderTest'
 }
 
-tasks.register('relicMapNameTest', JavaExec) {
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'dev.openintel.RelicMapNameTest'
-}
-
 tasks.register('uiFontTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
@@ -132,7 +126,14 @@ tasks.register('mapMarkerTest', JavaExec) {
     enableAssertions = true
 }
 
-check.dependsOn snitchDimensionTest, apiContractTest, cleanFontMetricsTest, relicMapNameTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest
+tasks.register('relicMapTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.xaero.RelicMapMathTest'
+    enableAssertions = true
+}
+
+check.dependsOn snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest
 
 publishing {
     publications {
