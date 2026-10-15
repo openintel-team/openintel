@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/icon-dark.png">
-    <img src="mod/src/main/resources/assets/openintel/icon.png" alt="OpenIntel logo" width="128">
-  </picture>
+  <img src="mod/src/main/resources/assets/openintel/icon.png" alt="OpenIntel logo" width="128">
 </p>
 
 <h1 align="center">OpenIntel</h1>
@@ -16,6 +13,8 @@ OpenIntel shares player positions, snitch alerts, and map annotations through a 
 
 Public source and release jars are token-neutral. Set your own relay address, Minecraft server, and token after install. Local features do not require a connection.
 
+Supported branches: [`26.3`](https://github.com/takoyakifan/openintel/tree/26.3) (default), [`26.2`](https://github.com/takoyakifan/openintel/tree/26.2), [`26.1.2`](https://github.com/takoyakifan/openintel/tree/26.1.2), and [`1.21.11`](https://github.com/takoyakifan/openintel/tree/1.21.11). This branch targets Minecraft **26.3**.
+
 ## Contents
 
 - [What this fork changes](#what-this-fork-changes)
@@ -26,7 +25,6 @@ Public source and release jars are token-neutral. Set your own relay address, Mi
 - [Commands and keys](#commands-and-keys)
 - [Relay, roles, and Discord](#relay-roles-and-discord)
 - [Integration API](#integration-api)
-- [Screenshots](#screenshots)
 - [Building](#building)
 
 ## What this fork changes
@@ -430,39 +428,6 @@ HUD elements draw in local pixels after OpenIntel has translated the context. Th
 - Commit example relay JSON only. Live `config.json`, `users.json`, `allegiances.json`, audit logs, personal Minecraft configs, and profiling captures stay out of git.
 - Build public jars from neutral source. Scrubbing the current file does not remove secrets from history, tags, or old release assets.
 
-## Screenshots
-
-The gallery below is from an earlier client. It shows the relay HUD, War Table, and JourneyMap overlay. It does not show the 26.3 world-map markers, relic library, or coverage shells.
-
-![OpenIntel War Table](docs/wartable.png)
-
-![OpenIntel gameplay overview](docs/openintel-overview.png)
-
-<table>
-  <tr>
-    <td align="center"><img src="docs/radar-modern.png" alt="Circular player radar"/><br>Radar</td>
-    <td align="center"><img src="docs/presence-panel.png" alt="Relay roster"/><br>Roster</td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/relay-marker.png" alt="Live player marker"/><br>Player marker</td>
-    <td align="center"><img src="docs/snitch-marker.png" alt="Snitch marker"/><br>Snitch marker</td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/armor-hud.png" alt="Armor HUD"/><br>Armor</td>
-    <td align="center"><img src="docs/potion-hud.png" alt="Potion HUD"/><br>Potions</td>
-  </tr>
-</table>
-
-![Event feed](docs/event-feed.png)
-
-![Edge marker](docs/edge-marker-modern.png)
-
-![Focus target](docs/focus-target.png)
-
-![Enemy alert in chat](docs/enemy-alert-chat.png)
-
-![JourneyMap fullscreen markers](docs/journeymap-bigmap.png)
-
 ## Building
 
 | Path | Contents |
@@ -486,4 +451,4 @@ Confirm that position sharing and radar mods are allowed on a server before you 
 
 OpenIntel is MIT. See `LICENSE`.
 
-The bundled Noto fonts are SIL Open Font License 1.1. See `mod/src/main/resources/assets/openintel/font/LICENSE-Noto.txt`. JourneyMap, Xaero, Mod Menu, Chest Tracker, and Where Is It keep their own licenses. They are not redistributed as runtime dependencies of the OpenIntel jar. Chest Tracker and Where Is It jars under `mod/libs/` are compile-only.
+The bundled Noto fonts are SIL Open Font License 1.1. See `mod/src/main/resources/assets/openintel/font/LICENSE-Noto.txt`. JourneyMap, Xaero, Mod Menu, Chest Tracker, and Where Is It keep their own licenses. They are not redistributed as runtime dependencies of the OpenIntel jar. Chest Tracker and Where Is It are resolved from public Modrinth Maven releases for compilation only.
