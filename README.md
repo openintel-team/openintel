@@ -169,7 +169,7 @@ Fork releases use `3.0.0+takoyakifan.mc<version>` so the installed version and j
 
 - Bundled Noto Sans Medium (with Noto symbol/math companions) provides lightly
   antialiased, shadow-free clean text.
-- Switch live under `/oi settings` → HUD → Text → Font between **Clean font**
+- Defaults to **Minecraft font**. Switch live under `/oi settings` → HUD → Text → Font between **Clean font**
   and **Minecraft font**. The choice persists, and existing chat rewraps
   without losing history.
 - Clean text covers OpenIntel HUDs, chat messages and the chat input field,
