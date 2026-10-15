@@ -35,8 +35,25 @@ public final class SnitchDimensionTest {
         equal("minecraft:the_end", bind.invoke(null, "minecraft:the_end"));
         Tracker tracker = new Tracker();
         tracker.addSnitchHit("OverworldVault", "Player123", "Reporter123", 1, 2, 3, null, 1);
+        if (tracker.snitchHits().iterator().hasNext())
+            throw new AssertionError("Unscoped snitch created a marker without a client world");
         tracker.addSnitchHit("EndSpawn", "Player123", "Reporter123", 1, 2, 3, "openintel:unknown", 1);
-        if (tracker.snitchHits().iterator().hasNext()) throw new AssertionError("Unknown world created a marker");
+        var end = tracker.snitchHits().iterator().next();
+        equal("minecraft:the_end", end.dimension);
+        tracker.addSnitchHit("Nether Hub", "OtherPlayer", "Reporter123", 4, 5, 6, null, 2);
+        Tracker.SnitchHit nether = null;
+        for (Tracker.SnitchHit hit : tracker.snitchHits()) {
+            if ("OtherPlayer".equals(hit.player)) nether = hit;
+        }
+        if (nether == null) throw new AssertionError("Nether name inference created no marker");
+        equal("minecraft:the_nether", nether.dimension);
+        tracker.addSnitchHit("EndSpawn", "NamedWorld", "Reporter123", 7, 8, 9, "world", 3);
+        Tracker.SnitchHit named = null;
+        for (Tracker.SnitchHit hit : tracker.snitchHits()) {
+            if ("NamedWorld".equals(hit.player)) named = hit;
+        }
+        if (named == null) throw new AssertionError("Named world created no marker");
+        equal("minecraft:overworld", named.dimension);
         System.out.println("Snitch dimension tests passed");
     }
 

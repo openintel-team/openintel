@@ -2,6 +2,7 @@ package dev.openintel;
 
 import com.google.gson.JsonObject;
 import dev.openintel.render.EventFeed;
+import dev.openintel.snitch.SnitchLogParser;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
@@ -25,33 +26,15 @@ import java.util.regex.Pattern;
  * whoever is standing on the alert group.
  *
  * Detection is a two-stage regex: `snitchPattern` decides whether a line is
- * a snitch hit at all (configurable), then a fixed extractor pulls the
- * trailing [world x y z] block and the leading "* name" if present. When
- * extraction fails we still forward the raw text — teammates get the heads
- * up, just without a map marker.
+ * a snitch hit at all (configurable), then {@link SnitchLogParser} pulls
+ * coords / player / action. When extraction fails we still forward the raw
+ * text — teammates get the heads up, just without a map marker.
  *
  * Dedupe: identical text is only forwarded once per 10s — some setups echo
  * the same alert through multiple chat channels.
  */
 public final class SnitchRelay {
     private SnitchRelay() { }
-
-    private static final Pattern PLAYER =
-            Pattern.compile("\\*\\s*(?<player>[A-Za-z0-9_]{3,16})");
-    private static final Pattern NAMED_EVENT = Pattern.compile(
-            "(?<snitch>[^:]{2,64}?)\\s*:\\s*(?<player>[A-Za-z0-9_]{3,16})\\s+" +
-                    "(?<action>entered snitch|logged (?:in|out))\\s+at\\b",
-            Pattern.CASE_INSENSITIVE);
-    private static final Pattern NAMED_INTERACTION = Pattern.compile(
-            "(?<snitch>[^:]{2,64}?)\\s*:\\s*(?<player>[A-Za-z0-9_]{3,16})\\s+" +
-                    "(?<action>(?!entered snitch\\b|logged (?:in|out)\\b).{2,96}?)\\s+at\\b",
-            Pattern.CASE_INSENSITIVE);
-    private static final Pattern SNITCH =
-            Pattern.compile("(?i)entered snitch at\\s+(?<snitch>\\S+)");
-    private static final Pattern COORDS = Pattern.compile(
-            "\\[\\s*(?<world>\\S+)\\s+(?<x>-?\\d+)\\s+(?<y>-?\\d+)\\s+(?<z>-?\\d+)\\s*\\]");
-    private static final Pattern COORDS_PAREN = Pattern.compile(
-            "\\(\\s*(?<x>-?\\d+)[,\\s]+(?<y>-?\\d+)[,\\s]+(?<z>-?\\d+)\\s*\\)");
 
     private static final Pattern HOVER_DIMENSION = Pattern.compile(
             "(?<![a-z0-9_:])minecraft:(?:overworld|the_nether|the_end)(?![a-z0-9_/])",
@@ -90,71 +73,25 @@ public final class SnitchRelay {
             msg.addProperty("reporter", client.player.getGameProfile().name());
         }
 
-        String player = null, snitchName = null, world = null;
-        int x = 0, y = 0, z = 0;
-        boolean hasCoords = false;
+        SnitchLogParser.ParsedLine parsed = SnitchLogParser.parseLine(text);
+        String player = parsed.player();
+        String snitchName = parsed.snitch();
+        String world = parsed.world();
+        boolean hasCoords = parsed.hasCoords();
+        int x = hasCoords ? parsed.x() : 0;
+        int y = hasCoords ? parsed.y() : 0;
+        int z = hasCoords ? parsed.z() : 0;
 
-        Matcher nm = NAMED_EVENT.matcher(text);
-        String eventKind = "event";
-        if (!nm.find()) {
-            nm = NAMED_INTERACTION.matcher(text);
-            eventKind = "interaction";
+        if (player != null) msg.addProperty("player", player);
+        if (snitchName != null) msg.addProperty("snitch", snitchName);
+        if (parsed.action() != null) {
+            msg.addProperty("action", parsed.action());
+            if (parsed.eventKind() != null) msg.addProperty("eventKind", parsed.eventKind());
         }
-        if (nm.find(0)) {
-            player = nm.group("player");
-            snitchName = nm.group("snitch").replaceAll("^[+\\s*]+|[+\\s*]+$", "");
-            msg.addProperty("player", player);
-            msg.addProperty("snitch", snitchName);
-            msg.addProperty("action", nm.group("action").trim());
-            msg.addProperty("eventKind", eventKind);
-        }
-        if (player == null) {
-            Matcher pm = PLAYER.matcher(text);
-            if (pm.find()) {
-                player = pm.group("player");
-                msg.addProperty("player", player);
-            }
-        }
-        if (snitchName == null) {
-            Matcher sm = SNITCH.matcher(text);
-            if (sm.find()) {
-                snitchName = sm.group("snitch");
-                if (snitchName.startsWith("(") || snitchName.startsWith("[")) {
-                    snitchName = null;      // grabbed a coord block, not a name
-                } else {
-                    msg.addProperty("snitch", snitchName);
-                }
-            }
-        }
-
-        Matcher cm = COORDS.matcher(text);
-        if (cm.find()) {
-            try {
-                world = cm.group("world");
-                x = Integer.parseInt(cm.group("x"));
-                y = Integer.parseInt(cm.group("y"));
-                z = Integer.parseInt(cm.group("z"));
-                msg.addProperty("world", world);
-                msg.addProperty("x", x);
-                msg.addProperty("y", y);
-                msg.addProperty("z", z);
-                hasCoords = true;
-            } catch (NumberFormatException ignored) { }
-        }
-        if (!hasCoords) {
-            // "snitch at (x, y, z)" — parens, no world name.
-            Matcher pc = COORDS_PAREN.matcher(text);
-            if (pc.find()) {
-                try {
-                    x = Integer.parseInt(pc.group("x"));
-                    y = Integer.parseInt(pc.group("y"));
-                    z = Integer.parseInt(pc.group("z"));
-                    msg.addProperty("x", x);
-                    msg.addProperty("y", y);
-                    msg.addProperty("z", z);
-                    hasCoords = true;
-                } catch (NumberFormatException ignored) { }
-            }
+        if (hasCoords) {
+            msg.addProperty("x", x);
+            msg.addProperty("y", y);
+            msg.addProperty("z", z);
         }
 
         if (hoverWorld != null) world = hoverWorld;
@@ -194,7 +131,7 @@ public final class SnitchRelay {
         }
         if (!detection.matcher(text).find()) return message;
 
-        int[] span = playerSpan(text);
+        int[] span = SnitchLogParser.playerSpan(text);
         if (span == null) return message;
         int color = OpenIntelClient.allegiances()
                 .of(text.substring(span[0], span[1])).argb & 0xFFFFFF;
@@ -219,16 +156,6 @@ public final class SnitchRelay {
             return Optional.empty();
         }, Style.EMPTY);
         return out;
-    }
-
-    /** Character span of the triggering player name, or null. */
-    private static int[] playerSpan(String text) {
-        Matcher m = NAMED_EVENT.matcher(text);
-        if (!m.find()) m = NAMED_INTERACTION.matcher(text);
-        if (m.find(0)) return new int[]{m.start("player"), m.end("player")};
-        m = PLAYER.matcher(text);
-        if (m.find()) return new int[]{m.start("player"), m.end("player")};
-        return null;
     }
 
     static String hoverWorld(Component message) {

@@ -263,8 +263,10 @@ public class Tracker {
         if (!self) {
             String action = msg.has("action") ? msg.get("action").getAsString() : "tripped a snitch";
             String text = "Snitch: " + who + " " + action;
-            if (msg.has("x")) {
-                text += " at " + msg.get("x").getAsInt() + ", " + msg.get("z").getAsInt();
+            if (msg.has("x") && msg.has("z")) {
+                text += " at " + msg.get("x").getAsInt();
+                if (msg.has("y")) text += ", " + msg.get("y").getAsInt();
+                text += ", " + msg.get("z").getAsInt();
             }
             text += " (" + from + ")";
             EventFeed.addRelay(text, 0xFFFFAA00);
@@ -276,13 +278,14 @@ public class Tracker {
             if (who.isBlank() || who.equals("?") || snitch.isBlank()) return;
             long t = msg.has("t") ? msg.get("t").getAsLong() : System.currentTimeMillis();
 
-            // A named world pins the marker to that dimension — only shown to
-            // players actually in it. No world name → guess from the snitch
-            // name ("EndSpawn" → the End), then the tripper's last-seen dim
-            // (they're AT the snitch), then the reporter's, then ours.
-            String dim = bindDim(msg.has("world") && !msg.get("world").isJsonNull()
-                    ? msg.get("world").getAsString() : null);
-            if (dim == null || dim.equals("openintel:unknown")) return;
+            // A named world pins the marker to that dimension. Discord posts
+            // and paren-only alerts often have no world, so guess from the
+            // snitch name ("EndSpawn" → the End), then the tripper's last-seen
+            // dim, then the reporter's, then the dimension we're standing in.
+            String world = msg.has("world") && !msg.get("world").isJsonNull()
+                    ? msg.get("world").getAsString() : null;
+            String dim = resolveSnitchDim(world, snitch, who, from);
+            if (dim == null) return;
 
             // Approved relay users already stream live positions — a snitch
             // marker on them is redundant noise.
@@ -306,26 +309,58 @@ public class Tracker {
      */
     public void addSnitchHit(String snitch, String player, String reporter,
                              double x, double y, double z, String world, long t) {
-        String dim = bindDim(world);
-        if (dim == null || dim.equals("openintel:unknown")) return;
         Minecraft client = Minecraft.getInstance();
-        if (!client.isSameThread()) {
+        if (client != null && !client.isSameThread()) {
             var currentWorld = client.level;
             client.execute(() -> {
                 if (client.level == currentWorld) addSnitchHit(snitch, player, reporter, x, y, z, world, t);
             });
             return;
         }
+        String dim = resolveSnitchDim(world, snitch, player, reporter);
+        if (dim == null) return;
         snitchHits.putLocal(player.equals("?") ? snitch + "@" + (int) x + "," + (int) z : player,
                 new SnitchHit(snitch, player, reporter, x, y, z, dim, t));
-        ApiBridge.trackerChanged(ApiEvent.Cause.UPDATE);
+        if (client != null) ApiBridge.trackerChanged(ApiEvent.Cause.UPDATE);
+    }
+
+    /**
+     * Dimension a snitch marker should use. A parseable world name wins.
+     * Otherwise: snitch-name inference, the tripper's last report, the
+     * reporter's last report, then the local player's current dimension.
+     * Returns null only when none of those exist (no marker).
+     */
+    private String resolveSnitchDim(String world, String snitch, String player, String reporter) {
+        String named = bindDim(world);
+        if (isShownDim(named)) return named;
+        String inferred = inferDimFromName(snitch);
+        if (inferred != null) return inferred;
+        String seen = seenDimension(player);
+        if (seen == null) seen = seenDimension(reporter);
+        if (seen != null) return seen;
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && client.level != null) return client.level.dimension().identifier().toString();
+        return null;
+    }
+
+    private String seenDimension(String name) {
+        if (name == null || name.isBlank() || name.equals("?") || name.equalsIgnoreCase("discord")) return null;
+        RemotePlayer direct = players.get(name);
+        if (direct != null && isShownDim(direct.dimension)) return direct.dimension;
+        for (RemotePlayer known : players.values()) {
+            if (known.name.equalsIgnoreCase(name) && isShownDim(known.dimension)) return known.dimension;
+        }
+        return null;
+    }
+
+    private static boolean isShownDim(String dimension) {
+        return dimension != null && !dimension.isBlank() && !dimension.equals("openintel:unknown");
     }
 
     /**
      * Dimension binding for a snitch hit. A world name pins the marker to
-     * that dimension: parseable → registry id; unparseable → the raw name
-     * (which won't equal any real dim id, so it's simply never shown).
-     * No world name → null, caller picks a fallback.
+     * that dimension: parseable → registry id; unparseable or blank → not a
+     * shown dimension, and the caller falls back.
      */
     private static String bindDim(String world) {
         if (world == null || world.isBlank()) return null;
