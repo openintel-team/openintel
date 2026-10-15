@@ -132,8 +132,8 @@ public class OIConfig {
     /** Scale of over-head markers — chevron/diamond and the name label together. */
     public float markerScale = DEFAULT_MARKER_SCALE;
 
-    /** Clean TTF text on OpenIntel surfaces instead of the vanilla bitmap font. */
-    public boolean cleanFont = true;
+    /** Clean TTF text on OpenIntel surfaces. Off by default, so Minecraft's font is used until this is turned on. */
+    public boolean cleanFont = false;
 
     /** Bottom-right watermark. Off until turned on under HUD → Elements. */
     public boolean logoHudEnabled = false;
