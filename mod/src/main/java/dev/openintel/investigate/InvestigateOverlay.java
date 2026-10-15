@@ -3,14 +3,13 @@ package dev.openintel.investigate;
 import dev.openintel.snitch.SnitchLogParser;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.core.BlockPos;
-import net.minecraft.gizmos.GizmoProperties;
-import net.minecraft.gizmos.GizmoStyle;
-import net.minecraft.gizmos.Gizmos;
-import net.minecraft.world.phys.AABB;
+import dev.openintel.render.WorldOverlayMesh;
+import net.minecraft.world.phys.Vec3;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 /**
- * Draws investigate playback block outlines via the per-tick gizmo collector
+ * Draws investigate playback block outlines via dedicated world overlay pipelines
  * and a small HUD caption for the selected event.
  */
 public final class InvestigateOverlay {
@@ -26,6 +25,10 @@ public final class InvestigateOverlay {
     public static void tick(Minecraft client) {
         InvestigateSession session = InvestigateSession.get();
         session.tick();
+    }
+
+    public static void collect(Minecraft client, WorldOverlayMesh.Builder mesh) {
+        InvestigateSession session = InvestigateSession.get();
         if (!session.isWatching() || client.level == null) return;
 
         String dim = client.level.dimension().identifier().toString();
@@ -34,13 +37,11 @@ public final class InvestigateOverlay {
         for (int i = 0; i < events.size(); i++) {
             InvestigateSession.Event ev = events.get(i);
             if (!dim.equalsIgnoreCase(ev.dimension())) continue;
-            drawEvent(ev, i == selectedIndex);
+            drawEvent(mesh, ev, i == selectedIndex);
         }
     }
 
-    private static void drawEvent(InvestigateSession.Event ev, boolean selected) {
-        BlockPos pos = new BlockPos(ev.x(), ev.y(), ev.z());
-        AABB box = new AABB(pos).inflate(0.02);
+    private static void drawEvent(WorldOverlayMesh.Builder mesh, InvestigateSession.Event ev, boolean selected) {
         int stroke;
         int fill;
         SnitchLogParser.Kind kind = ev.kind();
@@ -55,19 +56,31 @@ public final class InvestigateOverlay {
             fill = selected ? SELECTED_FILL_OTHER : 0x22FFD60A;
         }
         float width = selected ? 3.5f : 2f;
-        GizmoStyle style = GizmoStyle.strokeAndFill(stroke, width, fill);
-        GizmoProperties props = Gizmos.cuboid(box, style);
-        props.setAlwaysOnTop();
-        if (selected) {
-            Gizmos.billboardTextOverBlock(ev.detail(), pos, 0, stroke, 0.35f).setAlwaysOnTop();
-        }
+        mesh.box(ev.x(), ev.y(), ev.z(), stroke, fill, width, true);
+    }
+
+    private static void renderSelectedLabel(GuiGraphics ctx, Minecraft mc, InvestigateSession.Event event) {
+        if (event == null || mc.level == null || !mc.level.dimension().identifier().toString().equalsIgnoreCase(event.dimension())) return;
+        Vec3 anchor = new Vec3(event.x() + 0.5, event.y() + 1.35, event.z() + 0.5);
+        Vec3 relative = anchor.subtract(mc.gameRenderer.getMainCamera().position());
+        Vector3f local = new Vector3f((float) relative.x, (float) relative.y, (float) relative.z);
+        new Quaternionf(mc.gameRenderer.getMainCamera().rotation()).conjugate().transform(local);
+        if (local.z >= -0.05f) return;
+        Vec3 ndc = mc.gameRenderer.projectPointToScreen(anchor);
+        if (!Double.isFinite(ndc.x) || !Double.isFinite(ndc.y) || Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) return;
+        int x = (int) ((ndc.x * 0.5 + 0.5) * ctx.guiWidth()) - mc.font.width(event.detail()) / 2;
+        int y = (int) ((0.5 - ndc.y * 0.5) * ctx.guiHeight());
+        int color = event.kind() == SnitchLogParser.Kind.BREAK ? BREAK
+                : event.kind() == SnitchLogParser.Kind.PLACE ? PLACE : OTHER;
+        ctx.drawString(mc.font, event.detail(), x, y, color, false);
     }
 
     public static void renderHud(GuiGraphics ctx) {
         InvestigateSession session = InvestigateSession.get();
         if (!session.isWatching()) return;
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
+        if (mc.player == null || mc.options.hideGui || mc.screen != null) return;
+        renderSelectedLabel(ctx, mc, session.current());
         InvestigateSession.Event cur = session.current();
         String line = cur == null
                 ? "Investigate: empty"
@@ -79,6 +92,6 @@ public final class InvestigateOverlay {
         int x = Math.max(4, (ctx.guiWidth() - w) / 2);
         int y = 8;
         ctx.fill(x - 4, y - 2, x + w + 4, y + 12, 0xC0101015);
-        ctx.drawString(font, line, x, y, 0xFFFFFFFF);
+        ctx.drawString(font, line, x, y, 0xFFFFFFFF, false);
     }
 }
