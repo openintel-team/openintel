@@ -40,6 +40,7 @@ public final class WorldOverlayRenderer {
     public static final RenderPipeline LINE_SHADER_DEPTH = pipeline("overlay_line_shader_depth", true, false, -1f);
     private static Object irisApi;
     private static java.lang.reflect.Method shaderPackInUse;
+    private static java.lang.reflect.Method reverseZDuringShaders;
 
     private static RenderPipeline[] pipelines() {
         return new RenderPipeline[]{FILL_DEPTH, FILL_TOP, LINE_DEPTH, LINE_TOP, FILL_SHADER_DEPTH, LINE_SHADER_DEPTH};
@@ -99,6 +100,12 @@ public final class WorldOverlayRenderer {
             Object instance = api.getMethod("getInstance").invoke(null);
             irisApi = instance;
             shaderPackInUse = api.getMethod("isShaderPackInUse");
+            try {
+                reverseZDuringShaders = api.getMethod("isReverseZDuringShaders");
+            } catch (NoSuchMethodException olderIris) {
+                // Older Iris versions used conventional depth for shader packs.
+                reverseZDuringShaders = null;
+            }
             var assign = api.getMethod("assignPipeline", RenderPipeline.class, program);
             for (RenderPipeline p : new RenderPipeline[]{FILL_DEPTH, FILL_TOP, FILL_SHADER_DEPTH})
                 assign.invoke(instance, p, Enum.valueOf(program, "BASIC"));
@@ -109,10 +116,11 @@ public final class WorldOverlayRenderer {
         }
     }
 
-    private static boolean shadersActive() {
+    private static boolean needsConventionalShaderBias() {
         if (shaderPackInUse == null) return false;
         try {
-            return (boolean) shaderPackInUse.invoke(irisApi);
+            if (!(boolean) shaderPackInUse.invoke(irisApi)) return false;
+            return reverseZDuringShaders == null || !(boolean) reverseZDuringShaders.invoke(irisApi);
         } catch (ReflectiveOperationException e) {
             LoggerFactory.getLogger("openintel").error("Unable to query Iris shader state", e);
             shaderPackInUse = null;
@@ -127,9 +135,9 @@ public final class WorldOverlayRenderer {
         // Stable sorting blends far translucent faces before near ones. Lines draw last in each depth mode.
         var faces = mesh.faces().stream().sorted(Comparator.comparingDouble(
                 (WorldOverlayMesh.Face f) -> f.center().distanceToSqr(eye)).reversed()).toList();
-        // Iris 26.3 remaps GREATER to LESS for shader packs but leaves polygon offset unchanged.
-        // Choose the bias sign per draw, so toggling packs does not require a restart or rebuild.
-        boolean shaders = shadersActive();
+        // Current Iris preserves reverse Z; older releases used conventional depth for shader packs.
+        // Query the public API per draw, so either version and pack toggles choose the matching bias.
+        boolean shaders = needsConventionalShaderBias();
         for (boolean top : new boolean[]{false, true}) {
             RenderPipeline fill = top ? FILL_TOP : shaders ? FILL_SHADER_DEPTH : FILL_DEPTH;
             RenderPipeline line = top ? LINE_TOP : shaders ? LINE_SHADER_DEPTH : LINE_DEPTH;
