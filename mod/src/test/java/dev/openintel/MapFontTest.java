@@ -67,10 +67,10 @@ public final class MapFontTest {
         var hook = jm.methods.stream().filter(m -> m.name.equals("openintel$mapLabelFont")).findFirst().orElseThrow();
         check(calls(hook, "getModId") && calls(hook, "withMapFont"), "JourneyMap font scope uses actual overlay ownership");
         check(!hook.desc.contains("journeymap/"), "Optional hook has no hard-linked JourneyMap argument types");
-        var xaero = readClass("dev/openintel/xaero/XaeroBridge");
+        var xaero = readClass("dev/openintel/xaero/XaeroMarkerRenderer");
         var label = xaero.methods.stream().filter(m -> m.name.equals("label")).findFirst().orElseThrow();
         check(calls(label, "withMapFont"), "Xaero scopes measurement and drawing only for our label helper");
-        var render = xaero.methods.stream().filter(m -> m.name.equals("render")).findFirst().orElseThrow();
+        var render = xaero.methods.stream().filter(m -> m.name.equals("renderElement")).findFirst().orElseThrow();
         check(!calls(render, "withMapFont"), "Xaero map-wide rendering is not font-scoped");
         try (var input = MapFontTest.class.getResourceAsStream("/openintel.mixins.json")) {
             var config = com.google.gson.JsonParser.parseReader(new java.io.InputStreamReader(input, java.nio.charset.StandardCharsets.UTF_8));
