@@ -173,6 +173,15 @@ public class OIConfig {
     public int eventFeedX = -1;
     public int eventFeedY = 4;
 
+    /**
+     * Event-feed box in element pixels. Zero keeps the automatic size:
+     * width wraps within a third of the screen and hugs the text, and height
+     * grows with the visible lines. The HUD editor writes both when a corner
+     * or edge is dragged.
+     */
+    public int eventFeedWidth = 0;
+    public int eventFeedHeight = 0;
+
     /** Horizontal alignment of event-feed text within its HUD box. */
     public FeedAlign eventFeedAlign = FeedAlign.RIGHT;
 
