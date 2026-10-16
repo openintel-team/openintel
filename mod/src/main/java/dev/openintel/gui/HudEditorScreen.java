@@ -6,6 +6,7 @@ import dev.openintel.api.hud.HudApi;
 import dev.openintel.api.hud.HudElementDescriptor;
 import dev.openintel.api.hud.HudPosition;
 import dev.openintel.config.OIConfig;
+import dev.openintel.render.EventFeed;
 import dev.openintel.render.HudLayout;
 import dev.openintel.render.HudLayouts;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -22,6 +23,7 @@ public class HudEditorScreen extends Screen {
     private static final int SNAP = 10;
     private final Screen parent;
     private Element dragging;
+    private int resizeEdges;
     private Identifier selectedExternalId;
     private Identifier draggingExternalId;
     private double grabX;
@@ -92,8 +94,12 @@ public class HudEditorScreen extends Screen {
             Box box = boxes.get(i);
             if (!box.contains(click.x(), click.y())) continue;
             dragging = box.element;
-            grabX = click.x() - box.x;
-            grabY = click.y() - box.y;
+            resizeEdges = box.element == Element.EVENTS
+                    ? EventFeed.resizeEdgesAt(box.x, box.y, box.w, box.h, click.x(), click.y()) : 0;
+            if (resizeEdges == 0) {
+                grabX = click.x() - box.x;
+                grabY = click.y() - box.y;
+            }
             return true;
         }
         return false;
@@ -123,7 +129,8 @@ public class HudEditorScreen extends Screen {
             return true;
         }
         if (dragging == null) return super.mouseDragged(click, offsetX, offsetY);
-        move(dragging, click.x() - grabX, click.y() - grabY);
+        if (dragging == Element.EVENTS && resizeEdges != 0) resizeEvents(resizeEdges, click.x(), click.y());
+        else move(dragging, click.x() - grabX, click.y() - grabY);
         return true;
     }
 
@@ -139,6 +146,7 @@ public class HudEditorScreen extends Screen {
     private void finishDrag() {
         if (dragging == null && draggingExternalId == null) return;
         dragging = null;
+        resizeEdges = 0;
         draggingExternalId = null;
         HudApi.getInstance().saveLayout();
     }
@@ -164,7 +172,7 @@ public class HudEditorScreen extends Screen {
                     width / 2, 4, 0xFFFFFFFF);
         }
         if (height >= font.lineHeight * 2 + 12) {
-            String help = "Drag to move; right-click external HUDs to toggle. Markers stay on their edge.";
+            String help = "Drag to move; drag event feed edges or corners to resize. Right-click external HUDs to toggle. Markers stay on their edge.";
             ctx.centeredText(font, font.plainSubstrByWidth(help, Math.max(0, width - 8)),
                     width / 2, font.lineHeight + 7, 0xFFAAAAAA);
         }
@@ -182,6 +190,7 @@ public class HudEditorScreen extends Screen {
         int bg = active ? 0xD02B3545 : 0xB018202C;
         ctx.fill(box.x, box.y, box.x + box.w, box.y + box.h, bg);
         ctx.outline(box.x, box.y, box.w, box.h, active ? 0xFFFFFFFF : box.color);
+        if (box.element == Element.EVENTS) drawEventFeedHandles(ctx, box, mouseX, mouseY);
         ctx.enableScissor(box.x, box.y, box.x + box.w, box.y + box.h);
         try {
             drawBoxLabel(ctx, box);
@@ -209,6 +218,51 @@ public class HudEditorScreen extends Screen {
             ty += font.lineHeight + 2;
         }
         pose.popMatrix();
+    }
+
+    /** Corner ticks on the event feed, with the edge under the pointer drawn solid. */
+    private void drawEventFeedHandles(GuiGraphicsExtractor ctx, Box box, int mouseX, int mouseY) {
+        int edges = box.element == dragging && resizeEdges != 0
+                ? resizeEdges
+                : EventFeed.resizeEdgesAt(box.x, box.y, box.w, box.h, mouseX, mouseY);
+        int grip = Math.max(2, EventFeed.resizeGrip(box.w, box.h));
+        int idle = 0xE0FFFFFF;
+        int hot = 0xFFFFFFFF;
+        int x0 = box.x;
+        int y0 = box.y;
+        int x1 = box.x + box.w;
+        int y1 = box.y + box.h;
+        boolean left = (edges & EventFeed.EDGE_LEFT) != 0;
+        boolean right = (edges & EventFeed.EDGE_RIGHT) != 0;
+        boolean top = (edges & EventFeed.EDGE_TOP) != 0;
+        boolean bottom = (edges & EventFeed.EDGE_BOTTOM) != 0;
+        ctx.fill(x0, y0, x0 + grip, y0 + 2, left || top ? hot : idle);
+        ctx.fill(x0, y0, x0 + 2, y0 + grip, left || top ? hot : idle);
+        ctx.fill(x1 - grip, y0, x1, y0 + 2, right || top ? hot : idle);
+        ctx.fill(x1 - 2, y0, x1, y0 + grip, right || top ? hot : idle);
+        ctx.fill(x0, y1 - 2, x0 + grip, y1, left || bottom ? hot : idle);
+        ctx.fill(x0, y1 - grip, x0 + 2, y1, left || bottom ? hot : idle);
+        ctx.fill(x1 - grip, y1 - 2, x1, y1, right || bottom ? hot : idle);
+        ctx.fill(x1 - 2, y1 - grip, x1, y1, right || bottom ? hot : idle);
+        if (left) ctx.fill(x0, y0, x0 + 2, y1, hot);
+        if (right) ctx.fill(x1 - 2, y0, x1, y1, hot);
+        if (top) ctx.fill(x0, y0, x1, y0 + 2, hot);
+        if (bottom) ctx.fill(x0, y1 - 2, x1, y1, hot);
+    }
+
+    private void resizeEvents(int edges, double mouseX, double mouseY) {
+        if (width <= 0 || height <= 0) return;
+        OIConfig c = OpenIntelClient.config();
+        var frame = HudLayouts.bounds(HudLayouts.Element.EVENTS, minecraft, c, width, height);
+        float scale = HudLayouts.scale(c, width, height);
+        if (!(scale > 0f)) scale = 1f;
+        int minWidth = Math.max(1, Math.min(width, (int) Math.ceil(48 * scale)));
+        int minHeight = Math.max(1, Math.min(height, (int) Math.ceil((font.lineHeight + 2) * scale)));
+        var placed = EventFeed.placedResize(frame.x(), frame.y(), frame.width(), frame.height(), edges,
+                mouseX, mouseY, width, height, minWidth, minHeight, scale,
+                c.hudReferenceWidth, c.hudReferenceHeight);
+        HudLayouts.resizeEvents(c, placed.x(), placed.y(), placed.elementWidth(), placed.elementHeight(),
+                placed.width(), placed.height(), width, height);
     }
 
     private List<ExternalBox> externalBoxes() {
@@ -304,6 +358,7 @@ public class HudEditorScreen extends Screen {
 
     private void reset() {
         dragging = null;
+        resizeEdges = 0;
         draggingExternalId = null;
         selectedExternalId = null;
         OIConfig c = OpenIntelClient.config();
@@ -313,6 +368,8 @@ public class HudEditorScreen extends Screen {
         c.presenceY = 120;
         c.eventFeedX = -1;
         c.eventFeedY = 4;
+        c.eventFeedWidth = 0;
+        c.eventFeedHeight = 0;
         c.armorHudX = 8;
         c.armorHudY = 116;
         c.potionHudX = -1;

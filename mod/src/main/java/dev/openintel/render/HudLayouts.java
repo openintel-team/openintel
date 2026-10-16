@@ -84,6 +84,19 @@ public final class HudLayouts {
         dirty = config;
     }
 
+    /** Stores an explicit event-feed box and the anchor for its top-left corner. */
+    public static void resizeEvents(OIConfig config, int x, int y, int elementWidth, int elementHeight,
+                                    int placedWidth, int placedHeight, int viewportWidth, int viewportHeight) {
+        config.eventFeedWidth = Math.clamp(elementWidth, 1, 32768);
+        config.eventFeedHeight = Math.clamp(elementHeight, 1, 32768);
+        config.eventFeedX = x;
+        config.eventFeedY = y;
+        if (config.hudAnchors == null) config.hudAnchors = new LinkedHashMap<>();
+        config.hudAnchors.put(Element.EVENTS.name(), new OIConfig.HudAnchorState(x, y,
+                HudLayout.capture(x, y, placedWidth, placedHeight, viewportWidth, viewportHeight)));
+        dirty = config;
+    }
+
     private static int x(Element element, OIConfig c) {
         return switch (element) {
             case RADAR -> c.radarX;
