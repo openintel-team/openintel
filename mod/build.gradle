@@ -18,6 +18,10 @@ repositories {
     maven { url = 'https://api.modrinth.com/maven' }
 }
 
+loom {
+    accessWidenerPath = file('src/main/resources/openintel.accesswidener')
+}
+
 dependencies {
     // 1.21.11 ships obfuscated. Official Mojang mappings, Java 21.
     // mod* configurations remap intermediary jars onto those names and pull Mixin
@@ -202,6 +206,13 @@ tasks.register('eventFeedLayoutTest', JavaExec) {
     enableAssertions = true
 }
 
+tasks.register('chatChannelFilterTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.chat.ChatChannelFilterTest'
+    enableAssertions = true
+}
+
 tasks.register('versionPinTest') {
     def propertiesFile = layout.projectDirectory.file('gradle.properties')
     def modJson = layout.projectDirectory.file('src/main/resources/fabric.mod.json')
@@ -221,7 +232,7 @@ tasks.register('versionPinTest') {
     }
 }
 
-check.dependsOn investigatePresentationTest, worldOverlayTest, versionPinTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest
+check.dependsOn investigatePresentationTest, worldOverlayTest, versionPinTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest, chatChannelFilterTest
 
 publishing {
     publications {
