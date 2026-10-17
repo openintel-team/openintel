@@ -3,6 +3,7 @@ package dev.openintel.config;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
+import dev.openintel.chat.ChatChannel;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
@@ -247,6 +248,68 @@ public class OIConfig {
 
     /** Regex matched against incoming chat text to detect a snitch hit. */
     public String snitchPattern = DEFAULT_SNITCH_PATTERN;
+
+    /**
+     * Legacy single selection from the first channel bar. Kept so an older
+     * config can be split into the view toggles below.
+     */
+    public String chatChannel = "chat";
+
+    /** Show regular chat in the open chat box. */
+    public boolean chatViewChat = true;
+
+    /** Show snitch alerts in the open chat box. */
+    public boolean chatViewSnitches = false;
+
+    /** Show hidden-ore reveals in the open chat box. */
+    public boolean chatViewMining = false;
+
+    /** Fade new regular chat lines in while chat is closed. */
+    public boolean chatShowChat = true;
+
+    /** Fade new snitch lines in while chat is closed. */
+    public boolean chatShowSnitches = false;
+
+    /** Fade new hidden-ore reveals in while chat is closed. */
+    public boolean chatShowMining = false;
+
+    public ChatChannel chatChannel() {
+        return ChatChannel.parse(chatChannel);
+    }
+
+    /** Whether this category is included in the open chat box. */
+    public boolean views(ChatChannel channel) {
+        if (channel == null) return false;
+        return switch (channel) {
+            case CHAT -> chatViewChat;
+            case SNITCHES -> chatViewSnitches;
+            case MINING -> chatViewMining;
+        };
+    }
+
+    public boolean showsNew(ChatChannel channel) {
+        if (channel == null) return false;
+        return switch (channel) {
+            case CHAT -> chatShowChat;
+            case SNITCHES -> chatShowSnitches;
+            case MINING -> chatShowMining;
+        };
+    }
+
+    /**
+     * An older config stored one open channel in {@link #chatChannel}. Gson
+     * reads a missing view toggle as false, so those files get the old
+     * selection back. A file that already has the toggles is left alone.
+     */
+    public void repairChatView(JsonObject raw) {
+        if (raw != null && (raw.has("chatViewChat") || raw.has("chatViewSnitches") || raw.has("chatViewMining"))) {
+            return;
+        }
+        ChatChannel selected = chatChannel();
+        chatViewChat = selected == ChatChannel.CHAT;
+        chatViewSnitches = selected == ChatChannel.SNITCHES;
+        chatViewMining = selected == ChatChannel.MINING;
+    }
 
     /** Seconds a snitch-hit marker stays on screen, fading linearly to zero. */
     public int snitchMarkerSeconds = 120;
@@ -504,6 +567,12 @@ public class OIConfig {
                 if (c.armorHudLayout == null) c.armorHudLayout = ArmorHudLayout.HORIZONTAL;
                 if (c.armorHudMode == null) c.armorHudMode = ArmorHudMode.PERCENT;
                 if (c.eventFeedAlign == null) c.eventFeedAlign = FeedAlign.RIGHT;
+                boolean repairChatChannel = c.chatChannel == null
+                        || (!c.chatChannel.equals("chat")
+                        && !c.chatChannel.equals("snitches")
+                        && !c.chatChannel.equals("mining"));
+                if (repairChatChannel) c.chatChannel = "chat";
+                c.repairChatView(raw);
                 // The old default (4096) silently hid teammates across the map.
                 // Migrate it to unlimited; explicit non-default caps survive.
                 if (c.maxMarkerDistance == 4096) c.maxMarkerDistance = 0;
@@ -512,7 +581,12 @@ public class OIConfig {
                 c.warTablePinOpacity = Math.clamp(c.warTablePinOpacity, 30, 150);
                 // Gson leaves a missing boolean false. Relic maps / world-map
                 // pins stay on for configs saved before those toggles existed.
-                boolean defaults = false;
+                boolean defaults = repairChatChannel;
+                // Gson leaves a missing boolean false. The Chat eye starts open.
+                if (!raw.has("chatShowChat")) {
+                    c.chatShowChat = true;
+                    defaults = true;
+                }
                 int opacityBefore = c.relayOpacity;
                 float scaleBefore = c.markerScale;
                 applyMarkerDefaults(c, raw.has("relayOpacity"), raw.has("markerScale"));
