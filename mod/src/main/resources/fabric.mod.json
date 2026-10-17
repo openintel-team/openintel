@@ -17,6 +17,7 @@
     "modmenu": ["dev.openintel.compat.ModMenuIntegration"]
   },
   "mixins": ["openintel.mixins.json"],
+  "accessWidener": "openintel.accesswidener",
   "depends": {
     "fabricloader": ">=0.19.5",
     "fabric-api": "*",
