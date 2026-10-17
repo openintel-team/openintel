@@ -10,6 +10,8 @@
     "GlyphGuiElementMixin",
     "TextRendererMixin",
     "TextRendererAccessor",
+    "ChatChannelBarMixin",
+    "ChatChannelMixin",
     "ChatInputFontMixin",
     "TextGuiFontMixin",
     "HudTextFontMixin",

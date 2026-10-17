@@ -16,6 +16,10 @@ repositories {
     maven { url = 'https://api.modrinth.com/maven' }
 }
 
+loom {
+    accessWidenerPath = file('src/main/resources/openintel.accesswidener')
+}
+
 dependencies {
     // 26.x ships unobfuscated: no mappings, no remapping.
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
@@ -196,7 +200,14 @@ tasks.register('eventFeedLayoutTest', JavaExec) {
     enableAssertions = true
 }
 
-check.dependsOn investigatePresentationTest, worldOverlayTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest
+tasks.register('chatChannelFilterTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.chat.ChatChannelFilterTest'
+    enableAssertions = true
+}
+
+check.dependsOn investigatePresentationTest, worldOverlayTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest, chatChannelFilterTest
 
 publishing {
     publications {
