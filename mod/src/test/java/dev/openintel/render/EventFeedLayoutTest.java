@@ -16,6 +16,8 @@ public final class EventFeedLayoutTest {
         explicitBoxWrapsAndClips();
         resizeKeepsTheOppositeEdge();
         watermarkHiddenByDefault();
+        keepsEightLinesOnScreenAndTheSessionBehindThem();
+        scrollsOlderLinesWhilePinnedToTheNewest();
         System.out.println("EventFeedLayoutTest passed");
     }
 
@@ -148,8 +150,40 @@ public final class EventFeedLayoutTest {
                 "The editor stores the resized box");
     }
 
+    private static void keepsEightLinesOnScreenAndTheSessionBehindThem() {
+        check(EventFeed.firstVisibleIndex(8) == 0, "Eight fresh lines all stay on the HUD");
+        check(EventFeed.firstVisibleIndex(9) == 1, "The ninth line leaves the HUD and stays in the session");
+        check(EventFeed.onScreen(8_000L, 8_000L), "A line is solid through the hold");
+        check(EventFeed.onScreen(9_500L, 8_000L), "The fade still counts as on screen");
+        check(!EventFeed.onScreen(9_501L, 8_000L), "The next millisecond leaves the HUD");
+    }
+
+    private static void scrollsOlderLinesWhilePinnedToTheNewest() {
+        var lines = new ArrayList<EventFeed.FeedLine>();
+        for (int i = 1; i <= 10; i++) lines.add(new EventFeed.FeedLine(Integer.toString(i), i));
+        check(EventFeed.visibleWindow(lines, 4, 0, true).stream().map(EventFeed.FeedLine::text).toList()
+                        .equals(List.of("7", "8", "9", "10")),
+                "A pinned log shows the newest rows");
+        var older = EventFeed.scrollLog(10, 4, 0, true, 1);
+        check(!older.pinned() && older.offset() == 5, "Scrolling up leaves the newest row");
+        check(EventFeed.visibleWindow(lines, 4, older.offset(), older.pinned()).stream()
+                        .map(EventFeed.FeedLine::text).toList().equals(List.of("6", "7", "8", "9")),
+                "The window moves one row toward older lines");
+        var top = EventFeed.scrollLog(10, 4, older.offset(), false, 20);
+        check(!top.pinned() && top.offset() == 0, "Scrolling up stops on the oldest line");
+        check(EventFeed.visibleWindow(lines, 4, top.offset(), top.pinned()).get(0).text().equals("1"),
+                "The oldest line is reachable");
+        var back = EventFeed.scrollLog(10, 4, 5, false, -1);
+        check(back.pinned() && back.offset() == 6, "Scrolling down to the end follows new lines again");
+        check(EventFeed.maxScroll(4, 4) == 0, "A page that already fits does not scroll");
+        check(EventFeed.scrollLog(4, 4, 3, false, 1).pinned(), "Nothing to scroll stays on the newest line");
+        var held = EventFeed.scrollLog(12, 4, 2, false, 0);
+        check(!held.pinned() && held.offset() == 2, "New lines keep a scrolled window where it was");
+    }
+
     private static void watermarkHiddenByDefault() {
         check(!new OIConfig().logoHudEnabled, "The watermark is hidden until it is turned on");
+        check(new OIConfig().eventFeedShowOnChat, "Opening chat shows the session log");
     }
 
     private static void check(boolean condition, String reason) {

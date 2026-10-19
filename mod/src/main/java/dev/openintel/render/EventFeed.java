@@ -28,12 +28,23 @@ import java.util.function.ToDoubleFunction;
  * stays right-aligned to that corner. A dragged box uses that width and height
  * instead. The static hooks below are wired from OpenIntelClient; renderers
  * never call them directly.
+ *
+ * <p>Faded lines stay in a session log until the player leaves the server or
+ * the client disconnects. Opening chat and scrolling over the feed reads that
+ * log; normal play keeps the fading stack.
  */
 public final class EventFeed {
     private EventFeed() { }
 
-    private static final int MAX_ENTRIES = 8;
+    /** On-screen stack. Older session lines stay scrollable past this cap. */
+    private static final int MAX_VISIBLE = 8;
+    /** Bounds one long session. Oldest lines drop first. */
+    private static final int MAX_SESSION = 400;
     private static final long FADE_MS = 1500;
+
+    /** Lines from the oldest session row. The tail is showing when {@code pinned}. */
+    private static int logOffset;
+    private static boolean logPinned = true;
 
     /** HUD-editor resize edges. A corner sets the two edges that meet there. */
     public static final int EDGE_LEFT = 1;
@@ -76,7 +87,7 @@ public final class EventFeed {
         }
         OIConfig cfg = OpenIntelClient.config();
         if (cfg != null && cfg.eventFeedEnabled) {
-            while (entries.size() >= MAX_ENTRIES) entries.pollFirst();
+            while (entries.size() >= MAX_SESSION) entries.pollFirst();
             entries.addLast(new Entry(text, argb, System.currentTimeMillis(), relay));
         }
         ApiBridge.notification(text, argb, "feed");
@@ -105,6 +116,8 @@ public final class EventFeed {
             entries.clear();
             inRender.clear();
             deadNotified.clear();
+            logOffset = 0;
+            logPinned = true;
         } else {
             entries.removeIf(Entry::relay);
         }
@@ -159,45 +172,126 @@ public final class EventFeed {
 
     public static void render(GuiGraphics ctx) {
         OIConfig cfg = OpenIntelClient.config();
-        if (!cfg.eventFeedEnabled || entries.isEmpty()) return;
-
+        if (cfg == null || !cfg.eventFeedEnabled) {
+            logPinned = true;
+            return;
+        }
         Minecraft client = Minecraft.getInstance();
         if (client.player == null || client.options.hideGui) return;
+        if (!chatOpen(client)) logPinned = true;
 
         long now = System.currentTimeMillis();
         long holdMs = cfg.eventFeedSeconds * 1000L;
-        entries.removeIf(e -> now - e.createdAt > holdMs + FADE_MS);
-        if (entries.isEmpty()) return;
-
-        List<Entry> visible = List.copyOf(entries);
-        int lineHeight = client.font.lineHeight + 2;
-        float hudScale = HudLayouts.scale(cfg, ctx.guiWidth(), ctx.guiHeight());
-        List<FeedLine> colored = new ArrayList<>(visible.size());
-        for (Entry e : visible) {
-            long age = now - e.createdAt;
-            float fade = age <= holdMs ? 1f : 1f - (age - holdMs) / (float) FADE_MS;
-            colored.add(new FeedLine(e.text, scaleAlpha(e.color, fade)));
+        List<Entry> session = snapshot();
+        if (session.isEmpty()) {
+            logPinned = true;
+            return;
         }
-        Arrangement arrangement = arrange(colored, ctx.guiWidth(), hudScale, lineHeight, measurer(client),
-                explicitSpan(cfg.eventFeedWidth), explicitSpan(cfg.eventFeedHeight));
-        if (arrangement.lines().isEmpty()) return;
-        HudSize size = new HudSize(arrangement.width(), Math.max(1, arrangement.height()));
-        var frame = HudLayouts.place(HudLayouts.Element.EVENTS, cfg, size,
-                ctx.guiWidth(), ctx.guiHeight());
-        if (frame.scale() <= 0) return;
-        try (var ignored = HudLayouts.apply(ctx, frame)) {
-            int y = 0;
-            boolean cf = CleanFont.active();
-            var measure = measurer(client);
-            for (FeedLine line : arrangement.lines()) {
-                float tw = (float) Math.ceil(measure.applyAsDouble(line.text()));
-                int x = lineX(cfg.eventFeedAlign, size.width(), tw);
-                if (cf) CleanFont.draw(ctx, line.text(), x, y, line.color(), true);
-                else ctx.drawString(client.font, line.text(), x, y, line.color(), true);
-                y += lineHeight;
+        int lineHeight = Math.max(1, client.font.lineHeight + 2);
+        List<Entry> live = liveEntries(session, now, holdMs);
+        Arrangement liveArrangement = liveArrangement(client, cfg, ctx.guiWidth(), ctx.guiHeight(),
+                live, now, holdMs, true);
+        boolean open = chatOpen(client);
+        boolean showOnChat = cfg.eventFeedShowOnChat;
+        if (open && (showOnChat || !logPinned)) {
+            LogRegion region = historyRegion(client, cfg, ctx.guiWidth(), ctx.guiHeight(), session,
+                    showOnChat ? null : liveArrangement);
+            if (!logPinned) {
+                FeedScroll clamped = scrollLog(region.wrapped(), region.visibleRows(), logOffset, false, 0);
+                logOffset = clamped.offset();
+                logPinned = clamped.pinned();
+            }
+            if (showOnChat || !logPinned) {
+                paint(ctx, client, cfg, visibleWindow(region.lines(), region.visibleRows(), logOffset, logPinned),
+                        region.elementWidth(), region.elementHeight(), lineHeight);
+                return;
             }
         }
+        if (open && live.isEmpty()) {
+            LogRegion region = historyRegion(client, cfg, ctx.guiWidth(), ctx.guiHeight(), session, null);
+            if (contains(region.frame(), mouseX(client), mouseY(client))) {
+                paint(ctx, client, cfg, visibleWindow(region.lines(), region.visibleRows(), logOffset, true),
+                        region.elementWidth(), region.elementHeight(), lineHeight);
+                return;
+            }
+        }
+        if (liveArrangement == null) return;
+        paint(ctx, client, cfg, liveArrangement.lines(), liveArrangement.width(),
+                Math.max(1, liveArrangement.height()), lineHeight);
     }
+
+    /**
+     * Scrolls the session log when chat is open and the pointer is over the feed.
+     * Positive {@code vertical} moves toward older lines, matching chat.
+     *
+     * @return true when the wheel belongs to the log
+     */
+    public static boolean scroll(double mouseX, double mouseY, double vertical) {
+        if (!(vertical > 0d || vertical < 0d)) return false;
+        Minecraft client = Minecraft.getInstance();
+        OIConfig cfg = OpenIntelClient.config();
+        if (cfg == null || !cfg.eventFeedEnabled || client.player == null || client.getWindow() == null) return false;
+        if (client.options.hideGui || !chatOpen(client)) return false;
+        List<Entry> session = snapshot();
+        if (session.isEmpty()) return false;
+        int guiW = client.getWindow().getGuiScaledWidth();
+        int guiH = client.getWindow().getGuiScaledHeight();
+        long now = System.currentTimeMillis();
+        Arrangement liveArrangement = liveArrangement(client, cfg, guiW, guiH,
+                liveEntries(session, now, cfg.eventFeedSeconds * 1000L), now, cfg.eventFeedSeconds * 1000L, false);
+        boolean showOnChat = cfg.eventFeedShowOnChat;
+        LogRegion region = historyRegion(client, cfg, guiW, guiH, session, showOnChat ? null : liveArrangement);
+        if (maxScroll(region.wrapped(), region.visibleRows()) <= 0) return false;
+        HudLayout.Frame hit = region.frame();
+        if (!showOnChat && logPinned && liveArrangement != null && liveArrangement.height() > 0) {
+            hit = HudLayouts.place(HudLayouts.Element.EVENTS, cfg,
+                    new HudSize(liveArrangement.width(), Math.max(1, liveArrangement.height())), guiW, guiH);
+        }
+        if (!contains(hit, mouseX, mouseY)) return false;
+        FeedScroll next = scrollLog(region.wrapped(), region.visibleRows(), logOffset, logPinned, vertical);
+        logOffset = next.offset();
+        logPinned = next.pinned();
+        return true;
+    }
+
+    /** Where a wheel notch lands. Positive {@code vertical} reveals older lines. */
+    public static FeedScroll scrollLog(int lineCount, int visibleRows, int offset, boolean pinned, double vertical) {
+        int max = maxScroll(lineCount, visibleRows);
+        int base = pinned ? max : Math.clamp(offset, 0, max);
+        if (!(vertical > 0d || vertical < 0d) || max == 0) return new FeedScroll(base, pinned || max == 0);
+        int delta = (int) Math.round(vertical);
+        if (delta == 0) delta = vertical > 0d ? 1 : -1;
+        int next = Math.clamp(base - delta, 0, max);
+        return new FeedScroll(next, next == max);
+    }
+
+    public static int maxScroll(int lineCount, int visibleRows) {
+        return Math.max(0, lineCount - Math.max(1, visibleRows));
+    }
+
+    /** Rows that fit in the feed, oldest at the start of {@code lines}. */
+    public static List<FeedLine> visibleWindow(List<FeedLine> lines, int visibleRows, int offset, boolean pinned) {
+        if (lines == null || lines.isEmpty()) return List.of();
+        int rows = Math.max(1, visibleRows);
+        int start = Math.clamp(pinned ? maxScroll(lines.size(), rows) : offset, 0, maxScroll(lines.size(), rows));
+        return List.copyOf(lines.subList(start, Math.min(lines.size(), start + rows)));
+    }
+
+    /** Index of the first entry still allowed on the live stack. */
+    public static int firstVisibleIndex(int count) {
+        return Math.max(0, count - MAX_VISIBLE);
+    }
+
+    /** True while a line is holding or fading. The next millisecond drops it from the HUD. */
+    public static boolean onScreen(long ageMs, long holdMs) {
+        return ageMs <= holdMs + FADE_MS;
+    }
+
+    /** Scroll position. {@code offset} counts wrapped lines from the oldest. */
+    public record FeedScroll(int offset, boolean pinned) { }
+
+    private record LogRegion(HudLayout.Frame frame, List<FeedLine> lines, int wrapped,
+                             int visibleRows, int elementWidth, int elementHeight) { }
 
     public static HudSize size(Minecraft client) {
         int viewport = 0;
@@ -210,14 +304,15 @@ public final class EventFeed {
         float scale = cfg == null || viewport <= 0 ? 1f : HudLayouts.scale(cfg, viewport, screenHeight);
         int boxWidth = cfg == null ? 0 : explicitSpan(cfg.eventFeedWidth);
         int boxHeight = cfg == null ? 0 : explicitSpan(cfg.eventFeedHeight);
-        if (entries.isEmpty()) {
+        long holdMs = cfg == null ? 8000L : cfg.eventFeedSeconds * 1000L;
+        List<Entry> live = liveEntries(snapshot(), System.currentTimeMillis(), holdMs);
+        if (live.isEmpty()) {
             int width = boxWidth > 0 ? boxWidth : Math.min(180, maxWidth(Math.max(viewport, 1), scale));
             int height = boxHeight > 0 ? boxHeight : 58;
             return new HudSize(width, height);
         }
         int lineHeight = client.font.lineHeight + 2;
-        List<FeedLine> lines = new ArrayList<>();
-        for (Entry entry : entries) lines.add(new FeedLine(entry.text, entry.color));
+        List<FeedLine> lines = colored(live, System.currentTimeMillis(), holdMs, false);
         Arrangement arrangement = arrange(lines, viewport, scale, lineHeight, measurer(client), boxWidth, boxHeight);
         int height = boxHeight > 0 ? arrangement.height() : Math.max(lineHeight, arrangement.height());
         return new HudSize(arrangement.width(), Math.max(1, height));
@@ -451,6 +546,113 @@ public final class EventFeed {
         }
         int height = lines.isEmpty() ? 0 : lines.size() * row;
         return new Arrangement(List.copyOf(lines), width, height);
+    }
+
+    private static List<Entry> snapshot() {
+        return new ArrayList<>(entries);
+    }
+
+    private static List<Entry> liveEntries(List<Entry> session, long now, long holdMs) {
+        int start = firstVisibleIndex(session.size());
+        List<Entry> live = new ArrayList<>();
+        for (int i = start; i < session.size(); i++) {
+            Entry entry = session.get(i);
+            if (onScreen(now - entry.createdAt, holdMs)) live.add(entry);
+        }
+        return live;
+    }
+
+    private static List<FeedLine> colored(List<Entry> source, long now, long holdMs, boolean fade) {
+        List<FeedLine> lines = new ArrayList<>(source.size());
+        for (Entry entry : source) {
+            float alpha = 1f;
+            if (fade) {
+                long age = now - entry.createdAt;
+                alpha = age <= holdMs ? 1f : 1f - (age - holdMs) / (float) FADE_MS;
+            }
+            lines.add(new FeedLine(entry.text, scaleAlpha(entry.color, alpha)));
+        }
+        return lines;
+    }
+
+    private static Arrangement liveArrangement(Minecraft client, OIConfig cfg, int guiWidth, int guiHeight,
+                                               List<Entry> live, long now, long holdMs, boolean fade) {
+        if (live.isEmpty()) return null;
+        int lineHeight = Math.max(1, client.font.lineHeight + 2);
+        float hudScale = HudLayouts.scale(cfg, guiWidth, guiHeight);
+        Arrangement arrangement = arrange(colored(live, now, holdMs, fade), guiWidth, hudScale, lineHeight,
+                measurer(client), explicitSpan(cfg.eventFeedWidth), explicitSpan(cfg.eventFeedHeight));
+        if (arrangement.lines().isEmpty() || arrangement.height() <= 0) return null;
+        return arrangement;
+    }
+
+    /**
+     * Scroll viewport. An explicit box wins. While lines are still on screen the height
+     * stays that stack, so scrolling does not move it. After they fade, the viewport is
+     * the newest page, up to eight rows.
+     */
+    private static LogRegion historyRegion(Minecraft client, OIConfig cfg, int guiWidth, int guiHeight,
+                                           List<Entry> session, Arrangement live) {
+        int lineHeight = Math.max(1, client.font.lineHeight + 2);
+        float hudScale = HudLayouts.scale(cfg, guiWidth, guiHeight);
+        var measure = measurer(client);
+        int explicitW = explicitSpan(cfg.eventFeedWidth);
+        int explicitH = explicitSpan(cfg.eventFeedHeight);
+        int liveWidth = live == null ? 0 : live.width();
+        int liveHeight = live == null ? 0 : live.height();
+        Arrangement all = arrange(colored(session, 0L, 0L, false), guiWidth, hudScale, lineHeight, measure, explicitW, 0);
+        int elementWidth = Math.max(1, explicitW > 0 ? explicitW : Math.max(liveWidth, all.width()));
+        int elementHeight;
+        if (explicitH > 0) elementHeight = explicitH;
+        else if (liveHeight > 0) elementHeight = liveHeight;
+        else {
+            int from = firstVisibleIndex(session.size());
+            Arrangement newest = arrange(colored(session.subList(from, session.size()), 0L, 0L, false),
+                    guiWidth, hudScale, lineHeight, measure, explicitW > 0 ? explicitW : elementWidth, 0);
+            int rows = Math.min(MAX_VISIBLE, Math.max(1, newest.lines().size()));
+            elementHeight = Math.max(lineHeight, rows * lineHeight);
+        }
+        int visibleRows = Math.max(1, elementHeight / lineHeight);
+        var frame = HudLayouts.place(HudLayouts.Element.EVENTS, cfg,
+                new HudSize(elementWidth, elementHeight), guiWidth, guiHeight);
+        return new LogRegion(frame, all.lines(), all.lines().size(), visibleRows, elementWidth, elementHeight);
+    }
+
+    private static void paint(GuiGraphics ctx, Minecraft client, OIConfig cfg, List<FeedLine> lines,
+                              int elementWidth, int elementHeight, int lineHeight) {
+        if (lines.isEmpty() || elementWidth <= 0 || elementHeight <= 0) return;
+        var frame = HudLayouts.place(HudLayouts.Element.EVENTS, cfg,
+                new HudSize(elementWidth, elementHeight), ctx.guiWidth(), ctx.guiHeight());
+        if (frame.scale() <= 0) return;
+        try (var ignored = HudLayouts.apply(ctx, frame)) {
+            int y = 0;
+            boolean cf = CleanFont.active();
+            var measure = measurer(client);
+            for (FeedLine line : lines) {
+                float tw = (float) Math.ceil(measure.applyAsDouble(line.text()));
+                int x = lineX(cfg.eventFeedAlign, elementWidth, tw);
+                if (cf) CleanFont.draw(ctx, line.text(), x, y, line.color(), true);
+                else ctx.drawString(client.font, line.text(), x, y, line.color(), true);
+                y += lineHeight;
+            }
+        }
+    }
+
+    private static boolean contains(HudLayout.Frame frame, double x, double y) {
+        return frame != null && frame.scale() > 0 && frame.width() > 0 && frame.height() > 0
+                && x >= frame.x() && y >= frame.y() && x < frame.right() && y < frame.bottom();
+    }
+
+    private static boolean chatOpen(Minecraft client) {
+        return client.gui.getChat().isChatFocused();
+    }
+
+    private static double mouseX(Minecraft client) {
+        return client.mouseHandler.getScaledXPos(client.getWindow());
+    }
+
+    private static double mouseY(Minecraft client) {
+        return client.mouseHandler.getScaledYPos(client.getWindow());
     }
 
     private static ToDoubleFunction<String> measurer(Minecraft client) {

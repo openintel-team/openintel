@@ -2,9 +2,9 @@ package dev.openintel.chat;
 
 import java.util.Locale;
 
-/** Display channel for one chat line. Chat is everything that is not a snitch or a hidden-ore reveal. */
+/** Display channel for one chat line. Chat is everything that is not a snitch, a hidden-ore reveal, or an OpenIntel event. */
 public enum ChatChannel {
-    CHAT, SNITCHES, MINING;
+    CHAT, SNITCHES, MINING, EVENTS;
 
     /** Null, blank, and unknown names are Chat. */
     public static ChatChannel parse(String value) {
@@ -12,6 +12,7 @@ public enum ChatChannel {
         return switch (value.trim().toLowerCase(Locale.ROOT)) {
             case "snitches" -> SNITCHES;
             case "mining" -> MINING;
+            case "events", "oi", "oi events" -> EVENTS;
             default -> CHAT;
         };
     }
@@ -21,6 +22,7 @@ public enum ChatChannel {
             case CHAT -> "chat";
             case SNITCHES -> "snitches";
             case MINING -> "mining";
+            case EVENTS -> "events";
         };
     }
 }

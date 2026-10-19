@@ -10,6 +10,16 @@ import java.util.regex.Pattern;
  * could not compile, classifies nothing as snitches.
  */
 public final class ChatChannelFilter {
+    /** Leading mark on OpenIntel status lines, such as "[OpenIntel] ice road on". */
+    public static final String EVENT_PREFIX = "[OpenIntel]";
+
+    /**
+     * A clock, a short bracket tag, or decoration in front of the OpenIntel mark.
+     * The mark itself is not stripped; callers stop once it is at the start.
+     */
+    private static final Pattern LEADING_MARK = Pattern.compile(
+            "^(?:\\[[^\\]\\n]{1,32}]|\\d{1,2}:\\d{2}(?::\\d{2})?(?:\\s*[AaPp][Mm])?|[\\s>«»>*•|-]+)\\s*");
+
     /**
      * The sentence can sit behind a timestamp and in front of a duplicate
      * counter. ChatPatches stores both on the same component, and snitch
@@ -17,15 +27,27 @@ public final class ChatChannelFilter {
      */
     private static final Pattern MINING = Pattern.compile(
             "(?i)you\\s+revealed\\s+(?:an?|\\d+)\\s+hidden\\s+\\[[^\\]]+]\\s*!+");
-    private static final Pattern SECTION_CODE = Pattern.compile("\u00A7.");
+    private static final Pattern SECTION_CODE = Pattern.compile("(?i)\u00A7.|&[0-9a-fk-or]");
 
     private ChatChannelFilter() { }
 
     public static ChatChannel classify(String text, Pattern snitchPattern) {
         String line = plain(text);
+        if (openIntelEvent(line)) return ChatChannel.EVENTS;
         if (snitchPattern != null && snitchPattern.matcher(line).find()) return ChatChannel.SNITCHES;
         if (MINING.matcher(line).find()) return ChatChannel.MINING;
         return ChatChannel.CHAT;
+    }
+
+    private static boolean openIntelEvent(String line) {
+        String rest = line;
+        for (int i = 0; i < 4; i++) {
+            if (rest.startsWith(EVENT_PREFIX)) return true;
+            String stripped = LEADING_MARK.matcher(rest).replaceFirst("");
+            if (stripped.equals(rest)) return false;
+            rest = stripped;
+        }
+        return rest.startsWith(EVENT_PREFIX);
     }
 
     /** Drops legacy color codes, then trims. Styled components already omit them. */
@@ -42,18 +64,28 @@ public final class ChatChannelFilter {
     public static boolean shows(ChatChannel line, boolean chatOpen,
                                 boolean viewChat, boolean viewSnitches, boolean viewMining,
                                 boolean showChat, boolean showSnitches, boolean showMining) {
+        return shows(line, chatOpen, viewChat, viewSnitches, viewMining,
+                showChat, showSnitches, showMining, false, false);
+    }
+
+    public static boolean shows(ChatChannel line, boolean chatOpen,
+                                boolean viewChat, boolean viewSnitches, boolean viewMining,
+                                boolean showChat, boolean showSnitches, boolean showMining,
+                                boolean viewEvents, boolean showEvents) {
         if (line == null) return false;
         if (chatOpen) {
             return switch (line) {
                 case CHAT -> viewChat;
                 case SNITCHES -> viewSnitches;
                 case MINING -> viewMining;
+                case EVENTS -> viewEvents;
             };
         }
         return switch (line) {
             case CHAT -> showChat;
             case SNITCHES -> showSnitches;
             case MINING -> showMining;
+            case EVENTS -> showEvents;
         };
     }
 

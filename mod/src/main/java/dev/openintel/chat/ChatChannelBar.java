@@ -82,11 +82,15 @@ public final class ChatChannelBar {
     public static List<Chip> layout(int screenWidth, int rowY, ToIntFunction<String> textWidth) {
         int y = rowY;
         int x = 2;
+        int limit = Math.max(1, screenWidth);
         List<Chip> chips = new ArrayList<>(ChatChannel.values().length);
         for (ChatChannel channel : ChatChannel.values()) {
-            if (x >= screenWidth) break;
-            int text = Math.max(1, textWidth.applyAsInt(label(channel)));
+            int text = Math.max(1, textWidth == null ? 1 : textWidth.applyAsInt(label(channel)));
             int plateW = PAD_X + text + LABEL_GAP + BELL_W + PAD_X;
+            if (x > 2 && x + plateW > limit) {
+                x = 2;
+                y -= CHIP_H + 2;
+            }
             Bounds plate = new Bounds(x, y, plateW, CHIP_H);
             Bounds name = new Bounds(x + PAD_X, y + PAD_Y, text, TEXT_H);
             int bellY = y + (CHIP_H - BELL_H) / 2;
@@ -113,6 +117,7 @@ public final class ChatChannelBar {
             case CHAT -> "Chat";
             case SNITCHES -> "Snitches";
             case MINING -> "Mining";
+            case EVENTS -> "OI Events";
         };
     }
 }
