@@ -208,6 +208,7 @@ public class OpenIntelClient implements ClientModInitializer {
             RelicMapScanner.clear();
             SnitchRelay.reset();
             reconnectRelay();
+            if (client.getCurrentServer() != null) dev.openintel.update.UpdateChecker.onMultiplayerJoin();
         });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             relay.disconnect();
@@ -225,6 +226,7 @@ public class OpenIntelClient implements ClientModInitializer {
         ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
             ApiBridge.initialize();
             XaeroIntegration.initialize();
+            dev.openintel.update.UpdateChecker.start();
         });
     }
 
@@ -247,7 +249,6 @@ public class OpenIntelClient implements ClientModInitializer {
             return false;
         }
         relay.connect(config.relayUrl, config.token, actual);
-        status("connecting to relay for " + actual);
         return true;
     }
 
