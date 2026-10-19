@@ -68,6 +68,36 @@ public final class ChatChannelFilterTest {
         check(ChatChannelFilter.classify("Steve fell from a high place", SNITCH) == ChatChannel.CHAT, "A death line stays in Chat");
         check(ChatChannelFilter.classify("[OpenIntel] relay connected", SNITCH) == ChatChannel.CHAT,
                 "An OpenIntel status line stays in Chat");
+        check(ChatChannelFilter.classify("<Steve> hello", SNITCH, false) == ChatChannel.CHAT,
+                "A player line without the client mark stays in Chat");
+        check(ChatChannelFilter.classify("Steve fell from a high place", SNITCH, false) == ChatChannel.CHAT,
+                "A server system line without the client mark stays in Chat");
+        check(ChatChannelFilter.classify("You revealed a hidden [Coal Ore] !", SNITCH, false) == ChatChannel.MINING,
+                "An ore reveal without the client mark stays in Mining");
+        check(ChatChannelFilter.classify("* Alex entered snitch at vault", SNITCH, false) == ChatChannel.SNITCHES,
+                "A snitch line without the client mark stays in Snitches");
+        check(ChatChannelFilter.clientOrigin(true, null),
+                "A live client-system line is Client");
+        check(!ChatChannelFilter.clientOrigin(true, "Restored"),
+                "ChatPatches restored history is classified from its text");
+        check(!ChatChannelFilter.clientOrigin(false, null),
+                "A server or player line is never Client");
+        check(ChatChannelFilter.classify("<Steve> hello", SNITCH, ChatChannelFilter.clientOrigin(true, "Restored")) == ChatChannel.CHAT,
+                "A restored player line stays in Chat");
+        check(ChatChannelFilter.classify("* Alex entered snitch at vault", SNITCH, ChatChannelFilter.clientOrigin(true, "Restored")) == ChatChannel.SNITCHES,
+                "A restored snitch line stays in Snitches");
+        check(ChatChannelFilter.classify("You revealed a hidden [Coal Ore] !", SNITCH, ChatChannelFilter.clientOrigin(true, "Restored")) == ChatChannel.MINING,
+                "A restored ore reveal stays in Mining");
+        check(ChatChannelFilter.classify("Waypoint saved", SNITCH, true) == ChatChannel.CLIENT,
+                "A client-marked line is Client even when the words are ordinary");
+        check(ChatChannelFilter.classify("You revealed a hidden [Coal Ore] !", SNITCH, true) == ChatChannel.CLIENT,
+                "A client-marked line stays Client even when it looks like an ore reveal");
+        check(ChatChannelFilter.classify("* Alex entered snitch at vault", SNITCH, true) == ChatChannel.CLIENT,
+                "A client-marked line stays Client even when it looks like a snitch");
+        check(!ChatChannelFilter.shows(ChatChannel.CLIENT, true, true, false, false, true, false, false, false, false),
+                "Client lines stay out of the open Chat view until Client is selected");
+        check(ChatChannelFilter.shows(ChatChannel.CLIENT, true, false, false, false, false, false, false, true, false),
+                "Selecting Client shows a client-marked line");
     }
 
     private static void packsClosedChatToOpenEyes() {
@@ -109,17 +139,18 @@ public final class ChatChannelFilterTest {
     private static void defaultsAndSelectionFallback() {
         OIConfig config = new OIConfig();
         check("chat".equals(config.chatChannel), "Chat is the saved channel");
-        check(config.chatViewChat && !config.chatViewSnitches && !config.chatViewMining,
+        check(config.chatViewChat && !config.chatViewSnitches && !config.chatViewMining && !config.chatViewClient,
                 "The open box starts on Chat only");
         check(config.chatShowChat, "The Chat eye starts open");
         check(!config.chatShowSnitches, "The Snitches eye starts closed");
         check(!config.chatShowMining, "The Mining eye starts closed");
+        check(!config.chatShowClient, "The Client bell starts muted");
         check(config.chatChannel() == ChatChannel.CHAT, "The helper reads Chat");
         check(config.views(ChatChannel.CHAT) && !config.views(ChatChannel.SNITCHES)
-                        && !config.views(ChatChannel.MINING),
+                        && !config.views(ChatChannel.MINING) && !config.views(ChatChannel.CLIENT),
                 "Only Chat is in the open view");
         check(config.showsNew(ChatChannel.CHAT) && !config.showsNew(ChatChannel.SNITCHES)
-                        && !config.showsNew(ChatChannel.MINING),
+                        && !config.showsNew(ChatChannel.MINING) && !config.showsNew(ChatChannel.CLIENT),
                 "Only new Chat lines show while chat is closed");
 
         config.chatChannel = "mining";
@@ -133,7 +164,7 @@ public final class ChatChannelFilterTest {
         JsonObject old = new JsonObject();
         old.addProperty("chatChannel", "snitches");
         migrated.repairChatView(old);
-        check(migrated.chatViewSnitches && !migrated.chatViewChat && !migrated.chatViewMining,
+        check(migrated.chatViewSnitches && !migrated.chatViewChat && !migrated.chatViewMining && !migrated.chatViewClient,
                 "An older single Snitches selection becomes the Snitches view");
         migrated.chatViewChat = true;
         JsonObject saved = new JsonObject();
@@ -150,6 +181,7 @@ public final class ChatChannelFilterTest {
         check(ChatChannel.parse("system") == ChatChannel.CHAT, "An unknown channel name is Chat");
         check(ChatChannel.parse("snitches") == ChatChannel.SNITCHES, "snitches parses");
         check(ChatChannel.parse("mining") == ChatChannel.MINING, "mining parses");
+        check(ChatChannel.parse("client") == ChatChannel.CLIENT, "client parses");
         config.chatChannel = "nope";
         check(config.chatChannel() == ChatChannel.CHAT, "The helper treats an unknown saved channel as Chat");
     }
@@ -175,7 +207,7 @@ public final class ChatChannelFilterTest {
         check(ChatChannelBar.rowY(80, 1, 0, 40, 0) == 2, "A box taller than the screen keeps the chips on screen");
 
         var chips = ChatChannelBar.layout(400, full, text -> text.length() * 6);
-        check(chips.size() == 3, "Chat, Snitches, and Mining each get a chip");
+        check(chips.size() == 4, "Chat, Snitches, Mining, and Client each get a chip");
         check(chipY(chips) == full, "The chips use the row pinned to the chat box");
         check(chips.get(0).plate().x() == 2, "The first chip starts at x = 2");
         check(ChatChannelBar.bellPixel(true, 4, 0) && ChatChannelBar.bellPixel(true, 0, 6),

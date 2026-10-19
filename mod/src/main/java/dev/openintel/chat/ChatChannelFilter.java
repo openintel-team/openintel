@@ -22,6 +22,25 @@ public final class ChatChannelFilter {
     private ChatChannelFilter() { }
 
     public static ChatChannel classify(String text, Pattern snitchPattern) {
+        return classify(text, snitchPattern, false);
+    }
+
+    /**
+     * A live client-system line is Client. ChatPatches restores saved history
+     * through that same mark and stamps the log tag {@code Restored}, so those
+     * lines are classified from their text instead.
+     */
+    public static boolean clientOrigin(boolean systemClient, String logTag) {
+        return systemClient && !"Restored".equals(logTag);
+    }
+
+    /**
+     * {@code clientOrigin} is Minecraft's own client-system mark. It is not a
+     * guess from the text, so a server or player line never takes this path.
+     * That mark wins over the snitch and mining phrases.
+     */
+    public static ChatChannel classify(String text, Pattern snitchPattern, boolean clientOrigin) {
+        if (clientOrigin) return ChatChannel.CLIENT;
         String line = plain(text);
         if (snitchPattern != null && snitchPattern.matcher(line).find()) return ChatChannel.SNITCHES;
         if (MINING.matcher(line).find()) return ChatChannel.MINING;
@@ -42,18 +61,28 @@ public final class ChatChannelFilter {
     public static boolean shows(ChatChannel line, boolean chatOpen,
                                 boolean viewChat, boolean viewSnitches, boolean viewMining,
                                 boolean showChat, boolean showSnitches, boolean showMining) {
+        return shows(line, chatOpen, viewChat, viewSnitches, viewMining,
+                showChat, showSnitches, showMining, false, false);
+    }
+
+    public static boolean shows(ChatChannel line, boolean chatOpen,
+                                boolean viewChat, boolean viewSnitches, boolean viewMining,
+                                boolean showChat, boolean showSnitches, boolean showMining,
+                                boolean viewClient, boolean showClient) {
         if (line == null) return false;
         if (chatOpen) {
             return switch (line) {
                 case CHAT -> viewChat;
                 case SNITCHES -> viewSnitches;
                 case MINING -> viewMining;
+                case CLIENT -> viewClient;
             };
         }
         return switch (line) {
             case CHAT -> showChat;
             case SNITCHES -> showSnitches;
             case MINING -> showMining;
+            case CLIENT -> showClient;
         };
     }
 

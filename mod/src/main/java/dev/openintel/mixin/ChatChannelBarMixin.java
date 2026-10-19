@@ -67,6 +67,7 @@ public abstract class ChatChannelBarMixin extends Screen {
                 case CHAT -> config.chatViewChat = !config.chatViewChat;
                 case SNITCHES -> config.chatViewSnitches = !config.chatViewSnitches;
                 case MINING -> config.chatViewMining = !config.chatViewMining;
+                case CLIENT -> config.chatViewClient = !config.chatViewClient;
             }
             config.save();
             Minecraft.getInstance().gui.getChat().resetChatScroll();
@@ -75,6 +76,7 @@ public abstract class ChatChannelBarMixin extends Screen {
                 case CHAT -> config.chatShowChat = !config.chatShowChat;
                 case SNITCHES -> config.chatShowSnitches = !config.chatShowSnitches;
                 case MINING -> config.chatShowMining = !config.chatShowMining;
+                case CLIENT -> config.chatShowClient = !config.chatShowClient;
             }
             config.save();
         }
