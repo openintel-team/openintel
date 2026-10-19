@@ -214,7 +214,14 @@ tasks.register('versionPinTest', JavaExec) {
     args file('gradle.properties').absolutePath, file('src/main/resources/fabric.mod.json').absolutePath
 }
 
-check.dependsOn investigatePresentationTest, worldOverlayTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest, chatChannelFilterTest, versionPinTest
+tasks.register('releaseUpdateTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.update.ReleaseUpdateTest'
+    enableAssertions = true
+}
+
+check.dependsOn investigatePresentationTest, worldOverlayTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest, chatChannelFilterTest, versionPinTest, releaseUpdateTest
 
 publishing {
     publications {
