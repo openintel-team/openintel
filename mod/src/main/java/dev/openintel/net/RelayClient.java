@@ -199,7 +199,6 @@ public class RelayClient implements WebSocket.Listener {
                             });
                             if (!isCurrentSession(attemptGeneration) || socket.get() != ws) return;
                             ws.request(1);
-                            if (isCurrentSession(attemptGeneration) && socket.get() == ws) onStatus.accept("connected to relay; authenticating");
                         } catch (Exception error) {
                             dropSocket(ws);
                         }
