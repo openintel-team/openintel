@@ -20,6 +20,7 @@ public final class ChatChannelFilterTest {
 
     public static void main(String[] args) throws Exception {
         classifiesDefaultSnitchPhrases();
+        classifiesOpenIntelEvents();
         classifiesHiddenOreReveals();
         leavesOrdinaryLinesInChat();
         packsClosedChatToOpenEyes();
@@ -46,6 +47,32 @@ public final class ChatChannelFilterTest {
         }
     }
 
+    private static void classifiesOpenIntelEvents() {
+        String event = "[OpenIntel] ice road on";
+        String gold = "\u00A76[OpenIntel] \u00A77ice road on";
+        String snitch = "[OpenIntel] * Alex entered snitch at vault";
+        check(ChatChannelFilter.classify(event, SNITCH) == ChatChannel.EVENTS, "An OpenIntel status stays in OI Events");
+        check(ChatChannelFilter.classify(gold, SNITCH) == ChatChannel.EVENTS, "A gold OpenIntel mark still counts");
+        check(ChatChannelFilter.classify(snitch, SNITCH) == ChatChannel.EVENTS,
+                "An OpenIntel snitch does not fall through to Snitches");
+        check(ChatChannelFilter.classify(snitch, SNITCH, true) == ChatChannel.EVENTS,
+                "The OpenIntel mark wins over the client-system mark");
+        check(ChatChannelFilter.classify("[14:02:11] [OpenIntel] ice road on", SNITCH) == ChatChannel.EVENTS,
+                "A timestamp in front of OpenIntel still counts");
+        check(ChatChannelFilter.classify("[14:02:11 PM] [System] [OpenIntel] ice road on", SNITCH) == ChatChannel.EVENTS,
+                "A clock and a bracket tag in front of OpenIntel still count");
+        check(ChatChannelFilter.classify("&6[OpenIntel] &7ice road on", SNITCH) == ChatChannel.EVENTS,
+                "An ampersand color code in front of OpenIntel still counts");
+        check(ChatChannelFilter.classify("<Steve> [OpenIntel] is a mod", SNITCH) == ChatChannel.CHAT,
+                "A player line that mentions OpenIntel stays in Chat");
+        check(!ChatChannelFilter.shows(ChatChannel.EVENTS, true, true, false, false, true, false, false, false, false),
+                "OI Events stays out of the open Chat view until that tab is selected");
+        check(ChatChannelFilter.shows(ChatChannel.EVENTS, true, false, false, false, false, false, false, false, false, true, false),
+                "Selecting OI Events shows an event line");
+        check(ChatChannelFilter.shows(ChatChannel.EVENTS, false, false, false, false, false, false, false, false, false, false, true),
+                "An open OI Events bell fades new lines while chat is closed");
+    }
+
     private static void classifiesHiddenOreReveals() {
         check(ChatChannelFilter.classify("You revealed a hidden [Coal Ore] !", SNITCH) == ChatChannel.MINING,
                 "A singular hidden-ore reveal is Mining");
@@ -66,8 +93,6 @@ public final class ChatChannelFilterTest {
     private static void leavesOrdinaryLinesInChat() {
         check(ChatChannelFilter.classify("<Steve> hello", SNITCH) == ChatChannel.CHAT, "A player line stays in Chat");
         check(ChatChannelFilter.classify("Steve fell from a high place", SNITCH) == ChatChannel.CHAT, "A death line stays in Chat");
-        check(ChatChannelFilter.classify("[OpenIntel] relay connected", SNITCH) == ChatChannel.CHAT,
-                "An OpenIntel status line stays in Chat");
         check(ChatChannelFilter.classify("<Steve> hello", SNITCH, false) == ChatChannel.CHAT,
                 "A player line without the client mark stays in Chat");
         check(ChatChannelFilter.classify("Steve fell from a high place", SNITCH, false) == ChatChannel.CHAT,
@@ -103,8 +128,8 @@ public final class ChatChannelFilterTest {
     private static void packsClosedChatToOpenEyes() {
         List<String> lines = sample();
         List<String> packed = ChatChannelFilter.pack(lines, SNITCH, false, false, true, false, true, false, false);
-        check(packed.equals(List.of("<Steve> hello", "[OpenIntel] relay connected")),
-                "Closed chat with only the Chat eye open hides snitches and ore reveals");
+        check(packed.equals(List.of("<Steve> hello")),
+                "Closed chat with only the Chat eye open hides snitches, ore reveals, and OpenIntel lines");
     }
 
     private static void packsOpenChatToTheSelectedChannels() {
@@ -118,9 +143,8 @@ public final class ChatChannelFilterTest {
         check(both.equals(List.of(
                 "<Steve> hello",
                 "* Alex entered snitch at vault [world 1 2 3]",
-                "[OpenIntel] relay connected",
                 "Alex logged in at spawn")),
-                "Open Chat and Snitches together keep both and still hide ore");
+                "Open Chat and Snitches together keep both and still hide ore and OpenIntel lines");
         List<String> later = ChatChannelFilter.pack(lines, SNITCH, true, true, false, false, false, true, false);
         check(later.contains("<Steve> hello"),
                 "A player line sent while Chat was off is still there when Chat is turned back on");
@@ -139,19 +163,24 @@ public final class ChatChannelFilterTest {
     private static void defaultsAndSelectionFallback() {
         OIConfig config = new OIConfig();
         check("chat".equals(config.chatChannel), "Chat is the saved channel");
-        check(config.chatViewChat && !config.chatViewSnitches && !config.chatViewMining && !config.chatViewClient,
-                "The open box starts on Chat only");
+        check(config.chatViewChat && !config.chatViewSnitches && !config.chatViewMining && !config.chatViewClient
+                        && config.chatViewEvents,
+                "The open box starts on Chat and OI Events");
         check(config.chatShowChat, "The Chat eye starts open");
         check(!config.chatShowSnitches, "The Snitches eye starts closed");
         check(!config.chatShowMining, "The Mining eye starts closed");
         check(!config.chatShowClient, "The Client bell starts muted");
+        check(config.chatShowEvents, "The OI Events bell starts open");
+        check(config.eventLogPlace == OIConfig.EventLogPlace.HUD, "Events stay on the HUD until Chat is chosen");
         check(config.chatChannel() == ChatChannel.CHAT, "The helper reads Chat");
         check(config.views(ChatChannel.CHAT) && !config.views(ChatChannel.SNITCHES)
-                        && !config.views(ChatChannel.MINING) && !config.views(ChatChannel.CLIENT),
-                "Only Chat is in the open view");
+                        && !config.views(ChatChannel.MINING) && !config.views(ChatChannel.CLIENT)
+                        && config.views(ChatChannel.EVENTS),
+                "Chat and OI Events start in the open view");
         check(config.showsNew(ChatChannel.CHAT) && !config.showsNew(ChatChannel.SNITCHES)
-                        && !config.showsNew(ChatChannel.MINING) && !config.showsNew(ChatChannel.CLIENT),
-                "Only new Chat lines show while chat is closed");
+                        && !config.showsNew(ChatChannel.MINING) && !config.showsNew(ChatChannel.CLIENT)
+                        && config.showsNew(ChatChannel.EVENTS),
+                "New Chat and OI Events lines show while chat is closed");
 
         config.chatChannel = "mining";
         config.chatShowMining = true;
@@ -182,6 +211,8 @@ public final class ChatChannelFilterTest {
         check(ChatChannel.parse("snitches") == ChatChannel.SNITCHES, "snitches parses");
         check(ChatChannel.parse("mining") == ChatChannel.MINING, "mining parses");
         check(ChatChannel.parse("client") == ChatChannel.CLIENT, "client parses");
+        check(ChatChannel.parse("events") == ChatChannel.EVENTS, "events parses");
+        check(ChatChannel.parse("OI Events") == ChatChannel.EVENTS, "OI Events parses");
         config.chatChannel = "nope";
         check(config.chatChannel() == ChatChannel.CHAT, "The helper treats an unknown saved channel as Chat");
     }
@@ -207,7 +238,13 @@ public final class ChatChannelFilterTest {
         check(ChatChannelBar.rowY(80, 1, 0, 40, 0) == 2, "A box taller than the screen keeps the chips on screen");
 
         var chips = ChatChannelBar.layout(400, full, text -> text.length() * 6);
-        check(chips.size() == 4, "Chat, Snitches, Mining, and Client each get a chip");
+        check(chips.size() == 5, "Chat, Snitches, Mining, Client, and OI Events each get a chip");
+        check(chips.get(4).channel() == ChatChannel.EVENTS && ChatChannelBar.label(ChatChannel.EVENTS).equals("OI Events"),
+                "The last chip is OI Events");
+        check(chips.get(4).plate().y() == full, "OI Events fits on the chat row at 400px");
+        var wrapped = ChatChannelBar.layout(280, full, text -> text.length() * 6);
+        check(wrapped.size() == 5 && wrapped.get(4).plate().y() < full,
+                "A narrow row moves OI Events up instead of clipping it");
         check(chipY(chips) == full, "The chips use the row pinned to the chat box");
         check(chips.get(0).plate().x() == 2, "The first chip starts at x = 2");
         check(ChatChannelBar.bellPixel(true, 4, 0) && ChatChannelBar.bellPixel(true, 0, 6),
