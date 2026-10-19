@@ -169,6 +169,9 @@ public class OIConfig {
     /** Toast feed for deaths/logouts/enemy sightings. */
     public boolean eventFeedEnabled = true;
 
+    /** Show the session log as soon as chat opens, without waiting for the pointer. */
+    public boolean eventFeedShowOnChat = true;
+
     /** Seconds an event feed line stays fully visible before fading. */
     public int eventFeedSeconds = 8;
     public int eventFeedX = -1;
@@ -185,6 +188,23 @@ public class OIConfig {
 
     /** Horizontal alignment of event-feed text within its HUD box. */
     public FeedAlign eventFeedAlign = FeedAlign.RIGHT;
+
+    /** HUD keeps the corner feed. Chat sends the same lines into the OI Events tab. */
+    public EventLogPlace eventLogPlace = EventLogPlace.HUD;
+
+    /** Where event-log lines are shown. */
+    public enum EventLogPlace {
+        HUD("options.openintel.feed.place.hud"),
+        CHAT("options.openintel.feed.place.chat");
+
+        public final String translationKey;
+        EventLogPlace(String key) { this.translationKey = key; }
+
+        public static EventLogPlace byName(String name) {
+            for (EventLogPlace place : values()) if (place.name().equalsIgnoreCase(name)) return place;
+            return HUD;
+        }
+    }
 
     /** Event feed text alignment inside the HUD box. */
     public enum FeedAlign {
@@ -282,6 +302,12 @@ public class OIConfig {
     /** Fade new client-system lines in while chat is closed. */
     public boolean chatShowClient = false;
 
+    /** Show OpenIntel event lines in the open chat box. */
+    public boolean chatViewEvents = true;
+
+    /** Fade new OpenIntel event lines in while chat is closed. */
+    public boolean chatShowEvents = true;
+
     public ChatChannel chatChannel() {
         return ChatChannel.parse(chatChannel);
     }
@@ -294,6 +320,7 @@ public class OIConfig {
             case SNITCHES -> chatViewSnitches;
             case MINING -> chatViewMining;
             case CLIENT -> chatViewClient;
+            case EVENTS -> chatViewEvents;
         };
     }
 
@@ -304,6 +331,7 @@ public class OIConfig {
             case SNITCHES -> chatShowSnitches;
             case MINING -> chatShowMining;
             case CLIENT -> chatShowClient;
+            case EVENTS -> chatShowEvents;
         };
     }
 
@@ -579,6 +607,7 @@ public class OIConfig {
                 if (c.armorHudLayout == null) c.armorHudLayout = ArmorHudLayout.HORIZONTAL;
                 if (c.armorHudMode == null) c.armorHudMode = ArmorHudMode.PERCENT;
                 if (c.eventFeedAlign == null) c.eventFeedAlign = FeedAlign.RIGHT;
+                if (c.eventLogPlace == null) c.eventLogPlace = EventLogPlace.HUD;
                 boolean repairChatChannel = c.chatChannel == null
                         || (!c.chatChannel.equals("chat")
                         && !c.chatChannel.equals("snitches")
@@ -597,6 +626,19 @@ public class OIConfig {
                 // Gson leaves a missing boolean false. The Chat eye starts open.
                 if (!raw.has("chatShowChat")) {
                     c.chatShowChat = true;
+                    defaults = true;
+                }
+                if (!raw.has("chatViewEvents")) {
+                    c.chatViewEvents = true;
+                    defaults = true;
+                }
+                if (!raw.has("chatShowEvents")) {
+                    c.chatShowEvents = true;
+                    defaults = true;
+                }
+                // Gson leaves a missing boolean false. Opening chat shows the session log.
+                if (!raw.has("eventFeedShowOnChat")) {
+                    c.eventFeedShowOnChat = true;
                     defaults = true;
                 }
                 int opacityBefore = c.relayOpacity;

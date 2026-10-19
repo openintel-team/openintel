@@ -5,6 +5,7 @@ import dev.openintel.OpenIntelClient;
 import dev.openintel.chat.ChatChannel;
 import dev.openintel.chat.ChatChannelBar;
 import dev.openintel.config.OIConfig;
+import dev.openintel.render.EventFeed;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -55,6 +56,12 @@ public abstract class ChatChannelBarMixin extends Screen {
         }
     }
 
+    @Inject(method = "mouseScrolled(DDDD)Z", at = @At("HEAD"), cancellable = true)
+    private void openintel$scrollEventLog(double mouseX, double mouseY, double horizontal, double vertical,
+                                          CallbackInfoReturnable<Boolean> cir) {
+        if (EventFeed.scroll(mouseX, mouseY, vertical)) cir.setReturnValue(true);
+    }
+
     @Inject(method = "mouseClicked(Lnet/minecraft/client/input/MouseButtonEvent;Z)Z", at = @At("HEAD"), cancellable = true)
     private void openintel$channelClick(MouseButtonEvent event, boolean doubled, CallbackInfoReturnable<Boolean> cir) {
         if (event.button() != InputConstants.MOUSE_BUTTON_LEFT) return;
@@ -68,6 +75,7 @@ public abstract class ChatChannelBarMixin extends Screen {
                 case SNITCHES -> config.chatViewSnitches = !config.chatViewSnitches;
                 case MINING -> config.chatViewMining = !config.chatViewMining;
                 case CLIENT -> config.chatViewClient = !config.chatViewClient;
+                case EVENTS -> config.chatViewEvents = !config.chatViewEvents;
             }
             config.save();
             Minecraft.getInstance().gui.getChat().resetChatScroll();
@@ -77,6 +85,7 @@ public abstract class ChatChannelBarMixin extends Screen {
                 case SNITCHES -> config.chatShowSnitches = !config.chatShowSnitches;
                 case MINING -> config.chatShowMining = !config.chatShowMining;
                 case CLIENT -> config.chatShowClient = !config.chatShowClient;
+                case EVENTS -> config.chatShowEvents = !config.chatShowEvents;
             }
             config.save();
         }
