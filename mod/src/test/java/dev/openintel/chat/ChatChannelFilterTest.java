@@ -23,6 +23,7 @@ public final class ChatChannelFilterTest {
         classifiesOpenIntelEvents();
         classifiesHiddenOreReveals();
         leavesOrdinaryLinesInChat();
+        classifiesClientInsertedLines();
         packsClosedChatToOpenEyes();
         packsOpenChatToTheSelectedChannels();
         nullSnitchPatternStaysInChat();
@@ -124,6 +125,61 @@ public final class ChatChannelFilterTest {
         check(ChatChannelFilter.shows(ChatChannel.CLIENT, true, false, false, false, false, false, false, true, false),
                 "Selecting Client shows a client-marked line");
     }
+
+    private static void classifiesClientInsertedLines() {
+        check(ChatChannelFilter.clientOrigin(false, true, null),
+                "A line inserted on the client is Client");
+        check(ChatChannelFilter.clientOrigin(true, false, "System"),
+                "Minecraft's client-system mark is Client");
+        check(!ChatChannelFilter.clientOrigin(false, true, "Restored"),
+                "Restored history is classified from its text");
+        check(!ChatChannelFilter.clientOrigin(true, true, "Restored"),
+                "A restored client-system line is classified from its text");
+        check(ChatChannelFilter.classify("<Steve> hello", SNITCH, ChatChannelFilter.clientOrigin(false, true, null)) == ChatChannel.CLIENT,
+                "A locally inserted line is Client even when it looks like player chat");
+        check(ChatChannelFilter.classify("Steve fell from a high place", SNITCH, ChatChannelFilter.clientOrigin(false, false, null)) == ChatChannel.CHAT,
+                "A server system line stays in Chat");
+        check(ChatChannelFilter.classify("You revealed a hidden [Coal Ore] !", SNITCH, ChatChannelFilter.clientOrigin(false, true, null)) == ChatChannel.CLIENT,
+                "A locally inserted ore line stays Client");
+        check(ChatChannelFilter.classify("[OpenIntel] ice road on", SNITCH, ChatChannelFilter.clientOrigin(false, true, null)) == ChatChannel.EVENTS,
+                "An OpenIntel status stays in OI Events when the client inserted it");
+
+        Object serverLine = new Object();
+        ChatReception.beginServer();
+        ChatReception.observe(serverLine, null);
+        check(!ChatReception.takeLocal(), "A line stored during a server packet is not local");
+        ChatReception.endServer();
+        check(!ChatReception.receiving(), "Server reception ends with the packet");
+
+        Object clientLine = new Object();
+        ChatReception.observe(clientLine, null);
+        check(ChatReception.takeLocal(), "A line stored outside a server packet is local");
+
+        Object queuedServer = new Object();
+        ChatReception.beginServer();
+        ChatReception.observe(queuedServer, null);
+        ChatReception.endServer();
+        ChatReception.observe(queuedServer, null);
+        check(!ChatReception.takeLocal(), "A cancelled server line stays server when the same component is stored later");
+
+        Object queuedClient = new Object();
+        ChatReception.observe(queuedClient, null);
+        ChatReception.observe(queuedClient, null);
+        check(ChatReception.takeLocal(), "A cancelled client line stays local when the same component is stored later");
+
+        Object restored = new Object();
+        ChatReception.observe(restored, "Restored");
+        check(!ChatReception.takeLocal(), "Restored history is not recorded as a live client line");
+
+        ChatReception.beginServer();
+        ChatReception.beginServer();
+        check(ChatReception.receiving(), "Nested server reception stays open");
+        ChatReception.endServer();
+        check(ChatReception.receiving(), "One nested server reception can close");
+        ChatReception.endServer();
+        check(!ChatReception.receiving(), "Server reception is closed after the outer packet");
+    }
+
 
     private static void packsClosedChatToOpenEyes() {
         List<String> lines = sample();
@@ -301,13 +357,24 @@ public final class ChatChannelFilterTest {
                 Class.forName("net.minecraft.client.gui.GuiGraphicsExtractor"), int.class, int.class, float.class);
         screen.getDeclaredMethod("mouseClicked",
                 Class.forName("net.minecraft.client.input.MouseButtonEvent"), boolean.class);
+        chat.getDeclaredMethod("addMessage",
+                Class.forName("net.minecraft.network.chat.Component"),
+                Class.forName("net.minecraft.network.chat.MessageSignature"),
+                Class.forName("net.minecraft.client.multiplayer.chat.GuiMessageSource"),
+                Class.forName("net.minecraft.client.multiplayer.chat.GuiMessageTag"));
         Class.forName("dev.openintel.mixin.ChatChannelMixin");
         Class.forName("dev.openintel.mixin.ChatChannelBarMixin");
+        Class.forName("dev.openintel.mixin.ChatOriginMixin");
+        Class.forName("dev.openintel.mixin.ChatServerPacketMixin");
+        Class.forName("dev.openintel.mixin.ChatServerDelayMixin");
+        Class.forName("dev.openintel.mixin.GuiMessageLocalMixin");
         try (var input = ChatChannelFilterTest.class.getResourceAsStream("/openintel.mixins.json")) {
             check(input != null, "Mixin config is on the test classpath");
             var mixins = JsonParser.parseReader(new InputStreamReader(input, StandardCharsets.UTF_8))
                     .getAsJsonObject().getAsJsonArray("client");
-            for (String name : new String[]{"ChatChannelMixin", "ChatChannelBarMixin"}) {
+            for (String name : new String[]{
+                    "ChatChannelMixin", "ChatChannelBarMixin", "ChatOriginMixin",
+                    "ChatServerPacketMixin", "ChatServerDelayMixin", "GuiMessageLocalMixin"}) {
                 check(mixins.asList().stream().anyMatch(value -> value.getAsString().equals(name)),
                         "Chat channel mixin is registered: " + name);
             }

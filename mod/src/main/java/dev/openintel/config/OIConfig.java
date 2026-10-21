@@ -285,8 +285,9 @@ public class OIConfig {
     public boolean chatViewMining = false;
 
     /**
-     * Show lines Minecraft marked as client-system messages. This is not a
-     * text guess, so server chat and player chat stay out of it.
+     * Show lines the client inserted into chat, including Minecraft's own
+     * client-system messages. Server chat and player chat stay in their own
+     * channels.
      */
     public boolean chatViewClient = false;
 
@@ -299,7 +300,7 @@ public class OIConfig {
     /** Fade new hidden-ore reveals in while chat is closed. */
     public boolean chatShowMining = false;
 
-    /** Fade new client-system lines in while chat is closed. */
+    /** Fade new client-inserted lines in while chat is closed. */
     public boolean chatShowClient = false;
 
     /** Show OpenIntel event lines in the open chat box. */

@@ -5,6 +5,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.chat.ChatChannel;
 import dev.openintel.chat.ChatChannelFilter;
+import dev.openintel.chat.LocalChatMessage;
 import dev.openintel.config.OIConfig;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.multiplayer.chat.GuiMessage;
@@ -177,8 +178,11 @@ public abstract class ChatChannelMixin {
         if (cached != null) return cached;
         String text = parent.content() == null ? "" : parent.content().getString();
         GuiMessageTag tag = parent.tag();
+        // GuiMessage is final, so the injected interface is only visible at runtime.
+        boolean locallyAdded = ((LocalChatMessage) (Object) parent).openintel$isLocal();
         boolean clientOrigin = ChatChannelFilter.clientOrigin(
                 parent.source() == GuiMessageSource.SYSTEM_CLIENT,
+                locallyAdded,
                 tag == null ? null : tag.logTag());
         ChatChannel channel = ChatChannelFilter.classify(text, openintel$cachedPattern, clientOrigin);
         openintel$channels.put(parent, channel);
