@@ -5,8 +5,10 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.chat.ChatChannel;
 import dev.openintel.chat.ChatChannelFilter;
+import dev.openintel.chat.LocalChatMessage;
 import dev.openintel.config.OIConfig;
 import net.minecraft.client.GuiMessage;
+import net.minecraft.client.GuiMessageTag;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.util.FormattedCharSequence;
 import org.spongepowered.asm.mixin.Mixin;
@@ -53,10 +55,12 @@ public abstract class ChatChannelMixin {
     @Unique private boolean openintel$cachedViewChat;
     @Unique private boolean openintel$cachedViewSnitches;
     @Unique private boolean openintel$cachedViewMining;
+    @Unique private boolean openintel$cachedViewClient;
     @Unique private boolean openintel$cachedViewEvents;
     @Unique private boolean openintel$cachedShowChat;
     @Unique private boolean openintel$cachedShowSnitches;
     @Unique private boolean openintel$cachedShowMining;
+    @Unique private boolean openintel$cachedShowClient;
     @Unique private boolean openintel$cachedShowEvents;
     @Unique private String openintel$cachedPatternText;
     @Unique private Pattern openintel$cachedPattern;
@@ -107,10 +111,12 @@ public abstract class ChatChannelMixin {
                 && config.chatViewChat == openintel$cachedViewChat
                 && config.chatViewSnitches == openintel$cachedViewSnitches
                 && config.chatViewMining == openintel$cachedViewMining
+                && config.chatViewClient == openintel$cachedViewClient
                 && config.chatViewEvents == openintel$cachedViewEvents
                 && config.chatShowChat == openintel$cachedShowChat
                 && config.chatShowSnitches == openintel$cachedShowSnitches
                 && config.chatShowMining == openintel$cachedShowMining
+                && config.chatShowClient == openintel$cachedShowClient
                 && config.chatShowEvents == openintel$cachedShowEvents
                 && Objects.equals(config.snitchPattern, openintel$cachedPatternText)) {
             return openintel$cachedVisible;
@@ -120,10 +126,12 @@ public abstract class ChatChannelMixin {
                 || config.chatViewChat != openintel$cachedViewChat
                 || config.chatViewSnitches != openintel$cachedViewSnitches
                 || config.chatViewMining != openintel$cachedViewMining
+                || config.chatViewClient != openintel$cachedViewClient
                 || config.chatViewEvents != openintel$cachedViewEvents
                 || config.chatShowChat != openintel$cachedShowChat
                 || config.chatShowSnitches != openintel$cachedShowSnitches
                 || config.chatShowMining != openintel$cachedShowMining
+                || config.chatShowClient != openintel$cachedShowClient
                 || config.chatShowEvents != openintel$cachedShowEvents) {
             openintel$cachedPatternText = config.snitchPattern;
             openintel$cachedPattern = openintel$compile(config.snitchPattern);
@@ -154,10 +162,12 @@ public abstract class ChatChannelMixin {
         openintel$cachedViewChat = config.chatViewChat;
         openintel$cachedViewSnitches = config.chatViewSnitches;
         openintel$cachedViewMining = config.chatViewMining;
+        openintel$cachedViewClient = config.chatViewClient;
         openintel$cachedViewEvents = config.chatViewEvents;
         openintel$cachedShowChat = config.chatShowChat;
         openintel$cachedShowSnitches = config.chatShowSnitches;
         openintel$cachedShowMining = config.chatShowMining;
+        openintel$cachedShowClient = config.chatShowClient;
         openintel$cachedShowEvents = config.chatShowEvents;
         openintel$cachedVisible = visible;
         return visible;
@@ -170,7 +180,8 @@ public abstract class ChatChannelMixin {
         if (ChatChannelFilter.shows(openintel$channel(group, live), open,
                 config.chatViewChat, config.chatViewSnitches, config.chatViewMining,
                 config.chatShowChat, config.chatShowSnitches, config.chatShowMining,
-                config.chatViewEvents, config.chatShowEvents)) {
+                config.chatViewEvents, config.chatShowEvents,
+                config.chatViewClient, config.chatShowClient)) {
             visible.addAll(group);
         }
     }
@@ -187,8 +198,16 @@ public abstract class ChatChannelMixin {
         int lines = group.size();
         CachedChatChannel cached = openintel$channels.get(anchor);
         if (cached == null || cached.tail != tail || cached.lines != lines) {
-            cached = new CachedChatChannel(tail, lines,
-                    ChatChannelFilter.classify(openintel$groupText(group), openintel$cachedPattern));
+            boolean locallyAdded = false;
+            String logTag = null;
+            for (GuiMessage.Line line : group) {
+                if (((LocalChatMessage) (Object) line).openintel$isLocal()) locallyAdded = true;
+                GuiMessageTag tag = line.tag();
+                if (tag != null && tag.logTag() != null) logTag = tag.logTag();
+            }
+            cached = new CachedChatChannel(tail, lines, ChatChannelFilter.classify(
+                    openintel$groupText(group), openintel$cachedPattern,
+                    ChatChannelFilter.clientOrigin(false, locallyAdded, logTag)));
             openintel$channels.put(anchor, cached);
         }
         if (live != null) live.put(anchor, cached);

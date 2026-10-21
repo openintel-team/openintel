@@ -284,6 +284,12 @@ public class OIConfig {
     /** Show hidden-ore reveals in the open chat box. */
     public boolean chatViewMining = false;
 
+    /**
+     * Show lines the client inserted into chat. Server chat and player chat
+     * stay in their own channels. This starts off.
+     */
+    public boolean chatViewClient = false;
+
     /** Fade new regular chat lines in while chat is closed. */
     public boolean chatShowChat = true;
 
@@ -292,6 +298,9 @@ public class OIConfig {
 
     /** Fade new hidden-ore reveals in while chat is closed. */
     public boolean chatShowMining = false;
+
+    /** Fade new client-inserted lines in while chat is closed. */
+    public boolean chatShowClient = false;
 
     /** Show OpenIntel event lines in the open chat box. */
     public boolean chatViewEvents = true;
@@ -310,6 +319,7 @@ public class OIConfig {
             case CHAT -> chatViewChat;
             case SNITCHES -> chatViewSnitches;
             case MINING -> chatViewMining;
+            case CLIENT -> chatViewClient;
             case EVENTS -> chatViewEvents;
         };
     }
@@ -320,6 +330,7 @@ public class OIConfig {
             case CHAT -> chatShowChat;
             case SNITCHES -> chatShowSnitches;
             case MINING -> chatShowMining;
+            case CLIENT -> chatShowClient;
             case EVENTS -> chatShowEvents;
         };
     }
@@ -337,6 +348,7 @@ public class OIConfig {
         chatViewChat = selected == ChatChannel.CHAT;
         chatViewSnitches = selected == ChatChannel.SNITCHES;
         chatViewMining = selected == ChatChannel.MINING;
+        chatViewClient = selected == ChatChannel.CLIENT;
     }
 
     /** Seconds a snitch-hit marker stays on screen, fading linearly to zero. */

@@ -32,8 +32,40 @@ public final class ChatChannelFilter {
     private ChatChannelFilter() { }
 
     public static ChatChannel classify(String text, Pattern snitchPattern) {
+        return classify(text, snitchPattern, false);
+    }
+
+    /**
+     * A line the client inserted is Client. This version has no client-system
+     * source, so {@code systemClient} stays false here and {@code locallyAdded}
+     * carries the same decision. ChatPatches stamps restored history with the
+     * log tag {@code Restored}, and those lines are classified from their text
+     * instead.
+     */
+    public static boolean clientOrigin(boolean systemClient, String logTag) {
+        return clientOrigin(systemClient, false, logTag);
+    }
+
+    /**
+     * A line the client inserted is Client. {@code systemClient} is Minecraft's
+     * own client-system mark on versions that have one. {@code locallyAdded} is
+     * a line written straight into chat, outside a server packet. ChatPatches
+     * stamps restored history with the log tag {@code Restored}, and those
+     * lines are classified from their text instead.
+     */
+    public static boolean clientOrigin(boolean systemClient, boolean locallyAdded, String logTag) {
+        if ("Restored".equals(logTag)) return false;
+        return systemClient || locallyAdded;
+    }
+
+    /**
+     * {@code clientOrigin} is a line the client inserted. It wins over the
+     * snitch and mining phrases. OpenIntel status lines are decided first.
+     */
+    public static ChatChannel classify(String text, Pattern snitchPattern, boolean clientOrigin) {
         String line = plain(text);
         if (openIntelEvent(line)) return ChatChannel.EVENTS;
+        if (clientOrigin) return ChatChannel.CLIENT;
         if (snitchPattern != null && snitchPattern.matcher(line).find()) return ChatChannel.SNITCHES;
         if (MINING.matcher(line).find()) return ChatChannel.MINING;
         return ChatChannel.CHAT;
@@ -72,12 +104,22 @@ public final class ChatChannelFilter {
                                 boolean viewChat, boolean viewSnitches, boolean viewMining,
                                 boolean showChat, boolean showSnitches, boolean showMining,
                                 boolean viewEvents, boolean showEvents) {
+        return shows(line, chatOpen, viewChat, viewSnitches, viewMining,
+                showChat, showSnitches, showMining, viewEvents, showEvents, false, false);
+    }
+
+    public static boolean shows(ChatChannel line, boolean chatOpen,
+                                boolean viewChat, boolean viewSnitches, boolean viewMining,
+                                boolean showChat, boolean showSnitches, boolean showMining,
+                                boolean viewEvents, boolean showEvents,
+                                boolean viewClient, boolean showClient) {
         if (line == null) return false;
         if (chatOpen) {
             return switch (line) {
                 case CHAT -> viewChat;
                 case SNITCHES -> viewSnitches;
                 case MINING -> viewMining;
+                case CLIENT -> viewClient;
                 case EVENTS -> viewEvents;
             };
         }
@@ -85,6 +127,7 @@ public final class ChatChannelFilter {
             case CHAT -> showChat;
             case SNITCHES -> showSnitches;
             case MINING -> showMining;
+            case CLIENT -> showClient;
             case EVENTS -> showEvents;
         };
     }

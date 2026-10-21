@@ -117,6 +117,7 @@ public final class ChatChannelBar {
             case CHAT -> "Chat";
             case SNITCHES -> "Snitches";
             case MINING -> "Mining";
+            case CLIENT -> "Client";
             case EVENTS -> "OI Events";
         };
     }
