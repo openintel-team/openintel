@@ -41,13 +41,24 @@ public final class ChatChannelFilter {
      * lines are classified from their text instead.
      */
     public static boolean clientOrigin(boolean systemClient, String logTag) {
-        return systemClient && !"Restored".equals(logTag);
+        return clientOrigin(systemClient, false, logTag);
     }
 
     /**
-     * {@code clientOrigin} is Minecraft's own client-system mark. It is not a
-     * guess from the text, so a server or player line never takes this path.
-     * That mark wins over the snitch and mining phrases.
+     * A line the client inserted is Client. {@code systemClient} is Minecraft's
+     * own client-system mark. {@code locallyAdded} is a line written straight
+     * into chat, outside a server packet. ChatPatches stamps restored history
+     * with the log tag {@code Restored}, and those lines are classified from
+     * their text instead.
+     */
+    public static boolean clientOrigin(boolean systemClient, boolean locallyAdded, String logTag) {
+        if ("Restored".equals(logTag)) return false;
+        return systemClient || locallyAdded;
+    }
+
+    /**
+     * {@code clientOrigin} is a line the client inserted. It wins over the
+     * snitch and mining phrases. OpenIntel status lines are decided first.
      */
     public static ChatChannel classify(String text, Pattern snitchPattern, boolean clientOrigin) {
         String line = plain(text);
