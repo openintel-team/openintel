@@ -61,7 +61,7 @@ public final class RangeOverlay {
                         if (cfg.vizSanctuary) {
                             drawDisk(mesh, shape.x + 0.5, shape.y, shape.z + 0.5,
                                     shape.sanctuaryRadius, SANCTUARY_STROKE, SANCTUARY_FILL,
-                                    eye, seeThrough, false);
+                                    eye, seeThrough, false, false);
                         }
                     }
                 }
@@ -74,7 +74,7 @@ public final class RangeOverlay {
             for (Sanctuaries.Sanctuary s : Sanctuaries.all()) {
                 if (s == null || !s.overworld()) continue;
                 drawDisk(mesh, s.x(), groundY, s.z(), s.radius(),
-                        SANCTUARY_STROKE, SANCTUARY_FILL, eye, seeThrough, false);
+                        SANCTUARY_STROKE, SANCTUARY_FILL, eye, seeThrough, false, false);
             }
         }
     }
@@ -100,13 +100,15 @@ public final class RangeOverlay {
 
     static void drawBastion(WorldOverlayMesh.Builder mesh, int bx, int by, int bz, double radius, Vec3 eye, boolean seeThrough) {
         drawDisk(mesh, bx + 0.5, by, bz + 0.5, radius, BASTION_STROKE, BASTION_FILL,
-                eye, seeThrough, true);
+                eye, seeThrough, true, true);
     }
 
     private static void drawDisk(WorldOverlayMesh.Builder mesh, double centerX, int y, double centerZ, double radius,
-                                 int stroke, int fill, Vec3 eye, boolean seeThrough, boolean posts) {
+                                 int stroke, int fill, Vec3 eye, boolean seeThrough, boolean posts, boolean bastion) {
         if (!nearShape(eye, centerX, y + 0.5, centerZ, radius)) return;
-        int[] ring = RangeGeometry.diskRingOffsets(centerX, centerZ, radius);
+        int[] ring = bastion
+                ? RangeGeometry.bastionRingOffsets(radius)
+                : RangeGeometry.diskRingOffsets(centerX, centerZ, radius);
         if (ring.length == 0) return;
         int baseX = (int) Math.floor(centerX);
         int baseZ = (int) Math.floor(centerZ);
@@ -117,18 +119,25 @@ public final class RangeOverlay {
             if (!near(eye, x + 0.5, y + 0.5, z + 0.5)) continue;
             mesh.face(x, y, z, Direction.UP, stroke, fill, 2f, seeThrough);
             mesh.face(x, y, z, Direction.DOWN, stroke, fill, 2f, seeThrough);
-            if (!RangeGeometry.diskCoversBlock(centerX, centerZ, radius, x + 1, z))
+            if (!horizontalCover(bastion, centerX, centerZ, radius, x + 1, z))
                 mesh.face(x, y, z, Direction.EAST, stroke, fill, 2f, seeThrough);
-            if (!RangeGeometry.diskCoversBlock(centerX, centerZ, radius, x - 1, z))
+            if (!horizontalCover(bastion, centerX, centerZ, radius, x - 1, z))
                 mesh.face(x, y, z, Direction.WEST, stroke, fill, 2f, seeThrough);
-            if (!RangeGeometry.diskCoversBlock(centerX, centerZ, radius, x, z + 1))
+            if (!horizontalCover(bastion, centerX, centerZ, radius, x, z + 1))
                 mesh.face(x, y, z, Direction.SOUTH, stroke, fill, 2f, seeThrough);
-            if (!RangeGeometry.diskCoversBlock(centerX, centerZ, radius, x, z - 1))
+            if (!horizontalCover(bastion, centerX, centerZ, radius, x, z - 1))
                 mesh.face(x, y, z, Direction.NORTH, stroke, fill, 2f, seeThrough);
             if (!posts) continue;
             double px = x + 0.5, pz = z + 0.5;
             mesh.line(new Vec3(px, y, pz), new Vec3(px, top, pz), stroke, 1.5f, seeThrough);
         }
+    }
+
+    private static boolean horizontalCover(boolean bastion, double centerX, double centerZ, double radius,
+                                           int blockX, int blockZ) {
+        if (!bastion) return RangeGeometry.diskCoversBlock(centerX, centerZ, radius, blockX, blockZ);
+        return RangeGeometry.bastionDiskCovers((int) Math.floor(centerX), (int) Math.floor(centerZ),
+                blockX, blockZ, radius);
     }
 
     private static double snitchRadius(OIConfig cfg) {
