@@ -296,10 +296,13 @@ public final class ClickGui {
                         "Block ring and a 64-block column from the bastion upward. Protection continues above the column.",
                         bool("options.openintel.viz.bastion", cfg.vizBastion, v -> cfg.vizBastion = v)),
                 new Option(tr("options.openintel.viz.bastion_radius"),
-                        "Horizontal bastion radius in half-block steps. Default 10.5 (diameter 21). Blocks below the bastion are not covered.",
+                        "Default is the Civ+ field, 19 blocks across. Any other value draws a block-center circle of that diameter. Blocks below the bastion are not covered.",
                         halfSlider("options.openintel.viz.bastion_radius", 2, 128,
                                 bastionHalf(cfg.vizBastionRadius),
-                                v -> cfg.vizBastionRadius = v / 2.0)),
+                                v -> {
+                                    cfg.vizBastionRadius = v / 2.0;
+                                    cfg.vizBastionRadiusEdited = v != 21;
+                                })),
                 new Option(tr("options.openintel.viz.sanctuary"),
                         "Block ring for manually placed sanctuary shapes. Radius is per shape.",
                         bool("options.openintel.viz.sanctuary", cfg.vizSanctuary, v -> cfg.vizSanctuary = v)),
@@ -453,12 +456,14 @@ public final class ClickGui {
                 .createButton(Minecraft.getInstance().options, 0, 0, 150);
     }
 
-    /** Slider stored in half-block steps (21 → radius 10.5, diameter 21). */
+    /** Slider stored in half-block steps. 21 keeps the Civ+ field (19 blocks across). */
     private static AbstractWidget halfSlider(String key, int minHalf, int maxHalf, int current,
                                               Consumer<Integer> apply) {
         int clamped = Math.clamp(current, minHalf, maxHalf);
         return new OptionInstance<>(key, OptionInstance.noTooltip(),
-                (text, v) -> text.copy().append(": " + halfText(v) + " (Ø " + v + ")"),
+                (text, v) -> v == 21
+                        ? text.copy().append(": Civ+")
+                        : text.copy().append(": " + halfText(v) + " (Ø " + v + ")"),
                 new OptionInstance.IntRange(minHalf, maxHalf, true),
                 clamped, v -> apply.accept(v))
                 .createButton(Minecraft.getInstance().options, 0, 0, 150);

@@ -12,10 +12,14 @@ import java.util.Map;
  *       is within 8.5 of the snitch center, so the cardinal arm is 8 blocks
  *       and the shoulders step inward (8,8,8,7,7,6,6,4,2). The drawn shape
  *       is the outer shell, not the filled ball.</li>
- *   <li>Bastion: horizontal disk. Default radius 10.5 (diameter 21). Covered
- *       blocks have Y at or above the bastion block. The drawn column is a
- *       guide of {@link #BASTION_COLUMN_HEIGHT} blocks; protection continues
- *       above it, and blocks below the bastion are uncovered.</li>
+ *   <li>Bastion: Civ+ field when the setting is still the default. That field
+ *       is 19 blocks across. From the bastion block outward the row reaches
+ *       are 9,9,9,9,9,8,7,7,5,4. A block is inside when its horizontal
+ *       distance squared is under 100, so the blocks at distance exactly 10
+ *       stay outside. Covered blocks have Y at or above the bastion block.
+ *       The drawn column is a guide of {@link #BASTION_COLUMN_HEIGHT} blocks;
+ *       protection continues above it, and blocks below the bastion are
+ *       uncovered. Any other radius uses a block-center disk.</li>
  *   <li>Sanctuary: the same horizontal disk with a caller-supplied radius.</li>
  * </ul>
  *
@@ -26,13 +30,21 @@ public final class RangeGeometry {
     private RangeGeometry() { }
 
     public static final double SNITCH_RADIUS = 8.0;
+    /**
+     * Setting value that selects the Civ+ bastion field. The field itself is
+     * not a radius-10.5 disk; {@link #BASTION_DIAMETER} is the cardinal width.
+     */
     public static final double BASTION_RADIUS = 10.5;
-    public static final double BASTION_DIAMETER = 21.0;
+    /** Cardinal width of the Civ+ bastion field, bastion block included. */
+    public static final double BASTION_DIAMETER = 19.0;
+    /** dx² + dz² must be strictly under this for the Civ+ field. */
+    private static final int CIV_BASTION_LIMIT_SQ = 100;
     /** Vertical span drawn for bastion columns (damage falloff window). */
     public static final int BASTION_COLUMN_HEIGHT = 64;
 
     private static final Map<Long, int[]> SNITCH_SHELLS = new HashMap<>();
     private static final Map<DiskKey, int[]> DISK_RINGS = new HashMap<>();
+    private static volatile int[] CIV_BASTION_RING;
 
     public static boolean snitchCoversBlock(int originX, int originY, int originZ,
                                             int blockX, int blockY, int blockZ) {
@@ -84,7 +96,50 @@ public final class RangeGeometry {
     public static boolean bastionCoversBlock(int originX, int originY, int originZ,
                                              int blockX, int blockY, int blockZ, double radius) {
         if (blockY < originY) return false;
+        return bastionDiskCovers(originX, originZ, blockX, blockZ, radius);
+    }
+
+    /**
+     * Horizontal bastion footprint. The default setting uses the Civ+ field.
+     * Other radii use the same block-center disk as sanctuaries.
+     */
+    public static boolean bastionDiskCovers(int originX, int originZ,
+                                            int blockX, int blockZ, double radius) {
+        if (!validRadius(radius)) return false;
+        if (civBastion(radius)) {
+            int dx = blockX - originX;
+            int dz = blockZ - originZ;
+            return (long) dx * dx + (long) dz * dz < CIV_BASTION_LIMIT_SQ;
+        }
         return diskCoversBlock(originX + 0.5, originZ + 0.5, radius, blockX, blockZ);
+    }
+
+    /** Perimeter of {@link #bastionDiskCovers}. */
+    public static boolean bastionRingBlock(int originX, int originZ,
+                                           int blockX, int blockZ, double radius) {
+        if (!bastionDiskCovers(originX, originZ, blockX, blockZ, radius)) return false;
+        return !bastionDiskCovers(originX, originZ, blockX + 1, blockZ, radius)
+                || !bastionDiskCovers(originX, originZ, blockX - 1, blockZ, radius)
+                || !bastionDiskCovers(originX, originZ, blockX, blockZ + 1, radius)
+                || !bastionDiskCovers(originX, originZ, blockX, blockZ - 1, radius);
+    }
+
+    /**
+     * Ring offsets packed as dx,dz relative to the bastion block.
+     * Empty when the radius is not drawable.
+     */
+    public static int[] bastionRingOffsets(double radius) {
+        if (!validRadius(radius) || radius > 64) return new int[0];
+        if (!civBastion(radius)) return diskRingOffsets(0.5, 0.5, radius);
+        int[] cached = CIV_BASTION_RING;
+        if (cached != null) return cached;
+        int[] built = buildBastionRing(radius);
+        CIV_BASTION_RING = built;
+        return built;
+    }
+
+    private static boolean civBastion(double radius) {
+        return Double.doubleToLongBits(radius) == Double.doubleToLongBits(BASTION_RADIUS);
     }
 
     public static boolean sanctuaryCoversBlock(int originX, int originZ, double radius,
@@ -161,6 +216,19 @@ public final class RangeGeometry {
         double reach = blocksOut + 0.5;
         double x = dx, y = dy, z = dz;
         return x * x + y * y + z * z <= reach * reach;
+    }
+
+    private static int[] buildBastionRing(double radius) {
+        int r = (int) Math.ceil(radius) + 1;
+        IntBuf buf = new IntBuf();
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dz = -r; dz <= r; dz++) {
+                if (!bastionRingBlock(0, 0, dx, dz, radius)) continue;
+                buf.add(dx);
+                buf.add(dz);
+            }
+        }
+        return buf.toArray();
     }
 
     private static int[] buildDiskRing(double centerX, double centerZ, double radius) {
