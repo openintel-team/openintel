@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import dev.openintel.chat.ChatChannel;
+import dev.openintel.viz.RangeGeometry;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
@@ -402,8 +403,42 @@ public class OIConfig {
     /** Snitch Euclidean radius in blocks (block-center distance). Default 8. */
     public int vizSnitchRadius = 8;
 
-    /** Bastion horizontal radius in blocks. Default 10.5 (diameter 21). */
+    /** Bastion setting. 10.5 selects the Civ+ field (19 blocks across), not a radius-10.5 disk. */
     public double vizBastionRadius = 10.5;
+
+    /**
+     * False until the player moves the bastion slider off Civ+.
+     * Configs saved before this flag existed are treated as unedited when the
+     * radius is still 10.5, so an update lands on the Civ+ field.
+     */
+    public boolean vizBastionRadiusEdited = false;
+
+    /**
+     * Civ+ is the bastion default. A missing setting, or a saved 10.5 from
+     * before the player could mark the slider as edited, stays on that field.
+     * A different saved radius is a real choice and is kept.
+     */
+    public static void applyBastionRadiusDefault(OIConfig config, boolean radiusPresent, boolean editedPresent) {
+        if (!editedPresent) {
+            boolean untouched = !radiusPresent
+                    || !Double.isFinite(config.vizBastionRadius)
+                    || Double.compare(config.vizBastionRadius, RangeGeometry.BASTION_RADIUS) == 0;
+            if (untouched) {
+                config.vizBastionRadius = RangeGeometry.BASTION_RADIUS;
+                config.vizBastionRadiusEdited = false;
+            } else {
+                config.vizBastionRadius = Math.clamp(config.vizBastionRadius, 1.0, 64.0);
+                config.vizBastionRadiusEdited = true;
+            }
+            return;
+        }
+        if (!config.vizBastionRadiusEdited || !Double.isFinite(config.vizBastionRadius)) {
+            config.vizBastionRadius = RangeGeometry.BASTION_RADIUS;
+            config.vizBastionRadiusEdited = false;
+            return;
+        }
+        config.vizBastionRadius = Math.clamp(config.vizBastionRadius, 1.0, 64.0);
+    }
 
     // ------------------------------------------------------- investigate ----
 
@@ -690,11 +725,13 @@ public class OIConfig {
                 } else {
                     c.vizSnitchRadius = Math.clamp(c.vizSnitchRadius, 1, 32);
                 }
-                if (!raw.has("vizBastionRadius") || !Double.isFinite(c.vizBastionRadius)) {
-                    c.vizBastionRadius = 10.5;
+                double bastionRadiusBefore = c.vizBastionRadius;
+                boolean bastionEditedBefore = c.vizBastionRadiusEdited;
+                if (!raw.has("vizBastionRadiusEdited")) defaults = true;
+                applyBastionRadiusDefault(c, raw.has("vizBastionRadius"), raw.has("vizBastionRadiusEdited"));
+                if (Double.compare(bastionRadiusBefore, c.vizBastionRadius) != 0
+                        || bastionEditedBefore != c.vizBastionRadiusEdited) {
                     defaults = true;
-                } else {
-                    c.vizBastionRadius = Math.clamp(c.vizBastionRadius, 1.0, 64.0);
                 }
                 if (!raw.has("investigateCameraMode") || c.investigateCameraMode == null) {
                     c.investigateCameraMode = InvestigateCameraMode.PAN;

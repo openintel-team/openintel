@@ -43,7 +43,7 @@ Upstream OpenIntel's `26.2` line is the base. This tree targets Minecraft `~26.3
 | Nearby relic pins | Every carried relic, gold diamond at eye height | Horizontal range, default **300** blocks (50–2000). Label is name, enchantment, and distance |
 | Chests | No relic sorting | Optional closest-to-furthest sort of located relic maps in chests, barrels, ender chests, and shulkers |
 | Relic library | None | Chest Tracker list of stored treasure maps, searchable by name or enchantment. Where Is It highlights the chests for a selection. Those pins show on the fullscreen world map only while that map was opened from the library |
-| Coverage | None in the client | Block-aligned snitch shells (radius default **8**), bastion disks (radius default **10.5**, diameter 21), and sanctuary rings. Manual shapes persist in `config/openintel-ranges.json`. Live-map sanctuaries reuse the War Table feed |
+| Coverage | None in the client | Block-aligned snitch shells (radius default **8**), the Civ+ bastion field (19 blocks across), and sanctuary rings. Manual shapes persist in `config/openintel-ranges.json`. Live-map sanctuaries reuse the War Table feed |
 | Investigate | None | Paste Discord or in-game snitch logs and step through break, place, and enter highlights. Playback does not write live snitch hits |
 | Snitch alerts without a world | Feed only | HUD and world-map markers still appear. Dimension comes from the snitch name, then the tripper, then the reporter, then the local player. The feed includes Y when the alert has it |
 | Event feed | Presence, sightings, and snitch lines | Defaults to the top-right, right-aligned, wrapping inside about a third of the screen |
@@ -207,7 +207,7 @@ With Chest Tracker installed, its screen grows a **Relic maps** button beside th
 | Shape | Default | Notes |
 |---|---|---|
 | Snitch | Radius 8 | Block shell around the block. Width steps inward from the axis. Logging and notifier are separate kinds |
-| Bastion | Radius 10.5 (diameter 21) | Horizontal disk. Blocks below the bastion are uncovered. A 64-block column is drawn upward. Protection continues above that column |
+| Bastion | Civ+ field, 19 blocks across | Horizontal disk. Row reaches from the bastion are 9,9,9,9,9,8,7,7,5,4. Blocks at distance exactly 10 are outside. Blocks below the bastion are uncovered. A 64-block column is drawn upward. Protection continues above that column. Other slider values draw a block-center circle |
 | Sanctuary | Radius per shape | Same block-center disk. Live-map sanctuaries use the War Table feed and do not need a manual shape |
 
 Snitches on this server are skulk sensors by default and are often disguised, commonly as obsidian. Bastions are sponge. Sanctuaries are beacons. The editor places a shape on the block you are looking at. `/oi visualizations` opens it. See-through draws the wireframe and fill over terrain. Coverage and Investigate use dedicated Fabric render pipelines, registered with Iris when installed. Faces sit on exact block boundaries; depth-tested coverage uses GPU depth bias instead of expanding blocks. These passes preserve world depth for shader packs.

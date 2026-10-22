@@ -10,6 +10,7 @@ public final class RangeShapeTest {
     public static void main(String[] args) throws Exception {
         snitchBlocks();
         bastionBlocks();
+        bastionRadiusMigration();
         sanctuaryBlocks();
         shells();
         renderedShells();
@@ -39,6 +40,8 @@ public final class RangeShapeTest {
             assertFalse(f.onTop(), "Depth-tested coverage stays depth-tested");
             for (var v : new net.minecraft.world.phys.Vec3[]{f.a(), f.b(), f.c(), f.d()}) {
                 assertTrue(v.y >= 64 && v.y <= 65, "No coverage below the bastion block");
+                assertTrue(v.x >= -9 && v.x <= 10, "Bastion field is 19 blocks across");
+                assertTrue(v.z >= -9 && v.z <= 10, "Bastion field is 19 blocks across");
             }
         }
         mesh = new dev.openintel.render.WorldOverlayMesh.Builder();
@@ -76,14 +79,51 @@ public final class RangeShapeTest {
     }
 
     private static void bastionBlocks() {
-        // Diameter 21 → radius 10.5. Offset 10 is inside; offset 11 is the next block out.
-        assertTrue(RangeGeometry.bastionCoversBlock(0, 64, 0, 10, 64, 0), "bastion edge");
-        assertFalse(RangeGeometry.bastionCoversBlock(0, 64, 0, 11, 64, 0), "bastion just past");
-        // 7²+7² = 98 <= 110.25; 8²+7² = 113 just past.
-        assertTrue(RangeGeometry.bastionCoversBlock(0, 64, 0, 7, 64, 7), "bastion diagonal inside");
-        assertFalse(RangeGeometry.bastionCoversBlock(0, 64, 0, 8, 64, 7), "bastion diagonal just past");
-        assertEquals(21.0, RangeGeometry.BASTION_DIAMETER);
+        // Civ+ field, 19 blocks across. Half-widths from the axis: 9,9,9,9,9,8,7,7,5,4.
+        // Blocks at distance exactly 10 — (10,0), (8,6), (6,8) — are outside.
+        int[] shoulder = {9, 9, 9, 9, 9, 8, 7, 7, 5, 4};
+        for (int dz = 0; dz < shoulder.length; dz++) {
+            int edge = shoulder[dz];
+            assertTrue(RangeGeometry.bastionCoversBlock(0, 64, 0, edge, 64, dz),
+                    "bastion shoulder in " + edge + ",0," + dz);
+            assertFalse(RangeGeometry.bastionCoversBlock(0, 64, 0, edge + 1, 64, dz),
+                    "bastion shoulder out " + (edge + 1) + ",0," + dz);
+            assertTrue(RangeGeometry.bastionCoversBlock(0, 64, 0, -edge, 64, -dz),
+                    "bastion shoulder mirrors");
+        }
+        assertFalse(RangeGeometry.bastionCoversBlock(0, 64, 0, 10, 64, 0), "distance 10 axis is outside");
+        assertFalse(RangeGeometry.bastionCoversBlock(0, 64, 0, 8, 64, 6), "distance 10 shoulder is outside");
+        assertFalse(RangeGeometry.bastionCoversBlock(0, 64, 0, 6, 64, 8), "distance 10 shoulder is outside");
+        assertTrue(RangeGeometry.bastionCoversBlock(0, 64, 0, 7, 64, 7), "7,7 is inside");
+        assertEquals(19.0, RangeGeometry.BASTION_DIAMETER);
         assertEquals(10.5, RangeGeometry.BASTION_RADIUS);
+        assertTrue(RangeGeometry.bastionCoversBlock(-10, 64, -10, -19, 64, -10), "negative bastion edge");
+        assertFalse(RangeGeometry.bastionCoversBlock(-10, 64, -10, -20, 64, -10), "negative bastion just past");
+        assertTrue(RangeGeometry.bastionRingBlock(0, 0, 9, 0, RangeGeometry.BASTION_RADIUS), "civ edge is ring");
+        assertFalse(RangeGeometry.bastionRingBlock(0, 0, 0, 0, RangeGeometry.BASTION_RADIUS), "civ center is not ring");
+        assertFalse(RangeGeometry.bastionRingBlock(0, 0, 10, 0, RangeGeometry.BASTION_RADIUS), "distance 10 is not ring");
+        int[] ring = RangeGeometry.bastionRingOffsets(RangeGeometry.BASTION_RADIUS);
+        assertTrue(hasPair(ring, 9, 0), "civ ring includes the axis edge");
+        assertFalse(hasPair(ring, 10, 0), "civ ring omits distance 10");
+        assertFalse(hasPair(ring, 0, 0), "civ ring omits the center");
+        int ringBlocks = 0;
+        int disk = 0;
+        for (int x = -12; x <= 12; x++) {
+            for (int z = -12; z <= 12; z++) {
+                boolean covered = RangeGeometry.bastionDiskCovers(0, 0, x, z, RangeGeometry.BASTION_RADIUS);
+                if (!covered) {
+                    assertFalse(hasPair(ring, x, z), "uncovered civ block in ring " + x + "," + z);
+                    continue;
+                }
+                disk++;
+                boolean onRing = RangeGeometry.bastionRingBlock(0, 0, x, z, RangeGeometry.BASTION_RADIUS);
+                if (onRing) ringBlocks++;
+                assertTrue(onRing == hasPair(ring, x, z), "civ ring list " + x + "," + z);
+            }
+        }
+        assertEquals(305, disk);
+        assertTrue(ringBlocks > 0 && ringBlocks < disk, "civ ring is the perimeter");
+        assertEquals(ringBlocks, ring.length / 2);
         // Below the bastion block is uncovered. At and far above it is covered.
         assertFalse(RangeGeometry.bastionCoversBlock(0, 64, 0, 0, 63, 0), "below bastion");
         assertTrue(RangeGeometry.bastionCoversBlock(0, 64, 0, 0, 64, 0), "at bastion Y");
@@ -93,6 +133,39 @@ public final class RangeShapeTest {
         // Configured radius, not only the default.
         assertTrue(RangeGeometry.bastionCoversBlock(0, 64, 0, 4, 64, 0, 4), "bastion radius 4 edge");
         assertFalse(RangeGeometry.bastionCoversBlock(0, 64, 0, 5, 64, 0, 4), "bastion radius 4 just past");
+    }
+
+    private static void bastionRadiusMigration() {
+        var fresh = new dev.openintel.config.OIConfig();
+        dev.openintel.config.OIConfig.applyBastionRadiusDefault(fresh, false, false);
+        assertEquals(10.5, fresh.vizBastionRadius);
+        assertFalse(fresh.vizBastionRadiusEdited, "A new config uses the Civ+ field");
+
+        var legacy = new dev.openintel.config.OIConfig();
+        legacy.vizBastionRadius = 10.5;
+        dev.openintel.config.OIConfig.applyBastionRadiusDefault(legacy, true, false);
+        assertEquals(10.5, legacy.vizBastionRadius);
+        assertFalse(legacy.vizBastionRadiusEdited, "An unedited saved 10.5 stays the Civ+ field");
+
+        var custom = new dev.openintel.config.OIConfig();
+        custom.vizBastionRadius = 12;
+        dev.openintel.config.OIConfig.applyBastionRadiusDefault(custom, true, false);
+        assertEquals(12.0, custom.vizBastionRadius);
+        assertTrue(custom.vizBastionRadiusEdited, "A radius the player changed is kept");
+
+        var unedited = new dev.openintel.config.OIConfig();
+        unedited.vizBastionRadius = 14;
+        unedited.vizBastionRadiusEdited = false;
+        dev.openintel.config.OIConfig.applyBastionRadiusDefault(unedited, true, true);
+        assertEquals(10.5, unedited.vizBastionRadius);
+        assertFalse(unedited.vizBastionRadiusEdited, "An unedited setting is put back on Civ+");
+
+        var kept = new dev.openintel.config.OIConfig();
+        kept.vizBastionRadius = 12;
+        kept.vizBastionRadiusEdited = true;
+        dev.openintel.config.OIConfig.applyBastionRadiusDefault(kept, true, true);
+        assertEquals(12.0, kept.vizBastionRadius);
+        assertTrue(kept.vizBastionRadiusEdited, "An edited radius survives the next launch");
     }
 
     private static void sanctuaryBlocks() {
@@ -139,9 +212,9 @@ public final class RangeShapeTest {
         assertTrue(shellBlocks > 0 && shellBlocks * 2 < volume, "shell is much smaller than the filled ball");
         assertEquals(shellBlocks, shell.length / 3);
 
-        assertTrue(RangeGeometry.diskRingBlock(0.5, 0.5, 10.5, 10, 0), "bastion edge is ring");
-        assertFalse(RangeGeometry.diskRingBlock(0.5, 0.5, 10.5, 0, 0), "bastion center is not ring");
-        assertFalse(RangeGeometry.diskRingBlock(0.5, 0.5, 10.5, 11, 0), "bastion outside is not ring");
+        assertTrue(RangeGeometry.diskRingBlock(0.5, 0.5, 10.5, 10, 0), "disk edge is ring");
+        assertFalse(RangeGeometry.diskRingBlock(0.5, 0.5, 10.5, 0, 0), "disk center is not ring");
+        assertFalse(RangeGeometry.diskRingBlock(0.5, 0.5, 10.5, 11, 0), "disk outside is not ring");
         int[] ring = RangeGeometry.diskRingOffsets(0.5, 0.5, 10.5);
         assertTrue(hasPair(ring, 10, 0), "ring offsets include edge");
         assertFalse(hasPair(ring, 0, 0), "ring offsets omit center");
