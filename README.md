@@ -421,6 +421,7 @@ All controls are rebindable under the OpenIntel keybind category.
 | Default key | Action |
 |---|---|
 | `R` | Toggle radar |
+| `V` | Toggle range visualizations |
 | `G` | Hold for the shared ping wheel |
 | `0` | Toggle timed attack presses |
 | `-` | Toggle hold attack |

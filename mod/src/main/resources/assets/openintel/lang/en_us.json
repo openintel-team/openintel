@@ -2,6 +2,7 @@
   "key.category.openintel.main": "OpenIntel",
   "key.categories.openintel.main": "OpenIntel",
   "key.openintel.radar": "Toggle radar",
+  "key.openintel.viz": "Toggle range visualizations",
   "key.openintel.hold_attack": "Hold attack",
   "key.openintel.hold_use": "Hold use",
   "key.openintel.attack_macro": "Attack macro",
