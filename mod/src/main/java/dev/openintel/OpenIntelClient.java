@@ -79,6 +79,7 @@ public class OpenIntelClient implements ClientModInitializer {
     public static volatile Runnable jmTick;
 
     private static KeyMapping radarToggleKey;
+    private static KeyMapping vizToggleKey;
     private static KeyMapping holdAttackKey;
     private static KeyMapping holdUseKey;
     private static KeyMapping attackToggleKey;
@@ -102,7 +103,7 @@ public class OpenIntelClient implements ClientModInitializer {
 
     /** All mod keybinds, for display in config screens. */
     public static KeyMapping[] allKeys() {
-        return new KeyMapping[]{radarToggleKey, attackToggleKey, useToggleKey,
+        return new KeyMapping[]{radarToggleKey, vizToggleKey, attackToggleKey, useToggleKey,
                 holdAttackKey, holdUseKey, iceRoadKey, pingKey, warTableKey,
                 investigatePrevKey, investigateNextKey, investigatePlayKey};
     }
@@ -145,6 +146,11 @@ public class OpenIntelClient implements ClientModInitializer {
                 config.radarEnabled = !config.radarEnabled;
                 config.save();
                 status("radar " + (config.radarEnabled ? "on" : "off"));
+            }
+            while (vizToggleKey.consumeClick()) {
+                config.vizEnabled = !config.vizEnabled;
+                config.save();
+                status("ranges " + (config.vizEnabled ? "on" : "off"));
             }
             if (config.pingWheelEnabled && pingKey.consumeClick() && client.player != null
                     && client.screen == null) {
@@ -271,6 +277,7 @@ public class OpenIntelClient implements ClientModInitializer {
 
     private void registerKeybinds() {
         radarToggleKey = keybind("key.openintel.radar", GLFW.GLFW_KEY_R);
+        vizToggleKey = keybind("key.openintel.viz", GLFW.GLFW_KEY_V);
         holdAttackKey = keybind("key.openintel.hold_attack", GLFW.GLFW_KEY_MINUS);
         holdUseKey = keybind("key.openintel.hold_use", GLFW.GLFW_KEY_EQUAL);
         attackToggleKey = keybind("key.openintel.attack_macro", GLFW.GLFW_KEY_0);
