@@ -140,6 +140,7 @@ public final class RangeShapeTest {
         dev.openintel.config.OIConfig.applyBastionRadiusDefault(fresh, false, false);
         assertEquals(10.5, fresh.vizBastionRadius);
         assertFalse(fresh.vizBastionRadiusEdited, "A new config uses the Civ+ field");
+        assertFalse(fresh.vizSeeThrough, "See-through wireframes start off");
 
         var legacy = new dev.openintel.config.OIConfig();
         legacy.vizBastionRadius = 10.5;

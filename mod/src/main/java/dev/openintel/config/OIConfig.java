@@ -397,8 +397,8 @@ public class OIConfig {
     /** Draw sanctuary circles from the live-map API feed. */
     public boolean vizLiveSanctuaries = true;
 
-    /** Draw range wireframes on top of terrain (see through walls). */
-    public boolean vizSeeThrough = true;
+    /** Draw range wireframes on top of terrain (see through walls). Off until enabled. */
+    public boolean vizSeeThrough = false;
 
     /** Snitch Euclidean radius in blocks (block-center distance). Default 8. */
     public int vizSnitchRadius = 8;
@@ -718,7 +718,7 @@ public class OIConfig {
                 if (!raw.has("vizBastion")) { c.vizBastion = true; defaults = true; }
                 if (!raw.has("vizSanctuary")) { c.vizSanctuary = true; defaults = true; }
                 if (!raw.has("vizLiveSanctuaries")) { c.vizLiveSanctuaries = true; defaults = true; }
-                if (!raw.has("vizSeeThrough")) { c.vizSeeThrough = true; defaults = true; }
+                if (!raw.has("vizSeeThrough")) { c.vizSeeThrough = false; defaults = true; }
                 if (!raw.has("vizSnitchRadius")) {
                     c.vizSnitchRadius = 8;
                     defaults = true;
