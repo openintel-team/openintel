@@ -87,6 +87,7 @@ if (process.argv.includes("--self-test")) {
 const http = require("http");
 const express = require("express");
 const { WebSocketServer } = require("ws");
+const { attachRelayTransport } = require("./transport");
 
 const filePath = (name) => path.join(__dirname, name);
 const CONFIG = JSON.parse(fs.readFileSync(filePath("config.json"), "utf8"));
@@ -263,7 +264,8 @@ function noteSeen(name, x, y, z, dim, reporter, kind) {
 const app = express();
 app.use(express.json());
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ noServer: true });
+attachRelayTransport(server, wss, CONFIG.secureWebSocketUrl);
 
 function allegiancePayload(recipient = null) {
   if (isTrial(recipient)) {

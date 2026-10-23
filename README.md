@@ -247,6 +247,8 @@ each change is announced in both the alerts and admin Discord channels.
 ## Quick start
 
 ### Relay server
+
+For encrypted connections, put the relay behind a TLS reverse proxy and set `secureWebSocketUrl` to its public `wss://` URL on the same hostname as the original relay. Updated clients that have a saved `ws://` URL request a secure redirect before sending their token. The relay advertises its configured WSS endpoint only to those clients, so older mods keep working. The client saves the WSS destination as soon as it is advertised; certificate failures and later reconnects never silently fall back to WS. Cross-host and plaintext redirects are rejected. Without a configured secure endpoint, legacy WS connections still work. This first upgrade is opportunistic: an attacker controlling the initial plaintext connection could hide the redirect. Enter a WSS URL directly when you need encryption from the first connection.
 ```bash
 cd relay
 npm ci
