@@ -70,12 +70,10 @@ public final class ClickGui {
         // ---------------------------------------------------------- general
         cats.add(new Category("general", "General", List.of(
                 new Group("Relay connection"),
-                new Option("Relay URL", "WebSocket address of the OpenIntel relay server.",
-                        textField(cfg.relayUrl, "ws://host:port", 512, s -> cfg.relayUrl = s)),
-                new Option("Minecraft server", "Only connect to the relay while playing this server.",
-                        textField(cfg.minecraftServer, "play.example.net", 255, s -> cfg.minecraftServer = s)),
-                new Option("Token", "Your personal relay token. Keep it private.",
-                        textField(cfg.token, "relay token", 256, s -> cfg.token = s)),
+                new Option(tr("options.openintel.relays.title"),
+                        tr("options.openintel.relays.tooltip"),
+                        button(tr("options.openintel.relays.manage"), () -> Minecraft.getInstance()
+                                .setScreenAndShow(new RelaySettingsScreen(self)))),
                 new Option("Live map URL", "Livemap API base used as the War Table backdrop.",
                         textField(cfg.liveMapBase, "https://host/livemap-api", 512, s -> cfg.liveMapBase = s)),
                 new Option("Reconnect", "Save credentials and reconnect to the relay now.",

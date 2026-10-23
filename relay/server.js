@@ -250,13 +250,14 @@ function fmtAge(ms) {
   return `${d}:${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
-function noteSeen(name, x, y, z, dim, reporter, kind) {
+function noteSeen(name, x, y, z, dim, reporter, kind, t = Date.now()) {
   if (typeof name !== "string" || !validName(name)) return;
   if (![x, y, z].every(Number.isFinite)) return;
+  if ((lastSeen.get(lower(name))?.t ?? -Infinity) > t) return;
   lastSeen.set(lower(name), {
     name, x: +x, y: +y, z: +z,
     dim: typeof dim === "string" && dim ? dim : "minecraft:overworld",
-    t: Date.now(), kind, reporter,
+    t, kind, reporter,
   });
 }
 
@@ -268,12 +269,13 @@ const wss = new WebSocketServer({ noServer: true });
 attachRelayTransport(server, wss, CONFIG.secureWebSocketUrl);
 
 function allegiancePayload(recipient = null) {
+  const role = validRole(recipient?.role) ? lower(recipient.role) : "member";
   if (isTrial(recipient)) {
     // Send-only rank: authenticate and report, receive nothing.
-    return { type: "allegiances", users: [], allies: [], enemies: [], focus: [] };
+    return { type: "allegiances", role, users: [], allies: [], enemies: [], focus: [] };
   }
   return {
-    type: "allegiances",
+    type: "allegiances", role,
     users: userNames(),
     allies: ALLEGIANCES.allies,
     enemies: ALLEGIANCES.enemies,
@@ -281,7 +283,150 @@ function allegiancePayload(recipient = null) {
   };
 }
 
+// Bridge IDs identify observations, not authenticated provenance. Never use origin
+// metadata for authorization or visibility. The bounded cache is shared by sockets.
+const BRIDGE_TTL_MS = LAST_SEEN_MS;
+const BRIDGE_MAX_IDS = 10000;
+const bridgeSeen = new Map();
+function validBridge(b, maxHops = 8) {
+  return b && typeof b.id === "string" && b.id.length > 0 && b.id.length <= 160
+    && !/[\u0000-\u001f\u007f]/.test(b.id)
+    && Number.isInteger(b.hops) && b.hops >= 0 && b.hops <= maxHops;
+}
+function claimBridge(b) {
+  const now = Date.now();
+  for (const [id, expiry] of bridgeSeen) {
+    if (expiry > now) break;
+    bridgeSeen.delete(id);
+  }
+  if (bridgeSeen.has(b.id)) return false;
+  if (bridgeSeen.size >= BRIDGE_MAX_IDS) bridgeSeen.delete(bridgeSeen.keys().next().value);
+  bridgeSeen.set(b.id, now + BRIDGE_TTL_MS);
+  return true;
+}
+function newBridge(candidate) {
+  return validBridge(candidate) ? { id: candidate.id, hops: candidate.hops }
+    : { id: crypto.randomBytes(16).toString("hex"), hops: 0 };
+}
+function localBridge(candidate) {
+  const bridge = newBridge(candidate);
+  return claimBridge(bridge) ? bridge : null;
+}
+function validDimension(dim) {
+  return typeof dim === "string" && /^[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(dim) && dim.length <= 128;
+}
+function validCoordinates(e) {
+  return [e.x, e.y, e.z].every(v => Number.isFinite(v) && Math.abs(v) <= 30000000);
+}
+function snitchDimension(value) {
+  if (typeof value !== "string" || !value.length || value.length > 128
+      || /[\u0000-\u001f\u007f]/.test(value)) return null;
+  const aliases = { world: "minecraft:overworld", overworld: "minecraft:overworld",
+    world_nether: "minecraft:the_nether", nether: "minecraft:the_nether",
+    the_nether: "minecraft:the_nether", world_the_end: "minecraft:the_end",
+    the_end: "minecraft:the_end", end: "minecraft:the_end" };
+  return Object.hasOwn(aliases, lower(value)) ? aliases[lower(value)] : value;
+}
+function bridgeOrigin(e) {
+  const source = e.origin && typeof e.origin === "object" ? e.origin : e;
+  const origin = {};
+  for (const key of ["from", "reporter"]) {
+    if (typeof source[key] === "string" && source[key].length <= 64
+        && !/[\u0000-\u001f\u007f]/.test(source[key])) origin[key] = source[key];
+  }
+  return origin;
+}
+function handleBridge(ws, user, event) {
+  if (user.quarantined || !event || typeof event !== "object" || !validBridge(event.bridge, 7)) return;
+  const type = event.type;
+  if (!["snitch", "ping", "where", "position", "wartable"].includes(type)) return;
+  if (type === "wartable" && (!isAdmin(user) || !["add", "delete"].includes(event.action))) return;
+  const now = Date.now();
+  const maxAge = type === "position" ? STALE_MS
+    : type === "ping" ? Math.min(Number.isFinite(event.ttl) ? Math.max(0, event.ttl) : 60000, 300000)
+    : type === "snitch" ? 600000 : LAST_SEEN_MS;
+  if (!Number.isFinite(event.t) || event.t > now + 5000 || now - event.t > maxAge) return;
+  if (type !== "wartable") {
+    if (type === "snitch") {
+      const coordinateCount = ["x", "y", "z"].filter(key => Object.hasOwn(event, key)).length;
+      if (coordinateCount !== 0 && (coordinateCount !== 3 || !validCoordinates(event))) return;
+      if (coordinateCount === 0 && (typeof event.message !== "string" || !event.message.trim()
+          || event.message.length > 1500 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(event.message))) return;
+      for (const key of ["dim", "world"]) {
+        if (event[key] != null && snitchDimension(event[key]) == null) return;
+      }
+    } else if (!validCoordinates(event) || !validDimension(event.dim ?? event.world)) return;
+    const bridgeName = value => typeof value === "string" && validName(value);
+    if ((type === "position" && !bridgeName(event.name))
+        || (type === "where" && !bridgeName(event.player))
+        || (event.player != null && !bridgeName(event.player))
+        || (event.name != null && !bridgeName(event.name))) return;
+  } else if (event.action === "add" ? !validStroke(event.stroke)
+      : typeof event.id !== "string" || !/^[A-Za-z0-9_-]{4,64}$/.test(event.id)) return;
+  for (const key of ["message", "label", "snitch", "action", "eventKind", "kind", "id"]) {
+    if (event[key] != null && (typeof event[key] !== "string" || event[key].length > 1500)) return;
+  }
+  if (!claimBridge(event.bridge)) return;
+  const bridge = { id: event.bridge.id, hops: event.bridge.hops + 1 };
+  const clean = { type, t: event.t, bridge, origin: bridgeOrigin(event), from: user.name, reporter: user.name };
+  if (type === "wartable") {
+    clean.action = event.action;
+    if (event.action === "add") {
+      const s = event.stroke;
+      clean.stroke = { id: s.id, tool: s.tool.toLowerCase(), points: [...s.points], color: s.color,
+        width: s.width, from: user.name, t: event.t, bridge, origin: clean.origin };
+      if (s.label != null) clean.stroke.label = s.label;
+      const existing = WARTABLE.strokes.find(s => s.id === event.stroke.id);
+      if (existing && existing.t > event.t) return;
+      if (!existing && WARTABLE.strokes.length >= WARTABLE_MAX_STROKES) return;
+      WARTABLE.strokes = WARTABLE.strokes.filter(s => s.id !== event.stroke.id);
+      WARTABLE.strokes.push(clean.stroke);
+    } else {
+      clean.id = event.id;
+      if (WARTABLE.strokes.some(s => s.id === event.id && s.t > event.t)) return;
+      WARTABLE.strokes = WARTABLE.strokes.filter(s => s.id !== event.id);
+    }
+    saveJson("wartable.json", WARTABLE);
+  } else {
+    if (type === "snitch") {
+      if (validCoordinates(event)) Object.assign(clean, { x: event.x, y: event.y, z: event.z });
+      for (const key of ["dim", "world"]) {
+        if (event[key] != null) clean[key] = snitchDimension(event[key]);
+      }
+      const dimension = clean.dim ?? clean.world;
+      if (validDimension(dimension) && dimension !== "openintel:unknown") clean.dim = dimension;
+    } else Object.assign(clean, { x: event.x, y: event.y, z: event.z, dim: event.dim ?? event.world });
+    for (const key of ["player", "name", "message", "label", "snitch", "action", "eventKind", "kind", "id"])
+      if (event[key] != null) clean[key] = event[key];
+    if (type === "ping") {
+      clean.ttl = Math.min(Number.isFinite(event.ttl) ? Math.max(0, event.ttl) : 60000, 300000);
+      if (Number.isInteger(event.color)) clean.color = event.color;
+    }
+    if (type === "position") {
+      const key = `${lower(event.name)}@${lower(user.name)}`;
+      if ((positions.get(key)?.t ?? -Infinity) > event.t) return;
+      positions.set(key, clean);
+      noteSeen(event.name, clean.x, clean.y, clean.z, clean.dim, user.name, "position", event.t);
+      return;
+    }
+    if (type === "where" || (type === "snitch" && validCoordinates(clean)
+        && validName(clean.player) && validDimension(clean.dim) && clean.dim !== "openintel:unknown"))
+      noteSeen(event.player, clean.x, clean.y, clean.z, clean.dim, user.name, type === "snitch" ? "snitch" : "position", event.t);
+  }
+  broadcast(clean);
+}
+
 function broadcast(obj) {
+  if (["snitch", "ping", "where", "wartable"].includes(obj.type) && !(obj.type === "wartable" && obj.action === "clear")) {
+    if (!validBridge(obj.bridge)) {
+      obj.bridge = newBridge(null);
+      claimBridge(obj.bridge);
+    }
+    if (obj.t == null) obj.t = obj.stroke?.t ?? Date.now();
+    if (obj.type === "wartable" && obj.action === "add") {
+      obj.stroke.bridge = obj.bridge;
+    }
+  }
   const delivered = new Set();
   const snitchDecisions = new Map();
   for (const client of wss.clients) {
@@ -401,6 +546,7 @@ wss.on("connection", (ws, req) => {
   ws.on("message", (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
+    if (!msg || typeof msg !== "object" || Array.isArray(msg)) return;
 
     if (msg.type === "hello") {
       const user = userByToken(msg.token);
@@ -423,7 +569,7 @@ wss.on("connection", (ws, req) => {
       ws.role = validRole(user.role) ? lower(user.role) : "member";
       ws.visibilityKey = visibilityKey(user, USERS.users);
       ws.send(JSON.stringify({ ...allegiancePayload(user), type: "welcome", minecraftServer: MINECRAFT_SERVER,
-        role: ws.role, relayCut: user.relayCut === true }));
+        role: ws.role, relayCut: user.relayCut === true, bridgeVersion: 1 }));
       if (!isTrial(user)) ws.send(JSON.stringify(wartableSync(user)));
       adminLog(`✅ **${user.name}** connected (${ws.role})`);
       return;
@@ -436,6 +582,11 @@ wss.on("connection", (ws, req) => {
       return;
     }
     ws.role = validRole(user.role) ? lower(user.role) : "member";
+
+    if (msg.type === "bridge") {
+      handleBridge(ws, user, msg.event);
+      return;
+    }
 
     if (msg.type === "cut") {
       if (!isAdmin(user)) {
@@ -489,7 +640,10 @@ wss.on("connection", (ws, req) => {
           ws.send(JSON.stringify({ type: "notice", msg: "invalid map stroke rejected" }));
           return;
         }
+        const bridge = localBridge(msg.bridge ?? stroke.bridge);
+        if (!bridge) return;
         const clean = {
+          bridge,
           id: stroke.id,
           tool: String(stroke.tool).toLowerCase(),
           color: stroke.color,
@@ -507,16 +661,18 @@ wss.on("connection", (ws, req) => {
         }
         WARTABLE.strokes.push(clean);
         saveJson("wartable.json", WARTABLE);
-        broadcast({ type: "wartable", action: "add", stroke: clean, from: ws.authedAs });
+        broadcast({ type: "wartable", action: "add", stroke: clean, bridge: clean.bridge, t: clean.t, from: ws.authedAs });
         return;
       }
       if (action === "delete") {
+        const bridge = localBridge(msg.bridge);
+        if (!bridge) return;
         const id = String(msg.id ?? "");
         const before = WARTABLE.strokes.length;
         WARTABLE.strokes = WARTABLE.strokes.filter((s) => s.id !== id);
         if (WARTABLE.strokes.length !== before) {
           saveJson("wartable.json", WARTABLE);
-          broadcast({ type: "wartable", action: "delete", id, from: ws.authedAs });
+          broadcast({ type: "wartable", action: "delete", id, bridge, from: ws.authedAs });
         }
         return;
       }
@@ -541,7 +697,11 @@ wss.on("connection", (ws, req) => {
     if (msg.type === "ping" || msg.type === "snitch") {
       if (user.quarantined) return;
       // Several clients can see the same snitch line — don't multiply it.
+      const bridge = localBridge(msg.bridge);
+      if (!bridge) return;
+      msg.bridge = bridge;
       msg.from = ws.authedAs;
+      msg.reporter = ws.authedAs;
       msg.t = Date.now();
       broadcast(msg);
       if (msg.type === "snitch" && msg.player)
@@ -555,8 +715,10 @@ wss.on("connection", (ws, req) => {
       for (const r of msg.reports.slice(0, 100)) {
         if (typeof r.subject !== "string" || !validName(r.subject)) continue;
         if (![r.x, r.y, r.z].every(Number.isFinite) || typeof r.dim !== "string") continue;
+        const bridge = localBridge(r.bridge);
+        if (!bridge) continue;
         positions.set(`${lower(r.subject)}@${lower(ws.authedAs)}`, {
-          name: r.subject, x: +r.x, y: +r.y, z: +r.z,
+          name: r.subject, x: +r.x, y: +r.y, z: +r.z, bridge,
           dim: String(r.dim), t: now, reporter: ws.authedAs,
         });
         noteSeen(r.subject, r.x, r.y, r.z, r.dim, ws.authedAs, "position");
