@@ -41,7 +41,7 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8'), {
     if (name === './visibility') return visibility;
     if (name === 'express') return express;
     if (name === 'ws') return { WebSocketServer: FakeServer };
-    if (name === 'http') return { createServer: () => ({ listen(port, callback) { callback(); } }) };
+    if (name === 'http') return { createServer: () => Object.assign(new EventEmitter(), { listen(port, callback) { callback(); } }) };
     if (name === 'fs') return {
       readFileSync(name) { const value = files.get(path.basename(name)); if (value === undefined) throw new Error('missing fixture'); return value; },
       writeFileSync(name, value) { files.set(path.basename(name), value); },
