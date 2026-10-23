@@ -29,6 +29,7 @@ public class RelayClient implements WebSocket.Listener {
     // so building one per connection attempt leaks threads on every reconnect.
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(java.time.Duration.ofSeconds(10))
+            .followRedirects(HttpClient.Redirect.NEVER)
             .build();
 
     private final AtomicReference<WebSocket> socket = new AtomicReference<>();
@@ -164,9 +165,19 @@ public class RelayClient implements WebSocket.Listener {
             return;
         }
         try {
-            HTTP.newWebSocketBuilder()
-                    .buildAsync(URI.create(attemptUrl), this)
-                    .whenComplete((ws, err) -> Minecraft.getInstance().execute(() -> {
+            RelayTransport.connect(HTTP, URI.create(attemptUrl), this,
+                            upgraded -> Minecraft.getInstance().execute(() -> {
+                                if (!isCurrentSession(attemptGeneration)) return;
+                                String previousUrl = url;
+                                url = upgraded.toString();
+                                var config = OpenIntelClient.config();
+                                if (config != null && previousUrl.equals(config.relayUrl)) {
+                                    config.relayUrl = url;
+                                    config.save();
+                                }
+                            }))
+                    .whenComplete((connection, err) -> Minecraft.getInstance().execute(() -> {
+                        WebSocket ws = connection == null ? null : connection.socket();
                         inFlightGeneration.compareAndSet(attemptGeneration, -1);
                         if (!isCurrentSession(attemptGeneration) || socket.get() != null) {
                             if (ws != null) ws.abort();
@@ -181,6 +192,16 @@ public class RelayClient implements WebSocket.Listener {
                         if (!socket.compareAndSet(null, ws)) {
                             ws.abort();
                             return;
+                        }
+                        if ("ws".equalsIgnoreCase(URI.create(attemptUrl).getScheme())
+                                && "wss".equalsIgnoreCase(connection.endpoint().getScheme())) {
+                            String secureUrl = connection.endpoint().toString();
+                            url = secureUrl;
+                            var config = OpenIntelClient.config();
+                            if (config != null && attemptUrl.equals(config.relayUrl)) {
+                                config.relayUrl = secureUrl;
+                                config.save();
+                            }
                         }
                         backoffMs = 1000;
                         setState(ConnectionState.AUTHENTICATING, null);
