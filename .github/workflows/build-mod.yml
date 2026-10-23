@@ -45,7 +45,10 @@ jobs:
           commit = os.environ['GITHUB_SHA'][:12]
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               for key, value in {
-                  'java': java.group(1),
+                  # Loom 1.18 needs Java 25 to run, even for Java 21 mod targets.
+                  # Gradle's configured toolchain (and Foojay resolver) selects
+                  # the branch's actual compiler independently of this runtime.
+                  'java': str(max(25, int(java.group(1)))),
                   'minecraft': minecraft,
                   'jar': jar,
                   'artifact': f'openintel-mc{minecraft}-{branch}-{commit}',
