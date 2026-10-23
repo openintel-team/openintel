@@ -249,3 +249,11 @@ publishing {
         }
     }
 }
+
+// Relay negotiation uses real local WebSocket/TLS handshakes without a Minecraft client.
+tasks.register('relayTransportTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.net.RelayTransportTest'
+}
+check.dependsOn relayTransportTest
