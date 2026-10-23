@@ -117,9 +117,7 @@ public class OpenIntelClient implements ClientModInitializer {
         tracker = new Tracker();
         allegiances = new AllegianceManager();
         WarTable.load();
-        relay = new RelayClient(
-                msg -> tracker.handleMessage(msg, Minecraft.getInstance()),
-                OpenIntelClient::status);
+        relay = new dev.openintel.net.RelayCoordinator(OpenIntelClient::status);
 
         registerKeybinds();
 
@@ -237,6 +235,7 @@ public class OpenIntelClient implements ClientModInitializer {
 
     public static boolean reconnectRelay() {
         Minecraft client = Minecraft.getInstance();
+        if (relay instanceof dev.openintel.net.RelayCoordinator coordinator) return coordinator.reconnect();
         relay.disconnect();
         tracker.clearRelay();
         PingManager.clearRelay();
@@ -327,8 +326,10 @@ public class OpenIntelClient implements ClientModInitializer {
                             return 1;
                         }))
                         .then(ClientCommands.literal("status").executes(c -> {
-                            status(relay.isConnected() ? "connected to " + config.relayUrl
-                                                       : "not connected");
+                            if (relay instanceof dev.openintel.net.RelayCoordinator coordinator) {
+                                for (var profile : config.relayProfiles()) status(profile.name + ": " + coordinator.status(profile.id)
+                                        + (profile.share ? " — share + receive" : " — receive only"));
+                            } else status(relay.isConnected() ? "connected" : "not connected");
                             return 1;
                         }))
                         .then(ClientCommands.literal("dumpmap").executes(c -> {
@@ -412,7 +413,13 @@ public class OpenIntelClient implements ClientModInitializer {
                         .then(ClientCommands.literal("url")
                                 .then(ClientCommands.argument("url", StringArgumentType.greedyString())
                                         .executes(c -> {
+                                            var profiles = config.relayProfiles();
+                                            if (profiles.size() != 1) {
+                                                status("use Settings → Relay connections to choose which relay to edit");
+                                                return 0;
+                                            }
                                             config.relayUrl = StringArgumentType.getString(c, "url");
+                                            profiles.getFirst().url = config.relayUrl;
                                             config.save();
                                             status("relay url set — run /oi reconnect");
                                             return 1;
@@ -420,7 +427,13 @@ public class OpenIntelClient implements ClientModInitializer {
                         .then(ClientCommands.literal("token")
                                 .then(ClientCommands.argument("token", StringArgumentType.greedyString())
                                         .executes(c -> {
+                                            var profiles = config.relayProfiles();
+                                            if (profiles.size() != 1) {
+                                                status("use Settings → Relay connections to choose which relay to edit");
+                                                return 0;
+                                            }
                                             config.token = StringArgumentType.getString(c, "token");
+                                            profiles.getFirst().token = config.token;
                                             config.save();
                                             status("token saved — run /oi reconnect");
                                             return 1;

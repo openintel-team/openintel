@@ -140,6 +140,32 @@ public final class WarTableTest {
             throw new AssertionError("cached shared stroke survived sync");
         if (!hasStroke(WarTable.strokes(), localPin.id))
             throw new AssertionError("local stroke was lost during relay sync");
+        WarTable.applySync("second-relay", sync);
+        equal(2, WarTable.strokes().size()); // mirrored wire ids display once
+        equal(2, shared.size()); // provenance remains independently stored
+        Stroke newer = new Stroke(remote.id, remote.tool, 0xFF123456, remote.width,
+                remote.points, remote.label, remote.author, remote.t + 10);
+        sync.getAsJsonArray("strokes").set(0, newer.toJson());
+        WarTable.applySync("second-relay", sync);
+        if (WarTable.strokes().stream().filter(s -> s.id.equals(remote.id)).findFirst().orElseThrow().t != newer.t)
+            throw new AssertionError("newest mirrored stroke did not win");
+        local.put(remote.id, remote);
+        if (WarTable.strokes().stream().filter(s -> s.id.equals(remote.id)).findFirst().orElseThrow() != remote)
+            throw new AssertionError("offline annotation must override received copies");
+        pending.put(remote.id, newer);
+        if (WarTable.strokes().stream().filter(s -> s.id.equals(remote.id)).findFirst().orElseThrow() != newer)
+            throw new AssertionError("pending annotation must override offline and shared copies");
+        local.remove(remote.id);
+        pending.remove(remote.id);
+        WarTable.applySync("second-relay", new JsonObject());
+        equal(2, WarTable.strokes().size());
+        WarTable.applySync("second-relay", sync);
+        WarTable.clearRelay("legacy");
+        equal(2, WarTable.strokes().size());
+        WarTable.clearRelay("second-relay");
+        equal(1, WarTable.strokes().size());
+        if (!hasStroke(WarTable.strokes(), localPin.id))
+            throw new AssertionError("source cleanup erased the offline layer");
         equal(1, WarTable.waypointStrokes().size());
         equal(localPin.id, WarTable.waypointStrokes().iterator().next().id);
 

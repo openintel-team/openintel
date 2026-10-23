@@ -39,12 +39,20 @@ public final class PingManager {
         }
     }
 
-    private static final LocalRelayStore<String, Ping> pings = new LocalRelayStore<>((local, relay) -> local);
+    private static final LocalRelayStore<String, Ping> pings = new LocalRelayStore<>((local, relay) -> local,
+            (a, b) -> a.expiresAt >= b.expiresAt ? a : b);
 
     public static Iterable<Ping> active() { return pings.values(); }
 
     public static void clear() {
         clear(true);
+    }
+
+    public static void clearRelay(String source) {
+        Minecraft client = Minecraft.getInstance();
+        if (!client.isSameThread()) { client.execute(() -> clearRelay(source)); return; }
+        pings.clearRelay(source);
+        ApiBridge.pingsChanged(ApiEvent.Cause.CLEAR);
     }
 
     public static void clearRelay() {
@@ -133,13 +141,14 @@ public final class PingManager {
         if (!executor.isSameThread()) {
             JsonObject copy = msg.deepCopy();
             var world = executor.level;
-            executor.execute(() -> { if (executor.level == world) receive(copy); });
+            String source = dev.openintel.net.RelaySource.current();
+            executor.execute(() -> { if (executor.level == world) dev.openintel.net.RelaySource.run(source, () -> receive(copy)); });
             return;
         }
         if (!msg.has("id") || !msg.has("label")
                 || !msg.has("x") || !msg.has("y") || !msg.has("z")) return;
         String id = msg.get("id").getAsString();
-        if (pings.containsKey(id)) return;
+        // Store every source even when an identical id is already visible.
 
         String sender = msg.has("from") ? msg.get("from").getAsString() : "?";
         String label = msg.get("label").getAsString();
@@ -149,9 +158,9 @@ public final class PingManager {
                 msg.get("x").getAsDouble(), msg.get("y").getAsDouble(),
                 msg.get("z").getAsDouble(),
                 msg.has("dim") ? msg.get("dim").getAsString() : null, false);
-        // Server-side override for short-lived marks (e.g. coord broadcast).
-        if (msg.has("ttl"))
-            p.expiresAt = System.currentTimeMillis() + msg.get("ttl").getAsLong();
+        // Bridges preserve event time: replaying the same id must not renew its life.
+        p.expiresAt = dev.openintel.tracker.RelayEvidence.expiry(msg, System.currentTimeMillis(),
+                OpenIntelClient.config().pingSeconds * 1000L);
 
         Minecraft client = Minecraft.getInstance();
         String self = client.player != null
@@ -171,7 +180,8 @@ public final class PingManager {
         if (!client.isSameThread()) {
             JsonObject copy = msg.deepCopy();
             var world = client.level;
-            client.execute(() -> { if (client.level == world) receiveWhere(copy); });
+            String source = dev.openintel.net.RelaySource.current();
+            client.execute(() -> { if (client.level == world) dev.openintel.net.RelaySource.run(source, () -> receiveWhere(copy)); });
             return;
         }
         if (!msg.has("player") || !msg.has("x") || !msg.has("y") || !msg.has("z")) return;
@@ -182,7 +192,7 @@ public final class PingManager {
                         java.time.Instant.ofEpochMilli(t), java.time.ZoneId.systemDefault()));
         String sender = msg.has("from") ? msg.get("from").getAsString() : "?";
         String prefix = "where-" + player.toLowerCase(Locale.ROOT) + "-";
-        pings.removeIf(p -> p.id.startsWith(prefix));   // one mark per player
+        pings.removeRelayIf(dev.openintel.net.RelaySource.current(), p -> p.id.startsWith(prefix));   // one mark per player
         add(prefix + t, "!where | " + player + " | " + when, 0xFF55CCFF, sender,
                 msg.get("x").getAsDouble(), msg.get("y").getAsDouble(),
                 msg.get("z").getAsDouble(),

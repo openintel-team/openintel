@@ -43,6 +43,48 @@ public final class WarTable {
 
     /** Ordered by insert time; the relay preserves this order. */
     private static final Map<String, Stroke> strokes = new LinkedHashMap<>();
+    private static final Map<String, String> strokeSources = new LinkedHashMap<>();
+
+    private static String sourceKey(String source, String id) {
+        return dev.openintel.net.RelaySource.LEGACY.equals(source) ? id : source.length() + ":" + source + ":" + id;
+    }
+
+    private static String strokeSource(String key) {
+        return strokeSources.getOrDefault(key, dev.openintel.net.RelaySource.LEGACY);
+    }
+
+    /** Remove only received annotations from one relay; offline annotations survive. */
+    public static void clearRelay(String source) {
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && !client.isSameThread()) { client.execute(() -> clearRelay(source)); return; }
+        String normalized = dev.openintel.net.RelaySource.normalize(source);
+        strokes.keySet().removeIf(key -> normalized.equals(strokeSource(key)));
+        strokeSources.keySet().retainAll(strokes.keySet());
+        revision++;
+        persistShared();
+    }
+
+    public static void receive(String source, JsonObject msg) {
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && !client.isSameThread()) {
+            JsonObject copy = msg.deepCopy();
+            var world = client.level;
+            client.execute(() -> { if (client.level == world) receive(source, copy); });
+            return;
+        }
+        dev.openintel.net.RelaySource.run(source, () -> receive(msg));
+    }
+
+    public static void applySync(String source, JsonObject msg) {
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && !client.isSameThread()) {
+            JsonObject copy = msg.deepCopy();
+            var world = client.level;
+            client.execute(() -> { if (client.level == world) applySync(source, copy); });
+            return;
+        }
+        dev.openintel.net.RelaySource.run(source, () -> applySync(msg));
+    }
     /** Local-only annotations made while no authenticated relay session exists. */
     private static final Map<String, Stroke> local = new LinkedHashMap<>();
     /** ids we added locally that the relay hasn't echoed yet. */
@@ -54,7 +96,12 @@ public final class WarTable {
     public static Collection<Stroke> strokes() {
         // Local and pending strokes render immediately; the shared map remains
         // authoritative once a sync arrives.
-        Map<String, Stroke> all = new LinkedHashMap<>(strokes);
+        Map<String, Stroke> all = new LinkedHashMap<>();
+        // Mirrored wire ids draw once, but every source remains independently removable.
+        strokes.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
+            Stroke stroke = entry.getValue();
+            all.merge(stroke.id, stroke, (a, b) -> a.t >= b.t ? a : b);
+        });
         all.putAll(local);
         all.putAll(pending);
         return all.values();
@@ -65,7 +112,7 @@ public final class WarTable {
         return live() ? strokes() : local.values();
     }
 
-    public static int size() { return strokes.size() + local.size() + pending.size(); }
+    public static int size() { return strokes().size(); }
     public static int revision() { return revision; }
 
     /** Relay admins share edits; without an authenticated session the table is local-only. */
@@ -112,7 +159,8 @@ public final class WarTable {
     public static void delete(String id) {
         if (id == null || !canDraw()) return;
         boolean localRemoved = local.remove(id) != null;
-        boolean sharedRemoved = strokes.remove(id) != null;
+        boolean sharedRemoved = strokes.entrySet().removeIf(e -> e.getValue().id.equals(id));
+        strokeSources.keySet().retainAll(strokes.keySet());
         sharedRemoved |= pending.remove(id) != null;
         ownIds.remove(id);
         revision++;
@@ -130,7 +178,7 @@ public final class WarTable {
     public static boolean undoOwn() {
         while (!ownIds.isEmpty()) {
             String id = ownIds.pollLast();
-            if (strokes.containsKey(id) || local.containsKey(id) || pending.containsKey(id)) {
+            if (strokes.values().stream().anyMatch(s -> s.id.equals(id)) || local.containsKey(id) || pending.containsKey(id)) {
                 delete(id);
                 return true;
             }
@@ -141,6 +189,7 @@ public final class WarTable {
     public static void clearAll() {
         if (!canDraw()) return;
         strokes.clear();
+        strokeSources.clear();
         local.clear();
         pending.clear();
         ownIds.clear();
@@ -162,7 +211,8 @@ public final class WarTable {
         if (!client.isSameThread()) {
             JsonObject copy = msg.deepCopy();
             var world = client.level;
-            client.execute(() -> { if (client.level == world) receive(copy); });
+            String source = dev.openintel.net.RelaySource.current();
+            client.execute(() -> { if (client.level == world) receive(source, copy); });
             return;
         }
         String action = msg.has("action") ? msg.get("action").getAsString() : "";
@@ -172,28 +222,28 @@ public final class WarTable {
                 Stroke s = Stroke.fromJson(msg.getAsJsonObject("stroke"));
                 if (s == null) return;
                 pending.remove(s.id);
-                if (local.remove(s.id) != null) persistLocal();
-                strokes.put(s.id, s);   // put replaces → edits dedupe by id
+                String key = sourceKey(dev.openintel.net.RelaySource.current(), s.id);
+                strokeSources.put(key, dev.openintel.net.RelaySource.current());
+                strokes.put(key, s);   // put replaces → edits dedupe by id
                 revision++;
             }
             case "delete" -> {
                 String id = msg.has("id") ? msg.get("id").getAsString() : null;
                 if (id == null) return;
-                boolean removed = strokes.remove(id) != null || pending.remove(id) != null;
-                if (local.remove(id) != null) {
-                    removed = true;
-                    persistLocal();
-                }
+                String key = sourceKey(dev.openintel.net.RelaySource.current(), id);
+                boolean removed = strokes.remove(key) != null;
+                strokeSources.remove(key);
                 if (removed) revision++;
             }
             case "clear" -> {
                 String scope = msg.has("scope") ? msg.get("scope").getAsString() : "all";
                 if ("mine".equals(scope)) {
-                    strokes.values().removeIf(s -> s.author != null && s.author.equalsIgnoreCase(from));
+                    strokes.entrySet().removeIf(e -> dev.openintel.net.RelaySource.current().equals(strokeSource(e.getKey()))
+                            && e.getValue().author != null && e.getValue().author.equalsIgnoreCase(from));
+                    strokeSources.keySet().retainAll(strokes.keySet());
                 } else {
-                    strokes.clear();
+                    clearRelay(dev.openintel.net.RelaySource.current());
                 }
-                pending.clear();
                 ownIds.removeIf(id -> !local.containsKey(id));
                 revision++;
                 String self = client.player != null
@@ -212,20 +262,27 @@ public final class WarTable {
         if (client != null && !client.isSameThread()) {
             JsonObject copy = msg.deepCopy();
             var world = client.level;
-            client.execute(() -> { if (client.level == world) applySync(copy); });
+            String source = dev.openintel.net.RelaySource.current();
+            client.execute(() -> { if (client.level == world) applySync(source, copy); });
             return;
         }
-        strokes.clear();
+        String source = dev.openintel.net.RelaySource.current();
+        clearRelay(source);
         JsonArray arr = msg.getAsJsonArray("strokes");
         if (arr != null) {
             for (JsonElement e : arr) {
                 if (!e.isJsonObject()) continue;
                 Stroke s = Stroke.fromJson(e.getAsJsonObject());
-                if (s != null) strokes.put(s.id, s);
+                if (s != null) {
+                    String key = sourceKey(source, s.id);
+                    strokes.put(key, s);
+                    strokeSources.put(key, source);
+                    pending.remove(s.id);
+                }
             }
         }
-        pending.clear();
-        if (local.keySet().removeAll(strokes.keySet())) persistLocal();
+        // Pending outbound edits have no single receiving source; do not let a
+        // different relay's snapshot erase them. Echoed ids are acknowledged above.
         ownIds.removeIf(id -> !local.containsKey(id));
         revision++;
         persist();
@@ -258,7 +315,11 @@ public final class WarTable {
         try {
             JsonObject root = new JsonObject();
             JsonArray arr = new JsonArray();
-            for (Stroke s : strokes.values()) arr.add(s.toJson());
+            for (var entry : strokes.entrySet()) {
+                JsonObject json = entry.getValue().toJson();
+                json.addProperty("relaySource", strokeSource(entry.getKey()));
+                arr.add(json);
+            }
             for (Stroke s : pending.values()) arr.add(s.toJson());
             root.add("strokes", arr);
             Files.createDirectories(path.getParent());
@@ -290,6 +351,7 @@ public final class WarTable {
 
     public static void load() {
         strokes.clear();
+        strokeSources.clear();
         local.clear();
         pending.clear();
         loadInto(configFile("wartable-strokes.json"), strokes);
@@ -307,7 +369,13 @@ public final class WarTable {
             for (JsonElement e : arr) {
                 if (!e.isJsonObject()) continue;
                 Stroke s = Stroke.fromJson(e.getAsJsonObject());
-                if (s != null) target.putIfAbsent(s.id, s);
+                if (s != null) {
+                    String source = e.getAsJsonObject().has("relaySource")
+                            ? e.getAsJsonObject().get("relaySource").getAsString() : dev.openintel.net.RelaySource.LEGACY;
+                    String key = target == strokes ? sourceKey(source, s.id) : s.id;
+                    target.putIfAbsent(key, s);
+                    if (target == strokes) strokeSources.put(key, source);
+                }
             }
         } catch (Exception ignored) { }
     }
