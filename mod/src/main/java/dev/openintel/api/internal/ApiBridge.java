@@ -195,8 +195,8 @@ public final class ApiBridge {
         if (!ready) return;
         Map<String, Snapshots.Allegiance> values = new HashMap<>();
         putNames(values, allies, Snapshots.Allegiance.ALLY);
-        putNames(values, enemies, Snapshots.Allegiance.ENEMY);
         putNames(values, users, Snapshots.Allegiance.FRIEND);
+        putNames(values, enemies, Snapshots.Allegiance.ENEMY);
         putNames(values, focus, Snapshots.Allegiance.FOCUS);
         var previous = allegianceState;
         allegianceState = new Snapshots.Allegiances(values);
@@ -293,7 +293,8 @@ public final class ApiBridge {
                             return;
                         }
                         String selected = OpenIntelClient.normalizeMinecraftServer(OpenIntelClient.config().minecraftServer);
-                        if (selected.isEmpty() || !selected.equals(OpenIntelClient.currentMinecraftServer(client))) {
+                        if (!(submittedRelay instanceof dev.openintel.net.RelayCoordinator)
+                                && (selected.isEmpty() || !selected.equals(OpenIntelClient.currentMinecraftServer(client)))) {
                             future.complete(new ActionResult(ActionResult.Status.WRONG_SERVER, "This is not the selected Minecraft server"));
                             return;
                         }

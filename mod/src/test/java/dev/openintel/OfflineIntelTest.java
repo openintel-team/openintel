@@ -13,6 +13,8 @@ public final class OfflineIntelTest {
 
     public static void main(String[] args) throws Exception {
         verifySourceOwnership();
+        verifyMultipleRelays();
+        verifyEvidenceTime();
         verifySnitchIntake();
         verifyResetWiring();
         verifyProducerOrigins();
@@ -56,6 +58,44 @@ public final class OfflineIntelTest {
                 && pings.values().equals(java.util.List.of(local)), "Own pings survive relay reset without retaining others' pings");
     }
 
+    private static void verifyEvidenceTime() {
+        var message = new com.google.gson.JsonObject();
+        message.addProperty("t", 1000);
+        check(dev.openintel.tracker.RelayEvidence.timestamp(message, 3000) == 1000, "Original evidence timestamp survives replay");
+        check(dev.openintel.tracker.RelayEvidence.expiry(message, 3000, 500) == 1500, "Old ping does not receive a new lifetime");
+        message.addProperty("ttl", 200);
+        check(dev.openintel.tracker.RelayEvidence.expiry(message, 4000, 500) == 1200, "Explicit ttl starts at event time");
+        for (double invalid : new double[]{Double.NaN, Double.POSITIVE_INFINITY, -1, 5000}) {
+            message.addProperty("t", invalid);
+            check(dev.openintel.tracker.RelayEvidence.timestamp(message, 3000) == 3000, "Invalid or future timestamp uses receipt time");
+        }
+        message.remove("t");
+        check(dev.openintel.tracker.RelayEvidence.expiry(message, 3000, 500) == 3200, "Legacy ping retains receipt-time fallback");
+    }
+
+    private static void verifyMultipleRelays() {
+        var store = new LocalRelayStore<String, Hit>((a, b) -> a.time >= b.time ? a : b);
+        Hit a = new Hit("relay a", 10), b = new Hit("relay b", 20);
+        store.putRelay("a", "same-id", a);
+        store.putRelay("b", "same-id", b);
+        check(store.values().equals(java.util.List.of(b)), "Newest source wins duplicate ids");
+        store.clearRelay("b");
+        check(store.values().equals(java.util.List.of(a)), "Removing newest relay reveals surviving provenance");
+        store.putRelay("b", "same-id", b);
+        store.removeRelayIf("b", hit -> true);
+        check(store.values().equals(java.util.List.of(a)), "Where replacement only removes its own source");
+        dev.openintel.net.RelaySource.run("outer", () -> {
+            check(dev.openintel.net.RelaySource.current().equals("outer"), "Source scope entered");
+            try { dev.openintel.net.RelaySource.run("inner", () -> { throw new IllegalStateException(); }); }
+            catch (IllegalStateException expected) { }
+            check(dev.openintel.net.RelaySource.current().equals("outer"), "Failed nested scope restores source");
+            store.putRelay("scoped", b);
+        });
+        check(dev.openintel.net.RelaySource.current().equals(dev.openintel.net.RelaySource.LEGACY), "Scope cannot leak");
+        store.clearRelay("outer");
+        check(!store.containsKey("scoped"), "Implicit puts retain scoped provenance");
+    }
+
     private static void verifySnitchIntake() throws Exception {
         var intake = method(readClass("dev/openintel/SnitchRelay"), "onGameMessage");
         int index = 0, local = -1, forward = -1;
@@ -83,10 +123,14 @@ public final class OfflineIntelTest {
         for (String owner : new String[]{"dev/openintel/tracker/Tracker", "dev/openintel/ping/PingManager", "dev/openintel/render/EventFeed"}) {
             check(calls(reconnect, owner, "clearRelay") && !calls(reconnect, owner, "clear"), "Reconnect clears only relay-owned state: " + owner);
         }
-        var inbound = method(readClass("dev/openintel/tracker/Tracker"), "handleMessage");
+        var tracker = readClass("dev/openintel/tracker/Tracker");
+        var inbound = tracker.methods.stream().filter(m -> m.name.equals("handleMessage")
+                && m.desc.startsWith("(Lcom/google/gson/JsonObject;")).findFirst().orElseThrow();
         check(calls(inbound, "dev/openintel/tracker/Tracker", "clearRelay"), "Intel reset uses relay-only tracker cleanup");
-        check(calls(inbound, "dev/openintel/ping/PingManager", "clearRelay"), "Intel reset preserves local pings");
-        check(calls(inbound, "dev/openintel/render/EventFeed", "clearRelay"), "Intel reset preserves local feed entries");
+        var sourceClear = tracker.methods.stream().filter(m -> m.name.equals("clearRelay")
+                && m.desc.equals("(Ljava/lang/String;)V")).findFirst().orElseThrow();
+        check(calls(sourceClear, "dev/openintel/ping/PingManager", "clearRelay"), "Intel reset preserves local pings");
+        check(calls(sourceClear, "dev/openintel/render/EventFeed", "clearRelay"), "Intel reset preserves local feed entries");
         check(client.methods.stream().anyMatch(m -> calls(m, "dev/openintel/tracker/Tracker", "clear")
                 && calls(m, "dev/openintel/ping/PingManager", "clear")
                 && calls(m, "dev/openintel/xaero/RelicMapScanner", "clear")),
@@ -184,6 +228,18 @@ public final class OfflineIntelTest {
         check(inRender.contains("LocalPlayer") && dead.contains("LocalPlayer"), "Relay reset preserves local event deduplication");
         reset.invoke(null, true);
         check(entries.isEmpty() && inRender.isEmpty() && dead.isEmpty(), "Full world cleanup clears remaining local feed and dedupe state");
+        Object mirrored = constructor.newInstance("bridged ping", -1, 1000L, true);
+        entries.add(mirrored);
+        var coalesce = feed.getDeclaredMethod("coalesceRelay", String.class, int.class, long.class, String.class);
+        coalesce.setAccessible(true);
+        check((boolean) coalesce.invoke(null, "bridged ping", -1, 2000L, "second"), "Bridged feed copy coalesces");
+        check(!(boolean) coalesce.invoke(null, "bridged ping", -1, 7000L, "second"), "Separate later alerts remain eligible");
+        var clearSource = feed.getDeclaredMethod("clearRelayData", String.class);
+        clearSource.setAccessible(true);
+        clearSource.invoke(null, dev.openintel.net.RelaySource.LEGACY);
+        check(entries.size() == 1, "Clearing first relay preserves coalesced source ownership");
+        clearSource.invoke(null, "second");
+        check(entries.isEmpty(), "Coalesced line clears after final source disappears");
     }
 
     private static ClassNode readClass(String name) throws Exception {

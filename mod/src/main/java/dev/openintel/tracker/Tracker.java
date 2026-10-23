@@ -64,15 +64,24 @@ public class Tracker {
         }
     }
 
-    private final Map<String, RemotePlayer> players = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, RemotePlayer>> playersBySource = new ConcurrentHashMap<>();
+    private Map<String, RemotePlayer> sourcePlayers() {
+        return playersBySource.computeIfAbsent(dev.openintel.net.RelaySource.current(), ignored -> new ConcurrentHashMap<>());
+    }
+    private Map<String, RemotePlayer> mergedPlayers() {
+        Map<String, RemotePlayer> merged = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        playersBySource.keySet().stream().sorted().forEach(source -> playersBySource.get(source).forEach(
+                (name, player) -> merged.merge(name, player, (a, b) -> a.lastSeen >= b.lastSeen ? a : b)));
+        return merged;
+    }
     private final LocalRelayStore<String, SnitchHit> snitchHits = new LocalRelayStore<>(
             (local, relay) -> local.t >= relay.t ? local : relay);
-    private java.util.Set<String> knownUsers = java.util.Set.of();
+    private final Map<String, java.util.Set<String>> knownUsersBySource = new ConcurrentHashMap<>();
     private long lastReport = 0;
     private long lastAlertSweep = 0;
 
     public Iterable<RemotePlayer> all() {
-        return players.values();
+        return mergedPlayers().values();
     }
 
     public Iterable<SnitchHit> snitchHits() {
@@ -99,10 +108,11 @@ public class Tracker {
     }
 
     private void clearData(boolean includeLocal) {
-        players.clear();
+        playersBySource.clear();
+        knownUsersBySource.clear();
         if (includeLocal) snitchHits.clear();
         else snitchHits.clearRelay();
-        knownUsers = java.util.Set.of();
+        knownUsersBySource.clear();
         lastReport = 0;
         lastAlertSweep = 0;
     }
@@ -120,14 +130,19 @@ public class Tracker {
         long now = System.currentTimeMillis();
 
         // Expire stale markers — a friendly going dark is feed-worthy.
-        boolean expiredPlayers = players.values().removeIf(p -> {
+        boolean expiredPlayers = false;
+        for (var sourceEntry : playersBySource.entrySet()) {
+        boolean[] removed = {false};
+        dev.openintel.net.RelaySource.run(sourceEntry.getKey(), () -> removed[0] = sourceEntry.getValue().values().removeIf(p -> {
             if (now - p.lastSeen <= cfg.staleAfterMs) return false;
             if (p.allegiance == Allegiance.FRIEND || p.allegiance == Allegiance.ALLY
                     || p.allegiance == Allegiance.FOCUS) {
                 EventFeed.addRelay(p.name + " went dark", 0xFFAAAAAA);
             }
             return true;
-        });
+        }));
+        expiredPlayers |= removed[0];
+        }
         // Snitch-hit markers live on their own 2-minute clock.
         boolean expiredSnitches = snitchHits.removeIf(h -> now - h.t > cfg.snitchMarkerSeconds * 1000L);
         if (expiredPlayers || expiredSnitches) ApiBridge.trackerChanged(ApiEvent.Cause.EXPIRED);
@@ -174,11 +189,38 @@ public class Tracker {
     //  Inbound: merged network state from the relay                       //
     // ------------------------------------------------------------------ //
 
+    public void handleMessage(String source, JsonObject msg, Minecraft client) {
+        if (!client.isSameThread()) {
+            JsonObject copy = msg.deepCopy();
+            var world = client.level;
+            client.execute(() -> { if (client.level == world) handleMessage(source, copy, client); });
+            return;
+        }
+        dev.openintel.net.RelaySource.run(source, () -> handleMessage(msg, client));
+    }
+
+    public void clearRelay(String source) {
+        Minecraft client = Minecraft.getInstance();
+        if (!client.isSameThread()) { client.execute(() -> clearRelay(source)); return; }
+        String key = dev.openintel.net.RelaySource.normalize(source);
+        playersBySource.remove(key);
+        knownUsersBySource.remove(key);
+        snitchHits.clearRelay(key);
+        PingManager.clearRelay(key);
+        EventFeed.clearRelay(key);
+        dev.openintel.wartable.WarTable.clearRelay(key);
+        OpenIntelClient.allegiances().clearRelay(key);
+        playersBySource.values().forEach(map -> map.values().forEach(p ->
+                p.allegiance = OpenIntelClient.allegiances().of(p.name)));
+        ApiBridge.trackerChanged(ApiEvent.Cause.CLEAR);
+    }
+
     public void handleMessage(JsonObject msg, Minecraft client) {
         if (!client.isSameThread()) {
             JsonObject copy = msg.deepCopy();
             var world = client.level;
-            client.execute(() -> { if (client.level == world) handleMessage(copy, client); });
+            String source = dev.openintel.net.RelaySource.current();
+            client.execute(() -> { if (client.level == world) handleMessage(source, copy, client); });
             return;
         }
         String type = msg.has("type") ? msg.get("type").getAsString() : "";
@@ -186,9 +228,7 @@ public class Tracker {
             case "welcome", "allegiances" -> applyAllegiances(msg);
             case "state" -> applyState(msg, client);
             case "intel_reset" -> {
-                clearRelay();
-                PingManager.clearRelay();
-                EventFeed.clearRelay();
+                clearRelay(dev.openintel.net.RelaySource.current());
             }
             case "ping" -> PingManager.receive(msg);
             case "where" -> PingManager.receiveWhere(msg);
@@ -219,6 +259,7 @@ public class Tracker {
     private void applyAllegiances(JsonObject msg) {
         java.util.List<String> users = names(msg.getAsJsonArray("users"));
 
+        var knownUsers = knownUsersBySource.getOrDefault(dev.openintel.net.RelaySource.current(), java.util.Set.of());
         // Relay roster diff → join/leave feed lines.
         java.util.Set<String> now = new java.util.HashSet<>(users);
         if (!knownUsers.isEmpty()) {
@@ -233,7 +274,7 @@ public class Tracker {
                 }
             }
         }
-        knownUsers = now;
+        knownUsersBySource.put(dev.openintel.net.RelaySource.current(), now);
 
         OpenIntelClient.allegiances().replaceAll(
                 users,
@@ -241,7 +282,8 @@ public class Tracker {
                 names(msg.getAsJsonArray("enemies")),
                 names(msg.getAsJsonArray("focus")));
         // Recolor existing markers immediately.
-        players.values().forEach(p -> p.allegiance = OpenIntelClient.allegiances().of(p.name));
+        playersBySource.values().forEach(map -> map.values().forEach(p ->
+                p.allegiance = OpenIntelClient.allegiances().of(p.name)));
     }
 
     /**
@@ -345,9 +387,9 @@ public class Tracker {
 
     private String seenDimension(String name) {
         if (name == null || name.isBlank() || name.equals("?") || name.equalsIgnoreCase("discord")) return null;
-        RemotePlayer direct = players.get(name);
+        RemotePlayer direct = mergedPlayers().get(name);
         if (direct != null && isShownDim(direct.dimension)) return direct.dimension;
-        for (RemotePlayer known : players.values()) {
+        for (RemotePlayer known : mergedPlayers().values()) {
             if (known.name.equalsIgnoreCase(name) && isShownDim(known.dimension)) return known.dimension;
         }
         return null;
@@ -416,7 +458,7 @@ public class Tracker {
         if (msg.has("replace") && msg.get("replace").getAsBoolean()) {
             java.util.Set<String> visible = new java.util.HashSet<>();
             for (JsonElement e : arr) visible.add(e.getAsJsonObject().get("name").getAsString());
-            players.keySet().retainAll(visible);
+            sourcePlayers().keySet().retainAll(visible);
         }
 
         for (JsonElement e : arr) {
@@ -424,8 +466,10 @@ public class Tracker {
             String name = o.get("name").getAsString();
             if (name.toLowerCase(Locale.ROOT).equals(self)) continue;
 
+            long evidenceTime = dev.openintel.tracker.RelayEvidence.timestamp(o.has("t") ? o : msg, now);
             boolean[] isNew = {false};
-            RemotePlayer rp = players.compute(name, (key, current) -> {
+            RemotePlayer rp = sourcePlayers().compute(name, (key, current) -> {
+                if (current != null && evidenceTime < current.lastSeen) return current;
                 if (current == null) {
                     current = new RemotePlayer(key);
                     isNew[0] = true;
@@ -436,7 +480,7 @@ public class Tracker {
                 current.dimension = o.get("dim").getAsString();
                 current.reporter = o.has("reporter") ? o.get("reporter").getAsString() : "?";
                 current.allegiance = OpenIntelClient.allegiances().of(name);
-                current.lastSeen = now;
+                current.lastSeen = evidenceTime;
                 return current;
             });
 

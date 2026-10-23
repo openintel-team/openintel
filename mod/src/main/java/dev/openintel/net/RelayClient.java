@@ -39,6 +39,13 @@ public class RelayClient implements WebSocket.Listener {
     private final Consumer<JsonObject> onMessage;
     private final Consumer<String> onStatus;
 
+    private final java.util.function.BooleanSupplier serverAllowed;
+    private final java.util.function.BooleanSupplier sendingAllowed;
+    private final Runnable stateChanged;
+    private final Consumer<String> onSecureEndpoint;
+    private final boolean publishApi;
+    private volatile ConnectionState state = ConnectionState.DISCONNECTED;
+
     private volatile String url;
     private volatile String token;
     private volatile String minecraftServer;
@@ -49,9 +56,37 @@ public class RelayClient implements WebSocket.Listener {
     private volatile int backoffMs = 1000;
 
     public RelayClient(Consumer<JsonObject> onMessage, Consumer<String> onStatus) {
+        this(onMessage, onStatus, () -> true, () -> true, () -> {}, true, null);
+    }
+
+    public RelayClient(Consumer<JsonObject> onMessage, Consumer<String> onStatus,
+                       java.util.function.BooleanSupplier serverAllowed,
+                       java.util.function.BooleanSupplier sendingAllowed, Runnable stateChanged, boolean publishApi,
+                       Consumer<String> onSecureEndpoint) {
         this.onMessage = onMessage;
         this.onStatus = onStatus;
+        this.serverAllowed = serverAllowed;
+        this.sendingAllowed = sendingAllowed;
+        this.stateChanged = stateChanged;
+        this.publishApi = publishApi;
+        this.onSecureEndpoint = onSecureEndpoint == null ? ignored -> { } : onSecureEndpoint;
     }
+
+    private void rememberSecureEndpoint(String previousUrl, String secureUrl) {
+        if (secureUrl == null || secureUrl.equals(url)) return;
+        url = secureUrl;
+        if (publishApi) {
+            var config = OpenIntelClient.config();
+            if (config != null && previousUrl.equals(config.relayUrl)) {
+                config.relayUrl = secureUrl;
+                config.save();
+            }
+        }
+        onSecureEndpoint.accept(secureUrl);
+    }
+
+    public ConnectionState state() { return state; }
+    public String role() { return role; }
 
     public void connect(String url, String token, String minecraftServer) {
         Minecraft client = Minecraft.getInstance();
@@ -138,7 +173,7 @@ public class RelayClient implements WebSocket.Listener {
     public boolean trySend(JsonObject message) {
         if (!Minecraft.getInstance().isSameThread()) return false;
         WebSocket ws = socket.get();
-        if (ws == null || !authenticated || !selectedServerMatches()) return false;
+        if (ws == null || !authenticated || !selectedServerMatches() || !sendingAllowed.getAsBoolean()) return false;
         try {
             long expected = generation.get();
             ws.sendText(GSON.toJson(message), true).whenComplete((ignored, error) -> {
@@ -168,13 +203,7 @@ public class RelayClient implements WebSocket.Listener {
             RelayTransport.connect(HTTP, URI.create(attemptUrl), this,
                             upgraded -> Minecraft.getInstance().execute(() -> {
                                 if (!isCurrentSession(attemptGeneration)) return;
-                                String previousUrl = url;
-                                url = upgraded.toString();
-                                var config = OpenIntelClient.config();
-                                if (config != null && previousUrl.equals(config.relayUrl)) {
-                                    config.relayUrl = url;
-                                    config.save();
-                                }
+                                rememberSecureEndpoint(url, upgraded.toString());
                             }))
                     .whenComplete((connection, err) -> Minecraft.getInstance().execute(() -> {
                         WebSocket ws = connection == null ? null : connection.socket();
@@ -195,13 +224,7 @@ public class RelayClient implements WebSocket.Listener {
                         }
                         if ("ws".equalsIgnoreCase(URI.create(attemptUrl).getScheme())
                                 && "wss".equalsIgnoreCase(connection.endpoint().getScheme())) {
-                            String secureUrl = connection.endpoint().toString();
-                            url = secureUrl;
-                            var config = OpenIntelClient.config();
-                            if (config != null && attemptUrl.equals(config.relayUrl)) {
-                                config.relayUrl = secureUrl;
-                                config.save();
-                            }
+                            rememberSecureEndpoint(attemptUrl, connection.endpoint().toString());
                         }
                         backoffMs = 1000;
                         setState(ConnectionState.AUTHENTICATING, null);
@@ -242,9 +265,11 @@ public class RelayClient implements WebSocket.Listener {
     }
 
     private void setState(ConnectionState state, String suppliedRole) {
+        this.state = state;
         authenticated = state == ConnectionState.AUTHENTICATED;
         role = authenticated ? suppliedRole : null;
-        ApiBridge.connectionChanged(state, minecraftServer, role);
+        if (publishApi) ApiBridge.connectionChanged(state, minecraftServer, role);
+        stateChanged.run();
     }
 
     private boolean isCurrentSession(long expectedGeneration) {
@@ -256,7 +281,8 @@ public class RelayClient implements WebSocket.Listener {
         var config = OpenIntelClient.config();
         return config != null && client.player != null && client.level != null && !client.hasSingleplayerServer()
                 && minecraftServer != null && minecraftServer.equals(OpenIntelClient.currentMinecraftServer(client))
-                && minecraftServer.equals(OpenIntelClient.normalizeMinecraftServer(config.minecraftServer));
+                && (publishApi ? minecraftServer.equals(OpenIntelClient.normalizeMinecraftServer(config.minecraftServer))
+                        : serverAllowed.getAsBoolean());
     }
 
     private void dispatch(WebSocket ws, long expectedGeneration, Runnable delivery) {
@@ -315,6 +341,10 @@ public class RelayClient implements WebSocket.Listener {
                         return;
                     } else if (!authenticated) {
                         return;
+                    } else if (type.equals("allegiances") && message.has("role")) {
+                        String suppliedRole = message.get("role").isJsonNull() ? null : message.get("role").getAsString();
+                        if (suppliedRole != null && !suppliedRole.matches("[a-zA-Z0-9_-]{1,32}")) suppliedRole = null;
+                        setState(ConnectionState.AUTHENTICATED, suppliedRole);
                     }
                     if (socket.get() != ws || generation.get() != expectedGeneration || !wantConnected
                             || !selectedServerMatches()) return;

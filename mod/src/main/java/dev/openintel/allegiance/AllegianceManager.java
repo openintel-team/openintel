@@ -37,11 +37,45 @@ public final class AllegianceManager {
     private final Set<String> enemies  = ConcurrentHashMap.newKeySet();
     private final Set<String> focus    = ConcurrentHashMap.newKeySet();
 
+    private record Snapshot(Set<String> users, Set<String> allies, Set<String> enemies, Set<String> focus) { }
+    private final java.util.Map<String, Snapshot> sources = new ConcurrentHashMap<>();
+
+    public void clearRelay(String source) {
+        Minecraft client = Minecraft.getInstance();
+        if (!client.isSameThread()) { client.execute(() -> clearRelay(source)); return; }
+        sources.remove(dev.openintel.net.RelaySource.normalize(source));
+        rebuild();
+    }
+
+    /** Clear all relay rosters on Minecraft session teardown. */
+    public void clearRelay() {
+        Minecraft client = Minecraft.getInstance();
+        if (!client.isSameThread()) { client.execute(this::clearRelay); return; }
+        sources.clear();
+        rebuild();
+    }
+
+    private void rebuild() {
+        modUsers.clear(); allies.clear(); enemies.clear(); focus.clear();
+        sources.values().forEach(s -> {
+            modUsers.addAll(s.users()); allies.addAll(s.allies());
+            enemies.addAll(s.enemies()); focus.addAll(s.focus());
+        });
+        ApiBridge.allegiancesChanged(modUsers, allies, enemies, focus);
+    }
+
+    private static Set<String> normalized(Collection<String> names) {
+        Set<String> result = new java.util.HashSet<>();
+        if (names != null) names.forEach(n -> result.add(n.toLowerCase(Locale.ROOT)));
+        return Set.copyOf(result);
+    }
+
     public Allegiance of(String playerName) {
         String n = playerName.toLowerCase(Locale.ROOT);
         if (focus.contains(n))    return Allegiance.FOCUS;
+        // Fail closed across relays: a hostile designation must not become friendly.
+        if (enemies.contains(n))  return Allegiance.ENEMY;
         if (modUsers.contains(n)) return Allegiance.FRIEND;
-        if (enemies.contains(n))  return Allegiance.ENEMY;   // enemy beats ally if mislisted
         if (allies.contains(n))   return Allegiance.ALLY;
         return Allegiance.NEUTRAL;
     }
@@ -66,14 +100,14 @@ public final class AllegianceManager {
             var enemyCopy = enemyList == null ? java.util.List.<String>of() : java.util.List.copyOf(enemyList);
             var focusCopy = focusList == null ? java.util.List.<String>of() : java.util.List.copyOf(focusList);
             var world = client.level;
-            client.execute(() -> { if (client.level == world) replaceAll(userCopy, allyCopy, enemyCopy, focusCopy); });
+            String source = dev.openintel.net.RelaySource.current();
+            client.execute(() -> { if (client.level == world) dev.openintel.net.RelaySource.run(source,
+                    () -> replaceAll(userCopy, allyCopy, enemyCopy, focusCopy)); });
             return;
         }
-        replace(modUsers, users);
-        replace(allies, allyList);
-        replace(enemies, enemyList);
-        replace(focus, focusList);
-        ApiBridge.allegiancesChanged(modUsers, allies, enemies, focus);
+        sources.put(dev.openintel.net.RelaySource.current(), new Snapshot(normalized(users), normalized(allyList),
+                normalized(enemyList), normalized(focusList)));
+        rebuild();
     }
 
     private static void replace(Set<String> target, Collection<String> source) {
