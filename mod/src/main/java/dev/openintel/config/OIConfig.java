@@ -44,6 +44,44 @@ public class OIConfig {
      *  baked by patching one text file inside the jar — no recompile. */
     public String token = bundledToken();
 
+    /** Null means an older config; an explicit empty list must stay empty. */
+    public List<RelayProfile> relays;
+
+    /** Normalize stored profiles, migrating legacy credentials only when the list is absent. */
+    public synchronized List<RelayProfile> relayProfiles() {
+        if (relays == null) {
+            relays = new ArrayList<>();
+            RelayProfile legacy = new RelayProfile();
+            legacy.name = "Relay";
+            legacy.url = relayUrl == null ? "" : relayUrl;
+            legacy.token = token == null ? "" : token;
+            legacy.minecraftServer = minecraftServer == null ? "" : minecraftServer;
+            // Legacy connections shared by default; do not silently change that behavior.
+            legacy.share = true;
+            relays.add(legacy);
+        }
+        // Gson collections may contain null or duplicate/invalid IDs after manual edits.
+        if (!(relays instanceof ArrayList<?>)) relays = new ArrayList<>(relays);
+        relays.removeIf(java.util.Objects::isNull);
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        for (RelayProfile profile : relays) {
+            boolean validId = false;
+            try {
+                validId = profile.id != null
+                        && java.util.UUID.fromString(profile.id).toString().equals(profile.id);
+            } catch (IllegalArgumentException ignored) { }
+            if (!validId || !ids.add(profile.id)) {
+                do { profile.id = java.util.UUID.randomUUID().toString(); }
+                while (!ids.add(profile.id));
+            }
+            if (profile.name == null) profile.name = "";
+            if (profile.url == null) profile.url = "";
+            if (profile.token == null) profile.token = "";
+            if (profile.minecraftServer == null) profile.minecraftServer = "";
+        }
+        return relays;
+    }
+
     private static String bundledToken() {
         try (var in = OIConfig.class.getResourceAsStream("/openintel_token.txt")) {
             if (in != null) {
@@ -751,6 +789,10 @@ public class OIConfig {
                     if (c.snitchMarkerColorAuto) c.snitchMarkerColor = 0xFFAAAAAA;
                     defaults = true;
                 }
+                // Persist repaired IDs as well as one-time legacy migration.
+                String relayBefore = GSON.toJson(c.relays);
+                c.relayProfiles();
+                if (!relayBefore.equals(GSON.toJson(c.relays))) defaults = true;
                 if (defaults) c.save();
                 return c;
             }
@@ -762,6 +804,7 @@ public class OIConfig {
     }
 
     public void save() {
+        relayProfiles();
         try {
             Path path = path();
             Files.createDirectories(path.getParent());

@@ -221,7 +221,21 @@ tasks.register('releaseUpdateTest', JavaExec) {
     enableAssertions = true
 }
 
-check.dependsOn investigatePresentationTest, worldOverlayTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest, chatChannelFilterTest, versionPinTest, releaseUpdateTest
+tasks.register('relayProfilesTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.config.RelayProfilesTest'
+    enableAssertions = true
+}
+
+tasks.register('relayBridgeTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.net.RelayBridgeTest'
+    enableAssertions = true
+}
+
+check.dependsOn relayProfilesTest, relayBridgeTest, investigatePresentationTest, worldOverlayTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest, chatChannelFilterTest, versionPinTest, releaseUpdateTest
 
 publishing {
     publications {

@@ -61,7 +61,12 @@ public final class EventFeed {
     /** Element-pixel size plus the GUI rectangle the layout anchor should keep. */
     public record PlacedResize(int x, int y, int elementWidth, int elementHeight, int width, int height) { }
 
-    private record Entry(String text, int color, long createdAt, boolean relay) { }
+    private record Entry(String text, int color, long createdAt, boolean relay, Set<String> sources) {
+        Entry(String text, int color, long createdAt, boolean relay) {
+            this(text, color, createdAt, relay, new HashSet<>(relay
+                    ? Set.of(dev.openintel.net.RelaySource.current()) : Set.of()));
+        }
+    }
 
     private static final Deque<Entry> entries = new ConcurrentLinkedDeque<>();
 
@@ -82,9 +87,13 @@ public final class EventFeed {
         Minecraft client = Minecraft.getInstance();
         if (!client.isSameThread()) {
             var world = client.level;
-            client.execute(() -> { if (client.level == world) add(text, argb, relay); });
+            String source = dev.openintel.net.RelaySource.current();
+            client.execute(() -> { if (client.level == world) dev.openintel.net.RelaySource.run(source, () -> add(text, argb, relay)); });
             return;
         }
+        // Short coalescing window for bridged copies; retain all source ownership
+        // without renewing the original line's fade clock or repeating notifications.
+        if (relay && coalesceRelay(text, argb, System.currentTimeMillis(), dev.openintel.net.RelaySource.current())) return;
         OIConfig cfg = OpenIntelClient.config();
         if (cfg != null && cfg.eventFeedEnabled) {
             while (entries.size() >= MAX_SESSION) entries.pollFirst();
@@ -93,8 +102,32 @@ public final class EventFeed {
         ApiBridge.notification(text, argb, "feed");
     }
 
+    private static boolean coalesceRelay(String text, int color, long now, String source) {
+        for (var iterator = entries.descendingIterator(); iterator.hasNext();) {
+            Entry entry = iterator.next();
+            if (now - entry.createdAt() > 5000) break;
+            if (entry.relay() && entry.color() == color && entry.text().equals(text)) {
+                entry.sources().add(source);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void clearRelayData(String source) {
+        entries.removeIf(e -> e.relay() && e.sources().remove(source) && e.sources().isEmpty());
+    }
+
     public static void clear() {
         clear(true);
+    }
+
+    public static void clearRelay(String source) {
+        Minecraft client = Minecraft.getInstance();
+        if (!client.isSameThread()) { client.execute(() -> clearRelay(source)); return; }
+        String key = dev.openintel.net.RelaySource.normalize(source);
+        clearRelayData(key);
+        if (entries.isEmpty()) ApiBridge.notificationsCleared();
     }
 
     public static void clearRelay() {
