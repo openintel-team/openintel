@@ -1,0 +1,94 @@
+name: Canary mod build
+run-name: Canary build · ${{ github.ref_name }} · ${{ github.event.head_commit.message || 'manual build' }}
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Read branch build settings
+        id: settings
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          properties = {}
+          for line in Path('mod/gradle.properties').read_text().splitlines():
+              if line.strip() and not line.lstrip().startswith(('#', '!')) and '=' in line:
+                  key, value = line.split('=', 1)
+                  properties[key.strip()] = value.strip()
+          java = re.search(r'JavaLanguageVersion\.of\((\d+)\)', Path('mod/build.gradle').read_text())
+          if not java:
+              raise SystemExit('Cannot determine the Java toolchain from mod/build.gradle')
+          minecraft = properties['minecraft_version']
+          version = properties['mod_version']
+          jar = f"mod/build/libs/{properties['archives_base_name']}-{version}.jar"
+          branch = re.sub(r'[^A-Za-z0-9._-]', '-', os.environ['GITHUB_REF_NAME'])[:80]
+          commit = os.environ['GITHUB_SHA'][:12]
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for key, value in {
+                  'java': java.group(1),
+                  'minecraft': minecraft,
+                  'jar': jar,
+                  'artifact': f'openintel-mc{minecraft}-{branch}-{commit}',
+              }.items():
+                  print(f'{key}={value}', file=output)
+          PY
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: ${{ steps.settings.outputs.java }}
+          cache: gradle
+          cache-dependency-path: |
+            mod/*.gradle
+            mod/gradle.properties
+            mod/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Build and run headless checks
+        working-directory: mod
+        run: ./gradlew --no-daemon build
+
+      - name: Upload installable mod
+        id: upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ${{ steps.settings.outputs.artifact }}
+          path: ${{ steps.settings.outputs.jar }}
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Show download instructions
+        env:
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          MINECRAFT_VERSION: ${{ steps.settings.outputs.minecraft }}
+        run: |
+          {
+            echo '## Canary mod build'
+            printf 'Minecraft: **%s**\n\n' "$MINECRAFT_VERSION"
+            printf 'Commit: `%s`\n\n' "$GITHUB_SHA"
+            printf '[Download the mod artifact](%s) (requires signing in to GitHub).\n\n' "$ARTIFACT_URL"
+            echo 'Extract the ZIP and put its jar in your mods folder with Fabric API.'
+            echo 'This development build includes the headless checks; in-game behavior is not verified by CI.'
+            echo 'Artifacts expire after 30 days. Stable releases remain available on the Releases page.'
+          } >> "$GITHUB_STEP_SUMMARY"
