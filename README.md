@@ -261,6 +261,7 @@ Attack and use macros repeat a click on an interval. Hold-attack and hold-use re
 | Default key | Action |
 |---|---|
 | `R` | Toggle radar |
+| `V` | Toggle range visualizations |
 | `G` | Hold for the ping wheel |
 | `O` | War Table |
 | `0` | Toggle timed attack |
