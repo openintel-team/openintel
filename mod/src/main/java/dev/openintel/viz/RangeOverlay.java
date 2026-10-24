@@ -8,6 +8,11 @@ import net.minecraft.core.Direction;
 import dev.openintel.render.WorldOverlayMesh;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.BitSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 /** Collects exact block-aligned coverage surfaces for the dedicated world overlay pipelines. */
 public final class RangeOverlay {
     private RangeOverlay() { }
@@ -21,91 +26,191 @@ public final class RangeOverlay {
     private static final int SANCTUARY_STROKE = 0xFF3DDC84;
     private static final int SANCTUARY_FILL = 0x333DDC84;
 
-    /** How far from the player a shell block is still submitted. */
+    /** A shape is drawn when its center is within this distance plus its radius; sanctuary ring blocks also stop here. */
     private static final double DRAW_RANGE = 256;
     private static final double DRAW_RANGE_SQ = DRAW_RANGE * DRAW_RANGE;
     private static final Direction[] FACES = Direction.values();
 
-    /** Collect at tick rate; the immutable snapshot is attached during level extraction. */
-    public static void collect(Minecraft client, WorldOverlayMesh.Builder mesh) {
-        if (client == null || client.level == null || client.player == null) return;
+    /**
+     * Sanctuary rings are culled per block against the center of the player's cell, so they are rebuilt
+     * only when the player crosses a cell boundary. At {@link #DRAW_RANGE} the cull edge moves a few blocks.
+     */
+    private static final int CELL = 32;
+
+    /**
+     * Snitch and bastion geometry. Those shapes are drawn whole once their center is in range, so the
+     * mesh only changes when a shape enters or leaves range. {@code inRange} indexes {@code visibleShapes}
+     * for this store revision.
+     */
+    public record ShapesKey(String dim, long revision, boolean snitch, boolean bastion, boolean seeThrough,
+                            double snitchRadius, double bastionRadius, BitSet inRange) { }
+
+    /** Manually placed sanctuaries, which can be far larger than the draw range. */
+    public record DiskKey(String dim, long revision, boolean seeThrough, int cellX, int cellY, int cellZ) { }
+
+    /** Live-map sanctuaries are built at Y 0 and lifted to the player's block Y when drawn. */
+    public record LiveKey(int revision, boolean seeThrough, int cellX, int cellZ) { }
+
+    private record TemplateKey(boolean bastion, double radius, int stroke, int fill, boolean onTop) { }
+    private static final Map<TemplateKey, WorldOverlayMesh> TEMPLATES = new HashMap<>();
+
+    /** Null when no snitch or bastion can be drawn. */
+    public static ShapesKey shapesKey(Minecraft client) {
+        if (client == null || client.level == null || client.player == null) return null;
         OIConfig cfg = OpenIntelClient.config();
-        if (cfg == null || !cfg.vizEnabled) return;
-
+        if (cfg == null || !cfg.vizEnabled || !(cfg.vizSnitch || cfg.vizBastion)) return null;
         String dim = client.level.dimension().identifier().toString();
-        boolean seeThrough = cfg.vizSeeThrough;
-        Vec3 eye = new Vec3(client.player.getX(), client.player.getY(), client.player.getZ());
-        double snitchR = snitchRadius(cfg);
-        double bastionR = bastionRadius(cfg);
+        double snitchR = snitchRadius(cfg), bastionR = bastionRadius(cfg);
+        Vec3 eye = client.player.position();
+        RangeStore store = RangeStore.get();
+        long revision = store.revision();
+        List<RangeShape> shapes = store.visibleShapes();
+        BitSet inRange = new BitSet();
+        for (int i = 0; i < shapes.size(); i++) {
+            RangeShape shape = shapes.get(i);
+            if (shape == null || !shape.enabled || shape.type == null || !dimEquals(dim, shape.dimension)) continue;
+            boolean near = switch (shape.type) {
+                case SNITCH -> cfg.vizSnitch && nearShape(eye, shape.x + 0.5, shape.y + 0.5, shape.z + 0.5, snitchR);
+                case BASTION -> cfg.vizBastion && nearShape(eye, shape.x + 0.5, shape.y + 0.5, shape.z + 0.5, bastionR);
+                case SANCTUARY -> false;
+            };
+            if (near) inRange.set(i);
+        }
+        if (inRange.isEmpty()) return null;
+        return new ShapesKey(dim, revision, cfg.vizSnitch, cfg.vizBastion, cfg.vizSeeThrough, snitchR, bastionR, inRange);
+    }
 
-        if (cfg.vizSnitch || cfg.vizBastion || cfg.vizSanctuary) {
-            for (RangeShape shape : RangeStore.get().visibleShapes()) {
-                if (shape == null || !shape.enabled || shape.type == null) continue;
-                if (!dimEquals(dim, shape.dimension)) continue;
-                switch (shape.type) {
-                    case SNITCH -> {
-                        if (cfg.vizSnitch) {
-                            boolean logging = shape.snitchKind == SnitchKind.LOGGING;
-                            drawSnitch(mesh, shape.x, shape.y, shape.z, snitchR,
-                                    logging ? LOGGING_STROKE : SNITCH_STROKE,
-                                    logging ? LOGGING_FILL : SNITCH_FILL,
-                                    eye, seeThrough);
-                        }
-                    }
-                    case BASTION -> {
-                        if (cfg.vizBastion) {
-                            drawBastion(mesh, shape.x, shape.y, shape.z, bastionR, eye, seeThrough);
-                        }
-                    }
-                    case SANCTUARY -> {
-                        if (cfg.vizSanctuary) {
-                            drawDisk(mesh, shape.x + 0.5, shape.y, shape.z + 0.5,
-                                    shape.sanctuaryRadius, SANCTUARY_STROKE, SANCTUARY_FILL,
-                                    eye, seeThrough, false, false);
-                        }
-                    }
-                }
+    /** Null when no manual sanctuary can be drawn in this dimension. */
+    public static DiskKey diskKey(Minecraft client) {
+        if (client == null || client.level == null || client.player == null) return null;
+        OIConfig cfg = OpenIntelClient.config();
+        if (cfg == null || !cfg.vizEnabled || !cfg.vizSanctuary) return null;
+        String dim = client.level.dimension().identifier().toString();
+        RangeStore store = RangeStore.get();
+        long revision = store.revision();
+        boolean any = false;
+        for (RangeShape shape : store.visibleShapes()) {
+            if (shape != null && shape.enabled && shape.type == RangeType.SANCTUARY && dimEquals(dim, shape.dimension)) {
+                any = true;
+                break;
             }
         }
+        if (!any) return null;
+        return new DiskKey(dim, revision, cfg.vizSeeThrough,
+                cell(client.player.getX()), cell(client.player.getY()), cell(client.player.getZ()));
+    }
 
-        if (cfg.vizLiveSanctuaries && isOverworld(dim)) {
-            Sanctuaries.ensureLoaded();
-            int groundY = client.player.blockPosition().getY();
-            for (Sanctuaries.Sanctuary s : Sanctuaries.all()) {
-                if (s == null || !s.overworld()) continue;
-                drawDisk(mesh, s.x(), groundY, s.z(), s.radius(),
-                        SANCTUARY_STROKE, SANCTUARY_FILL, eye, seeThrough, false, false);
+    /** Null when live-map sanctuaries are hidden or the player is outside the Overworld. */
+    public static LiveKey liveKey(Minecraft client) {
+        if (client == null || client.level == null || client.player == null) return null;
+        OIConfig cfg = OpenIntelClient.config();
+        if (cfg == null || !cfg.vizEnabled || !cfg.vizLiveSanctuaries) return null;
+        if (!isOverworld(client.level.dimension().identifier().toString())) return null;
+        Sanctuaries.ensureLoaded();
+        return new LiveKey(Sanctuaries.revision(), cfg.vizSeeThrough,
+                cell(client.player.getX()), cell(client.player.getZ()));
+    }
+
+    public static void collectShapes(ShapesKey key, WorldOverlayMesh.Builder mesh) {
+        List<RangeShape> shapes = RangeStore.get().visibleShapes();
+        boolean seeThrough = key.seeThrough();
+        for (int i = key.inRange().nextSetBit(0); i >= 0 && i < shapes.size(); i = key.inRange().nextSetBit(i + 1)) {
+            RangeShape shape = shapes.get(i);
+            if (shape.type == RangeType.SNITCH && key.snitch()) {
+                boolean logging = shape.snitchKind == SnitchKind.LOGGING;
+                mesh.append(snitchTemplate(key.snitchRadius(), logging ? LOGGING_STROKE : SNITCH_STROKE,
+                        logging ? LOGGING_FILL : SNITCH_FILL, seeThrough), shape.x, shape.y, shape.z);
+            } else if (shape.type == RangeType.BASTION && key.bastion()) {
+                mesh.append(bastionTemplate(key.bastionRadius(), seeThrough), shape.x, shape.y, shape.z);
             }
         }
+    }
+
+    public static void collectDisks(DiskKey key, WorldOverlayMesh.Builder mesh) {
+        Vec3 eye = cellCenter(key.cellX(), key.cellY(), key.cellZ());
+        for (RangeShape shape : RangeStore.get().visibleShapes()) {
+            if (shape == null || !shape.enabled || shape.type != RangeType.SANCTUARY) continue;
+            if (!dimEquals(key.dim(), shape.dimension)) continue;
+            drawDisk(mesh, shape.x + 0.5, shape.y, shape.z + 0.5, shape.sanctuaryRadius,
+                    SANCTUARY_STROKE, SANCTUARY_FILL, eye, key.seeThrough(), false, false);
+        }
+    }
+
+    public static void collectLive(LiveKey key, WorldOverlayMesh.Builder mesh) {
+        Vec3 center = cellCenter(key.cellX(), 0, key.cellZ());
+        Vec3 eye = new Vec3(center.x, 0, center.z);
+        for (Sanctuaries.Sanctuary s : Sanctuaries.all()) {
+            if (s == null || !s.overworld()) continue;
+            drawDisk(mesh, s.x(), 0, s.z(), s.radius(),
+                    SANCTUARY_STROKE, SANCTUARY_FILL, eye, key.seeThrough(), false, false);
+        }
+    }
+
+    /** Block Y the live-map sanctuary layer is drawn at. */
+    public static int liveY(Minecraft client) {
+        return client.player == null ? 0 : client.player.blockPosition().getY();
+    }
+
+    private static int cell(double coordinate) {
+        return Math.floorDiv((int) Math.floor(coordinate), CELL);
+    }
+
+    private static Vec3 cellCenter(int cx, int cy, int cz) {
+        double half = CELL / 2.0;
+        return new Vec3(cx * (double) CELL + half, cy * (double) CELL + half, cz * (double) CELL + half);
     }
 
     static void drawSnitch(WorldOverlayMesh.Builder mesh, int bx, int by, int bz, double radius,
                            int stroke, int fill, Vec3 eye, boolean seeThrough) {
         if (!nearShape(eye, bx + 0.5, by + 0.5, bz + 0.5, radius)) return;
+        mesh.append(snitchTemplate(radius, stroke, fill, seeThrough), bx, by, bz);
+    }
+
+    static void drawBastion(WorldOverlayMesh.Builder mesh, int bx, int by, int bz, double radius, Vec3 eye, boolean seeThrough) {
+        if (!nearShape(eye, bx + 0.5, by + 0.5, bz + 0.5, radius)) return;
+        mesh.append(bastionTemplate(radius, seeThrough), bx, by, bz);
+    }
+
+    /** Shell around a snitch at the origin, built once per radius and style. */
+    private static WorldOverlayMesh snitchTemplate(double radius, int stroke, int fill, boolean seeThrough) {
+        TemplateKey key = new TemplateKey(false, radius, stroke, fill, seeThrough);
+        WorldOverlayMesh cached = TEMPLATES.get(key);
+        if (cached != null) return cached;
+        WorldOverlayMesh.Builder mesh = new WorldOverlayMesh.Builder();
         int[] shell = RangeGeometry.snitchShellOffsets(radius);
-        if (shell.length == 0) return;
         for (int i = 0; i + 2 < shell.length; i += 3) {
-            int dx = shell[i], dy = shell[i + 1], dz = shell[i + 2];
-            int x = bx + dx, y = by + dy, z = bz + dz;
-            if (!near(eye, x + 0.5, y + 0.5, z + 0.5)) continue;
+            int x = shell[i], y = shell[i + 1], z = shell[i + 2];
             for (Direction face : FACES) {
-                if (RangeGeometry.snitchCoversBlock(bx, by, bz,
+                if (RangeGeometry.snitchCoversBlock(0, 0, 0,
                         x + face.getStepX(), y + face.getStepY(), z + face.getStepZ(), radius)) {
                     continue;
                 }
                 mesh.face(x, y, z, face, stroke, fill, 1.5f, seeThrough);
             }
         }
+        return remember(key, mesh.build());
     }
 
-    static void drawBastion(WorldOverlayMesh.Builder mesh, int bx, int by, int bz, double radius, Vec3 eye, boolean seeThrough) {
-        drawDisk(mesh, bx + 0.5, by, bz + 0.5, radius, BASTION_STROKE, BASTION_FILL,
-                eye, seeThrough, true, true);
+    /** Bastion field around a bastion at the origin, built once per radius and style. */
+    private static WorldOverlayMesh bastionTemplate(double radius, boolean seeThrough) {
+        TemplateKey key = new TemplateKey(true, radius, BASTION_STROKE, BASTION_FILL, seeThrough);
+        WorldOverlayMesh cached = TEMPLATES.get(key);
+        if (cached != null) return cached;
+        WorldOverlayMesh.Builder mesh = new WorldOverlayMesh.Builder();
+        drawDisk(mesh, 0.5, 0, 0.5, radius, BASTION_STROKE, BASTION_FILL, null, seeThrough, true, true);
+        return remember(key, mesh.build());
     }
 
+    private static WorldOverlayMesh remember(TemplateKey key, WorldOverlayMesh mesh) {
+        if (TEMPLATES.size() > 32) TEMPLATES.clear();
+        TEMPLATES.put(key, mesh);
+        return mesh;
+    }
+
+    /** {@code eye} null draws the whole disk. */
     private static void drawDisk(WorldOverlayMesh.Builder mesh, double centerX, int y, double centerZ, double radius,
                                  int stroke, int fill, Vec3 eye, boolean seeThrough, boolean posts, boolean bastion) {
-        if (!nearShape(eye, centerX, y + 0.5, centerZ, radius)) return;
+        if (eye != null && !nearShape(eye, centerX, y + 0.5, centerZ, radius)) return;
         int[] ring = bastion
                 ? RangeGeometry.bastionRingOffsets(radius)
                 : RangeGeometry.diskRingOffsets(centerX, centerZ, radius);
@@ -116,7 +221,7 @@ public final class RangeOverlay {
         for (int i = 0; i + 1 < ring.length; i += 2) {
             int x = baseX + ring[i];
             int z = baseZ + ring[i + 1];
-            if (!near(eye, x + 0.5, y + 0.5, z + 0.5)) continue;
+            if (eye != null && !near(eye, x + 0.5, y + 0.5, z + 0.5)) continue;
             mesh.face(x, y, z, Direction.UP, stroke, fill, 2f, seeThrough);
             mesh.face(x, y, z, Direction.DOWN, stroke, fill, 2f, seeThrough);
             if (!horizontalCover(bastion, centerX, centerZ, radius, x + 1, z))
@@ -129,7 +234,7 @@ public final class RangeOverlay {
                 mesh.face(x, y, z, Direction.NORTH, stroke, fill, 2f, seeThrough);
             if (!posts) continue;
             double px = x + 0.5, pz = z + 0.5;
-            mesh.line(new Vec3(px, y, pz), new Vec3(px, top, pz), stroke, 1.5f, seeThrough);
+            mesh.line(px, y, pz, px, top, pz, stroke, 1.5f, seeThrough);
         }
     }
 

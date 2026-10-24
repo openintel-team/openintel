@@ -21,6 +21,7 @@ public final class RangeStore {
     private List<RangeGroup> groups = new ArrayList<>();
     private final Deque<List<Deleted>> undo = new ArrayDeque<>();
     private final Path overridePath;
+    private long revision;
 
     private RangeStore() { this(null); }
     /** Isolated stores for headless persistence/interaction tests. */
@@ -32,6 +33,8 @@ public final class RangeStore {
     public synchronized List<RangeShape> shapes() { return List.copyOf(shapes); }
     public synchronized List<RangeGroup> groups() { return List.copyOf(groups); }
     public synchronized int size() { return shapes.size(); }
+    /** Changes whenever shapes or groups may have changed; the world overlay rebuilds only then. */
+    public synchronized long revision() { return revision; }
     public synchronized RangeShape find(String id) {
         return shapes.stream().filter(s -> s.id.equals(id)).findFirst().orElse(null);
     }
@@ -124,9 +127,11 @@ public final class RangeStore {
         try {
             FileBody body = readBody(configPath(), false);
             shapes = body.shapes; groups = body.groups; undo.clear();
+            revision++;
         } catch (IOException ignored) { }
     }
     public synchronized void save() {
+        revision++;
         try { writeBody(configPath(), body(shapes, groups)); } catch (IOException ignored) { }
     }
     static List<RangeShape> readFile(Path path) {
@@ -165,6 +170,7 @@ public final class RangeStore {
         int added = merge(next, incoming.shapes);
         writeBody(configPath(), body(next, layers));
         shapes = next; groups = layers;
+        revision++;
         return added;
     }
     static int merge(List<RangeShape> existing, List<RangeShape> incoming) {
@@ -252,7 +258,7 @@ public final class RangeStore {
         if (s.groupId == null) s.groupId = "";
     }
     private static RangeShape copy(RangeShape s) { return GSON.fromJson(GSON.toJson(s), RangeShape.class); }
-    public synchronized void compact() { shapes.removeIf(s -> s == null || s.id == null); }
+    public synchronized void compact() { shapes.removeIf(s -> s == null || s.id == null); revision++; }
     private record Deleted(int index, RangeShape shape) { }
     private static final class FileBody {
         int version = 2;
