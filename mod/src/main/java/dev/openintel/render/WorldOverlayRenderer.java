@@ -22,16 +22,33 @@ import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.slf4j.LoggerFactory;
 
-import java.util.Comparator;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
 import java.util.OptionalInt;
 import java.util.OptionalDouble;
+import java.util.function.Consumer;
 
-/** Batched overlays using Fabric's level pass and Iris's public custom-pipeline mapping. */
+/**
+ * Batched overlays using Fabric's level pass and Iris's public custom-pipeline mapping.
+ * Geometry is rebuilt only when its inputs change and stays on the GPU between frames.
+ */
 public final class WorldOverlayRenderer {
-    private static final RenderStateDataKey<WorldOverlayMesh> MESH = RenderStateDataKey.create();
-    private static final WorldOverlayMesh EMPTY = new WorldOverlayMesh(java.util.List.of(), java.util.List.of());
+    /** One cached layer for a frame, lifted by {@code offsetY} blocks when drawn. */
+    public record LayerFrame(WorldOverlayMesh mesh, double offsetY) { }
+
+    private static final RenderStateDataKey<List<LayerFrame>> FRAME = RenderStateDataKey.create();
+    private static final WorldOverlayMesh EMPTY = WorldOverlayMesh.EMPTY;
+    private static final int RANGES = 0, SANCTUARIES = 1, LIVE_SANCTUARIES = 2, INVESTIGATE = 3, LAYERS = 4;
+    /** Translucent faces are re-sorted after the camera moves this far from the last sort. */
+    private static final double SORT_STEP_SQ = 4.0 * 4.0;
+
     private static net.minecraft.client.multiplayer.ClientLevel collectedLevel;
-    private static WorldOverlayMesh collected = EMPTY;
+    private static final Object[] keys = new Object[LAYERS];
+    private static final WorldOverlayMesh[] meshes = {EMPTY, EMPTY, EMPTY, EMPTY};
+    private static List<LayerFrame> collected = List.of();
+    private static final GpuLayer[] gpu = {new GpuLayer(), new GpuLayer(), new GpuLayer(), new GpuLayer()};
+
     public static final RenderPipeline FILL_DEPTH = pipeline("overlay_fill_depth", false, false);
     public static final RenderPipeline FILL_TOP = pipeline("overlay_fill_top", false, true);
     public static final RenderPipeline LINE_DEPTH = pipeline("overlay_line_depth", true, false);
@@ -44,8 +61,6 @@ public final class WorldOverlayRenderer {
     private static RenderPipeline[] pipelines() {
         return new RenderPipeline[]{FILL_DEPTH, FILL_TOP, LINE_DEPTH, LINE_TOP, FILL_SHADER_DEPTH, LINE_SHADER_DEPTH};
     }
-
-    private static final java.util.Map<RenderPipeline, net.minecraft.client.renderer.MappableRingBuffer> BUFFERS = new java.util.HashMap<>();
 
     private WorldOverlayRenderer() { }
 
@@ -72,28 +87,51 @@ public final class WorldOverlayRenderer {
         for (RenderPipeline p : pipelines()) RenderPipelines.register(p);
         registerIris();
         net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
-            BUFFERS.values().forEach(net.minecraft.client.renderer.MappableRingBuffer::close);
-            BUFFERS.clear();
+            for (GpuLayer layer : gpu) layer.close();
         });
         WorldRenderEvents.END_EXTRACTION.register(context -> {
             Minecraft mc = Minecraft.getInstance();
-            context.worldState().setData(MESH, mc.level == context.world() && collectedLevel == context.world()
-                    && !mc.options.hideGui ? collected : EMPTY);
+            context.worldState().setData(FRAME, mc.level == context.world() && collectedLevel == context.world()
+                    && !mc.options.hideGui ? collected : List.of());
         });
         WorldRenderEvents.END_MAIN.register(WorldOverlayRenderer::render);
     }
 
-    /** Rebuild at tick rate; frame extraction only attaches immutable geometry. Camera-relative vertices are rebuilt each frame. */
+    /** Checked at tick rate; a layer is rebuilt only when its key changes. */
     public static void collect(Minecraft client) {
-        collectedLevel = client.level;
+        if (client.level != collectedLevel || client.level == null || client.player == null) {
+            Arrays.fill(keys, null);
+            Arrays.fill(meshes, EMPTY);
+            collectedLevel = client.level;
+        }
         if (client.level == null || client.player == null) {
-            collected = EMPTY;
+            collected = List.of();
             return;
         }
-        WorldOverlayMesh.Builder geometry = new WorldOverlayMesh.Builder();
-        RangeOverlay.collect(client, geometry);
-        InvestigateOverlay.collect(client, geometry);
-        collected = geometry.build();
+        RangeOverlay.ShapesKey shapes = RangeOverlay.shapesKey(client);
+        update(RANGES, shapes, b -> RangeOverlay.collectShapes(shapes, b));
+        RangeOverlay.DiskKey disks = RangeOverlay.diskKey(client);
+        update(SANCTUARIES, disks, b -> RangeOverlay.collectDisks(disks, b));
+        RangeOverlay.LiveKey live = RangeOverlay.liveKey(client);
+        update(LIVE_SANCTUARIES, live, b -> RangeOverlay.collectLive(live, b));
+        InvestigateOverlay.Key investigate = InvestigateOverlay.key(client);
+        update(INVESTIGATE, investigate, b -> InvestigateOverlay.collect(investigate, b));
+        collected = List.of(new LayerFrame(meshes[RANGES], 0),
+                new LayerFrame(meshes[SANCTUARIES], 0),
+                new LayerFrame(meshes[LIVE_SANCTUARIES], RangeOverlay.liveY(client)),
+                new LayerFrame(meshes[INVESTIGATE], 0));
+    }
+
+    private static void update(int layer, Object key, Consumer<WorldOverlayMesh.Builder> build) {
+        if (Objects.equals(keys[layer], key) && (key != null || meshes[layer] == EMPTY)) return;
+        keys[layer] = key;
+        if (key == null) {
+            meshes[layer] = EMPTY;
+            return;
+        }
+        WorldOverlayMesh.Builder builder = new WorldOverlayMesh.Builder();
+        build.accept(builder);
+        meshes[layer] = builder.build();
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -127,76 +165,212 @@ public final class WorldOverlayRenderer {
     }
 
     private static void render(WorldRenderContext context) {
-        WorldOverlayMesh mesh = context.worldState().getData(MESH);
-        if (mesh == null || (mesh.faces().isEmpty() && mesh.lines().isEmpty())) return;
+        List<LayerFrame> frame = context.worldState().getData(FRAME);
+        if (frame == null || frame.isEmpty()) return;
         Vec3 eye = context.worldState().cameraRenderState.pos;
-        // Stable sorting blends far translucent faces before near ones. Lines draw last in each depth mode.
-        var faces = mesh.faces().stream().sorted(Comparator.comparingDouble(
-                (WorldOverlayMesh.Face f) -> f.center().distanceToSqr(eye)).reversed()).toList();
+        boolean any = false;
+        for (int i = 0; i < LAYERS; i++) {
+            LayerFrame layer = i < frame.size() ? frame.get(i) : null;
+            WorldOverlayMesh mesh = layer == null ? EMPTY : layer.mesh();
+            double offsetY = layer == null ? 0 : layer.offsetY();
+            any |= gpu[i].sync(mesh, eye.x, eye.y - offsetY, eye.z);
+        }
+        if (!any) return;
+        Matrix4f view = new Matrix4f(RenderSystem.getModelViewMatrix());
+        Matrix4f[] transforms = new Matrix4f[LAYERS];
+        for (int i = 0; i < LAYERS; i++) {
+            GpuLayer g = gpu[i];
+            if (g.mesh.isEmpty()) continue;
+            double offsetY = i < frame.size() ? frame.get(i).offsetY() : 0;
+            // Vertices are relative to the layer origin; only this small translation changes per frame.
+            transforms[i] = new Matrix4f(view).translate((float) (g.originX - eye.x),
+                    (float) (g.originY + offsetY - eye.y), (float) (g.originZ - eye.z));
+        }
         // This version uses conventional depth with and without shader packs.
         boolean shaders = shadersActive();
-        for (boolean top : new boolean[]{false, true}) {
+        for (int t = 0; t < 2; t++) {
+            boolean top = t == 1;
             RenderPipeline fill = top ? FILL_TOP : shaders ? FILL_SHADER_DEPTH : FILL_DEPTH;
             RenderPipeline line = top ? LINE_TOP : shaders ? LINE_SHADER_DEPTH : LINE_DEPTH;
-            try (ByteBufferBuilder memory = new ByteBufferBuilder(256 * 1024)) {
-                BufferBuilder vertices = new BufferBuilder(memory, fill.getVertexFormatMode(), fill.getVertexFormat());
-                for (var face : faces) if (face.onTop() == top) {
-                    for (Vec3 p : new Vec3[]{face.a(), face.b(), face.c(), face.d()}) {
-                        Vec3 v = p.subtract(eye);
-                        vertices.addVertex((float) v.x, (float) v.y, (float) v.z).setColor(face.color());
-                    }
-                }
-                draw(context, vertices.build(), fill);
-                vertices = new BufferBuilder(memory, line.getVertexFormatMode(), line.getVertexFormat());
-                for (var edge : mesh.lines()) if (edge.onTop() == top) {
-                    Vec3 direction = edge.b().subtract(edge.a()).normalize();
-                    for (Vec3 p : new Vec3[]{edge.a(), edge.b()}) {
-                        Vec3 v = p.subtract(eye);
-                        vertices.addVertex((float) v.x, (float) v.y, (float) v.z).setColor(edge.color())
-                                .setNormal((float) direction.x, (float) direction.y, (float) direction.z).setLineWidth(edge.width());
-                    }
-                }
-                draw(context, vertices.build(), line);
-            }
+            for (int i = 0; i < LAYERS; i++)
+                if (transforms[i] != null) draw(gpu[i].fill[t], gpu[i].fillCount[t], fill, transforms[i]);
+            // Lines draw last in each depth mode.
+            for (int i = 0; i < LAYERS; i++)
+                if (transforms[i] != null) draw(gpu[i].line[t], gpu[i].lineCount[t], line, transforms[i]);
         }
     }
 
-    private static void draw(WorldRenderContext context, MeshData mesh, RenderPipeline pipeline) {
-        if (mesh == null) return;
-        try (mesh) {
-            var target = Minecraft.getInstance().getMainRenderTarget();
-            if (target.getColorTextureView() == null || target.getDepthTextureView() == null) return;
-            var encoder = RenderSystem.getDevice().createCommandEncoder();
-            int bytes = mesh.vertexBuffer().remaining();
-            var ring = BUFFERS.get(pipeline);
-            if (ring == null || ring.size() < bytes) {
-                if (ring != null) {
-                    var retired = ring;
-                    RenderSystem.queueFencedTask(retired::close);
+    private static void draw(GpuBuffer vertices, int count, RenderPipeline pipeline, Matrix4f modelView) {
+        if (vertices == null || count == 0) return;
+        var target = Minecraft.getInstance().getMainRenderTarget();
+        if (target.getColorTextureView() == null || target.getDepthTextureView() == null) return;
+        var encoder = RenderSystem.getDevice().createCommandEncoder();
+        var indices = RenderSystem.getSequentialBuffer(pipeline.getVertexFormatMode());
+        var indexBuffer = indices.getBuffer(count);
+        var transforms = RenderSystem.getDynamicUniforms().writeTransform(modelView,
+                new Vector4f(1, 1, 1, 1), new Vector3f(), new Matrix4f());
+        try (var pass = encoder.createRenderPass(() -> "OpenIntel world overlays", target.getColorTextureView(),
+                OptionalInt.empty(), target.getDepthTextureView(), OptionalDouble.empty())) {
+            pass.setPipeline(pipeline);
+            RenderSystem.bindDefaultUniforms(pass);
+            pass.setUniform("DynamicTransforms", transforms);
+            pass.setVertexBuffer(0, vertices);
+            pass.setIndexBuffer(indexBuffer, indices.type());
+            pass.drawIndexed(0, 0, count, 1);
+        }
+    }
+
+    /** GPU copy of one layer. Index 0 holds depth-tested geometry and index 1 the see-through pass. */
+    private static final class GpuLayer {
+        WorldOverlayMesh mesh = EMPTY;
+        double originX, originY, originZ;
+        final GpuBuffer[] fill = new GpuBuffer[2];
+        final GpuBuffer[] line = new GpuBuffer[2];
+        final int[] fillCount = new int[2];
+        final int[] lineCount = new int[2];
+        /** Same-colored faces blend identically in any order, so only mixed colors need sorting. */
+        final boolean[] needsSort = new boolean[2];
+        double sortX, sortY, sortZ;
+
+        /** Uploads or re-sorts as needed; false when there is nothing to draw. */
+        boolean sync(WorldOverlayMesh next, double ex, double ey, double ez) {
+            if (next != mesh) {
+                retire();
+                mesh = next;
+                if (mesh.isEmpty()) return false;
+                originX = Math.floor(ex);
+                originY = Math.floor(ey);
+                originZ = Math.floor(ez);
+                for (int t = 0; t < 2; t++) {
+                    needsSort[t] = mixedFill(t == 1);
+                    uploadLines(t);
+                    uploadFills(t, ex, ey, ez);
                 }
-                ring = new net.minecraft.client.renderer.MappableRingBuffer(() -> "OpenIntel overlay vertices",
-                        GpuBuffer.USAGE_VERTEX | GpuBuffer.USAGE_MAP_WRITE, bytes);
-                BUFFERS.put(pipeline, ring);
+                sortX = ex; sortY = ey; sortZ = ez;
+                return true;
             }
-            var vertices = ring.currentBuffer().slice(0, bytes);
-            try (var mapped = encoder.mapBuffer(vertices, false, true)) {
-                mapped.data().put(mesh.vertexBuffer());
+            if (mesh.isEmpty()) return false;
+            double dx = ex - sortX, dy = ey - sortY, dz = ez - sortZ;
+            if ((needsSort[0] || needsSort[1]) && dx * dx + dy * dy + dz * dz > SORT_STEP_SQ) {
+                for (int t = 0; t < 2; t++) if (needsSort[t]) uploadFills(t, ex, ey, ez);
+                sortX = ex; sortY = ey; sortZ = ez;
             }
-            var indices = RenderSystem.getSequentialBuffer(pipeline.getVertexFormatMode());
-            int count = mesh.drawState().indexCount();
-            var indexBuffer = indices.getBuffer(count);
-            var transforms = RenderSystem.getDynamicUniforms().writeTransform(new Matrix4f(RenderSystem.getModelViewMatrix()),
-                    new Vector4f(1, 1, 1, 1), new Vector3f(), new Matrix4f());
-            try (var pass = encoder.createRenderPass(() -> "OpenIntel world overlays", target.getColorTextureView(),
-                    OptionalInt.empty(), target.getDepthTextureView(), OptionalDouble.empty())) {
-                pass.setPipeline(pipeline);
-                RenderSystem.bindDefaultUniforms(pass);
-                pass.setUniform("DynamicTransforms", transforms);
-                pass.setVertexBuffer(0, ring.currentBuffer());
-                pass.setIndexBuffer(indexBuffer, indices.type());
-                pass.drawIndexed(0, 0, count, 1);
+            return true;
+        }
+
+        private boolean mixedFill(boolean top) {
+            boolean seen = false;
+            int color = 0;
+            for (int i = 0; i < mesh.faceCount; i++) {
+                if (mesh.faceTop[i] != top) continue;
+                if (!seen) { seen = true; color = mesh.faceColors[i]; }
+                else if (mesh.faceColors[i] != color) return true;
             }
-            ring.rotate();
+            return false;
+        }
+
+        private void uploadFills(int t, double ex, double ey, double ez) {
+            retire(fill, t);
+            fillCount[t] = 0;
+            boolean top = t == 1;
+            WorldOverlayMesh m = mesh;
+            int n = 0;
+            for (int i = 0; i < m.faceCount; i++) if (m.faceTop[i] == top) n++;
+            if (n == 0) return;
+            int[] order = new int[n];
+            if (needsSort[t]) {
+                // Far faces first; ties keep the later face first, like the reversed stable sort it replaces.
+                long[] keyed = new long[n];
+                int k = 0;
+                for (int i = 0; i < m.faceCount; i++) {
+                    if (m.faceTop[i] != top) continue;
+                    int o = i * 12;
+                    double cx = (m.faceVerts[o] + m.faceVerts[o + 6]) * 0.5 - ex;
+                    double cy = (m.faceVerts[o + 1] + m.faceVerts[o + 7]) * 0.5 - ey;
+                    double cz = (m.faceVerts[o + 2] + m.faceVerts[o + 8]) * 0.5 - ez;
+                    keyed[k++] = ((long) Float.floatToRawIntBits((float) (cx * cx + cy * cy + cz * cz)) << 32) | i;
+                }
+                Arrays.sort(keyed);
+                for (int j = 0; j < n; j++) order[j] = (int) keyed[n - 1 - j];
+            } else {
+                int k = 0;
+                for (int i = 0; i < m.faceCount; i++) if (m.faceTop[i] == top) order[k++] = i;
+            }
+            RenderPipeline format = FILL_DEPTH;
+            try (ByteBufferBuilder memory = new ByteBufferBuilder(Math.max(1024, n * 64))) {
+                BufferBuilder vertices = new BufferBuilder(memory, format.getVertexFormatMode(), format.getVertexFormat());
+                for (int i : order) {
+                    int o = i * 12, color = m.faceColors[i];
+                    for (int c = 0; c < 12; c += 3) {
+                        vertices.addVertex((float) (m.faceVerts[o + c] - originX), (float) (m.faceVerts[o + c + 1] - originY),
+                                (float) (m.faceVerts[o + c + 2] - originZ)).setColor(color);
+                    }
+                }
+                upload(vertices.build(), fill, fillCount, t, "OpenIntel overlay faces");
+            }
+        }
+
+        private void uploadLines(int t) {
+            boolean top = t == 1;
+            WorldOverlayMesh m = mesh;
+            int n = 0;
+            for (int i = 0; i < m.lineCount; i++) if (m.lineTop[i] == top) n++;
+            if (n == 0) return;
+            RenderPipeline format = LINE_DEPTH;
+            try (ByteBufferBuilder memory = new ByteBufferBuilder(Math.max(1024, n * 96))) {
+                BufferBuilder vertices = new BufferBuilder(memory, format.getVertexFormatMode(), format.getVertexFormat());
+                for (int i = 0; i < m.lineCount; i++) {
+                    if (m.lineTop[i] != top) continue;
+                    int o = i * 6;
+                    double dx = m.lineVerts[o + 3] - m.lineVerts[o];
+                    double dy = m.lineVerts[o + 4] - m.lineVerts[o + 1];
+                    double dz = m.lineVerts[o + 5] - m.lineVerts[o + 2];
+                    double len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                    float nx = (float) (dx / len), ny = (float) (dy / len), nz = (float) (dz / len);
+                    for (int p = 0; p < 6; p += 3) {
+                        vertices.addVertex((float) (m.lineVerts[o + p] - originX), (float) (m.lineVerts[o + p + 1] - originY),
+                                        (float) (m.lineVerts[o + p + 2] - originZ))
+                                .setColor(m.lineColors[i]).setNormal(nx, ny, nz).setLineWidth(m.lineWidths[i]);
+                    }
+                }
+                upload(vertices.build(), line, lineCount, t, "OpenIntel overlay lines");
+            }
+        }
+
+        private static void upload(MeshData data, GpuBuffer[] buffers, int[] counts, int t, String label) {
+            if (data == null) return;
+            try (data) {
+                buffers[t] = RenderSystem.getDevice().createBuffer(() -> label, GpuBuffer.USAGE_VERTEX, data.vertexBuffer());
+                counts[t] = data.drawState().indexCount();
+            }
+        }
+
+        /** Buffers replaced while rendering may still be read by queued frames, so they close after a fence. */
+        private void retire() {
+            for (int t = 0; t < 2; t++) {
+                retire(fill, t);
+                retire(line, t);
+                fillCount[t] = 0;
+                lineCount[t] = 0;
+            }
+        }
+
+        private static void retire(GpuBuffer[] buffers, int t) {
+            GpuBuffer old = buffers[t];
+            buffers[t] = null;
+            if (old != null) RenderSystem.queueFencedTask(old::close);
+        }
+
+        void close() {
+            for (int t = 0; t < 2; t++) {
+                if (fill[t] != null) fill[t].close();
+                if (line[t] != null) line[t].close();
+                fill[t] = null;
+                line[t] = null;
+                fillCount[t] = 0;
+                lineCount[t] = 0;
+            }
+            mesh = EMPTY;
         }
     }
 }

@@ -27,17 +27,22 @@ public final class InvestigateOverlay {
         session.tick();
     }
 
-    public static void collect(Minecraft client, WorldOverlayMesh.Builder mesh) {
-        InvestigateSession session = InvestigateSession.get();
-        if (!session.isWatching() || client.level == null) return;
+    /** Everything the playback geometry depends on; equal keys reuse the cached mesh. */
+    public record Key(String dim, java.util.List<InvestigateSession.Event> events, int selectedIndex) { }
 
-        String dim = client.level.dimension().identifier().toString();
-        int selectedIndex = session.index();
-        java.util.List<InvestigateSession.Event> events = session.events();
+    /** Null when playback is not being watched. */
+    public static Key key(Minecraft client) {
+        InvestigateSession session = InvestigateSession.get();
+        if (!session.isWatching() || client.level == null) return null;
+        return new Key(client.level.dimension().identifier().toString(), session.events(), session.index());
+    }
+
+    public static void collect(Key key, WorldOverlayMesh.Builder mesh) {
+        java.util.List<InvestigateSession.Event> events = key.events();
         for (int i = 0; i < events.size(); i++) {
             InvestigateSession.Event ev = events.get(i);
-            if (!dim.equalsIgnoreCase(ev.dimension())) continue;
-            drawEvent(mesh, ev, i == selectedIndex);
+            if (!key.dim().equalsIgnoreCase(ev.dimension())) continue;
+            drawEvent(mesh, ev, i == key.selectedIndex());
         }
     }
 
