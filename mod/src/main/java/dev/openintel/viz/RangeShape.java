@@ -11,10 +11,12 @@ public final class RangeShape {
     public int z;
     public String dimension = "minecraft:overworld";
     public boolean enabled = true;
+    /** Empty means Ungrouped. Group visibility is separate from this entry's enabled flag. */
+    public String groupId = "";
     /** Sanctuary-only radius in blocks; ignored for snitch/bastion. */
     public double sanctuaryRadius = 50;
     /**
-     * Logging vs notifier. Missing JSON stays {@link SnitchKind#NOTIFIER}.
+     * Snitch vs Logging Snitch. Missing JSON stays {@link SnitchKind#NOTIFIER}.
      * Ignored for bastion and sanctuary shapes.
      */
     public SnitchKind snitchKind = SnitchKind.NOTIFIER;
@@ -31,7 +33,7 @@ public final class RangeShape {
 
     public String label() {
         return switch (type == null ? RangeType.SNITCH : type) {
-            case SNITCH -> (snitchKind == SnitchKind.LOGGING ? "Logging snitch " : "Notifier snitch ")
+            case SNITCH -> (snitchKind == SnitchKind.LOGGING ? "Logging Snitch " : "Snitch ")
                     + x + "," + y + "," + z;
             case BASTION -> "Bastion " + x + "," + y + "," + z;
             case SANCTUARY -> "Sanctuary r=" + (int) Math.round(sanctuaryRadius)

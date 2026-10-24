@@ -39,7 +39,7 @@ public final class RangeOverlay {
         double bastionR = bastionRadius(cfg);
 
         if (cfg.vizSnitch || cfg.vizBastion || cfg.vizSanctuary) {
-            for (RangeShape shape : RangeStore.get().shapes()) {
+            for (RangeShape shape : RangeStore.get().visibleShapes()) {
                 if (shape == null || !shape.enabled || shape.type == null) continue;
                 if (!dimEquals(dim, shape.dimension)) continue;
                 switch (shape.type) {
