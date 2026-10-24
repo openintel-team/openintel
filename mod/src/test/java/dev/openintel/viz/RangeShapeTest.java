@@ -48,6 +48,10 @@ public final class RangeShapeTest {
                 assertTrue(v.z >= -9 && v.z <= 10, "Bastion field is 19 blocks across");
             }
         }
+        assertBastionCenterPlus(bastion, 0, 64, 0);
+        mesh = new dev.openintel.render.WorldOverlayMesh.Builder();
+        RangeOverlay.drawBastion(mesh, 20, 70, -4, 8, eye, true);
+        assertBastionCenterPlus(mesh.build(), 20, 70, -4);
         mesh = new dev.openintel.render.WorldOverlayMesh.Builder();
         RangeOverlay.drawSnitch(mesh, 1000, 64, 0, 8, -1, -1, eye, true);
         assertTrue(mesh.build().faces().isEmpty(), "Distant shapes stay culled");
@@ -371,6 +375,46 @@ public final class RangeShapeTest {
                 });
             }
         }
+    }
+
+    /**
+     * The four blocks beside the bastion are outlined on the disk layer.
+     * Their inner walls leave the bastion block open. Diagonals and the layer above are unmarked.
+     */
+    private static void assertBastionCenterPlus(dev.openintel.render.WorldOverlayMesh mesh, int x, int y, int z) {
+        for (int[] arm : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+            int ax = x + arm[0], az = z + arm[1];
+            assertEquals(6, facesOnBlock(mesh, ax, y, az));
+            assertFalse(hasFaceCenter(mesh, ax + 0.5, y + 1.5, az + 0.5), "plus stays on the first layer");
+            assertFalse(hasFaceCenter(mesh, ax + 0.5, y + 2, az + 0.5), "plus stays on the first layer");
+        }
+        assertFalse(hasFaceCenter(mesh, x + 0.5, y, z + 0.5), "bastion block has no floor");
+        assertFalse(hasFaceCenter(mesh, x + 0.5, y + 1, z + 0.5), "bastion block has no cap");
+        assertEquals(4, facesOnBlock(mesh, x, y, z));
+        assertFalse(hasFaceCenter(mesh, x + 1.5, y, z + 1.5), "diagonal stays open");
+        assertFalse(hasFaceCenter(mesh, x + 1.5, y + 1, z + 1.5), "diagonal stays open");
+    }
+
+    private static boolean hasFaceCenter(dev.openintel.render.WorldOverlayMesh mesh, double x, double y, double z) {
+        for (var f : mesh.faces()) {
+            var c = f.center();
+            if (c.x == x && c.y == y && c.z == z) return true;
+        }
+        return false;
+    }
+
+    /** Faces whose center sits on one side of this block. */
+    private static int facesOnBlock(dev.openintel.render.WorldOverlayMesh mesh, int x, int y, int z) {
+        double cx = x + 0.5, cy = y + 0.5, cz = z + 0.5;
+        int n = 0;
+        for (var f : mesh.faces()) {
+            var c = f.center();
+            double dx = Math.abs(c.x - cx), dy = Math.abs(c.y - cy), dz = Math.abs(c.z - cz);
+            if ((dx == 0.5 && dy == 0 && dz == 0)
+                    || (dy == 0.5 && dx == 0 && dz == 0)
+                    || (dz == 0.5 && dx == 0 && dy == 0)) n++;
+        }
+        return n;
     }
 
     private static boolean hasTriple(int[] data, int x, int y, int z) {

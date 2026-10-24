@@ -236,6 +236,25 @@ public final class RangeOverlay {
             double px = x + 0.5, pz = z + 0.5;
             mesh.line(px, y, pz, px, top, pz, stroke, 1.5f, seeThrough);
         }
+        if (bastion) drawBastionCenter(mesh, baseX, y, baseZ, radius, stroke, fill, eye, seeThrough);
+    }
+
+    /**
+     * Hollow plus on the disk layer: the four blocks beside the bastion, which are usually obsidian.
+     * The bastion block stays open. Blocks already on the perimeter are left to the ring.
+     */
+    private static void drawBastionCenter(WorldOverlayMesh.Builder mesh, int baseX, int y, int baseZ, double radius,
+                                         int stroke, int fill, Vec3 eye, boolean seeThrough) {
+        int[] dx = {1, -1, 0, 0};
+        int[] dz = {0, 0, 1, -1};
+        for (int i = 0; i < 4; i++) {
+            int x = baseX + dx[i];
+            int z = baseZ + dz[i];
+            if (eye != null && !near(eye, x + 0.5, y + 0.5, z + 0.5)) continue;
+            if (!RangeGeometry.bastionDiskCovers(baseX, baseZ, x, z, radius)) continue;
+            if (RangeGeometry.bastionRingBlock(baseX, baseZ, x, z, radius)) continue;
+            mesh.box(x, y, z, stroke, fill, 2f, seeThrough);
+        }
     }
 
     private static boolean horizontalCover(boolean bastion, double centerX, double centerZ, double radius,
