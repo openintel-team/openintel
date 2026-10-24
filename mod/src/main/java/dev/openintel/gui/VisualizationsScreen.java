@@ -30,9 +30,13 @@ public final class VisualizationsScreen extends Screen {
     private String draftX = "0", draftY = "0", draftZ = "0", draftDim = "minecraft:overworld", draftGroup = "", draftRadius = "50";
     private boolean initialized;
     private EditBox xField, yField, zField, dimensionField, radiusField;
-    private Button typeButton, dimensionButton, groupButton, targetButton, saveButton, deleteButton, undoButton, visibilityButton, moveButton, groupsButton, exportButton, groupCreateButton, bulkDeleteButton;
+    private Button typeButton, dimensionButton, groupButton, autoButton, targetButton, saveButton, deleteButton, undoButton, visibilityButton, moveButton, groupsButton, exportButton, groupCreateButton, bulkDeleteButton;
     private Dropdown dropdown;
     private int listW, listH, editorX, editorW, scroll;
+    private int fieldY = 119, dimY = 150, groupY = 181, radiusY = 212, saveY = 234, plainSaveY = 212;
+    private boolean roomyLabels = true;
+    /** Test hook. Production reads chunks the client already has. */
+    private NearbyBlockSearch.World nearbyOverride;
     private static final int LIST_X = 8, LIST_Y = 82, ROW_H = 30;
     private String status = "Click a row to edit. Ctrl/Cmd-click or Shift-click to select several.";
 
@@ -68,30 +72,37 @@ public final class VisualizationsScreen extends Screen {
         editorX = width - editorW - 8;
         listW = editorX - 20;
         listH = Math.max(30, height - LIST_Y - 82);
+        measureEditor();
         button("New entry", 8, 28, 60, this::newEntry);
         groupsButton = button("Groups…", 72, 28, 64, this::manageGroups);
         button("Import…", 140, 28, 54, () -> openTransfer(false));
         exportButton = button("Export…", 198, 28, 54, () -> openTransfer(true));
-        button("Done", width - 62, 28, 54, this::onClose);
+        button("Done", width - 62, height - 28, 54, this::onClose);
         EditBox search = field("Search entries and groups", LIST_X, 57, listW, 160, query, value -> {
             query = value; scroll = 0; model.selected.clear(); selectedId = null; refreshRows(); updateButtons();
         });
         search.setHint(Component.literal("Search entries or groups…"));
-        typeButton = button("", editorX, 64, editorW - 50, this::chooseType);
-        targetButton = button("Target", editorX + editorW - 46, 64, 46, () -> { fillTarget(); writeFields(); status = "Target copied. Save to apply."; });
-        targetButton.setTooltip(Tooltip.create(Component.literal("Use the targeted block, or your position when no block is targeted.")));
+        typeButton = button("", editorX, 64, editorW, this::chooseType);
+        int gap = 2, autoW = 64;
+        if (autoW + gap + 96 > editorW) autoW = Math.max(52, editorW - 96 - gap);
+        autoButton = button("Auto find", editorX, 86, autoW, this::applyAutoFind);
+        autoButton.setTooltip(Tooltip.create(Component.literal("Nearest obsidian, sponge, or beacon in loaded chunks, matching the selected type.")));
+        targetButton = button("Target looking at", editorX + autoW + gap, 86, editorW - autoW - gap, this::useLookTarget);
+        targetButton.setTooltip(Tooltip.create(Component.literal("Use the block you're looking at, or your position when no block is targeted.")));
         int col = (editorW - 8) / 3;
-        xField = field("X coordinate", editorX, 97, col, 11, draftX, v -> draftX = v);
-        yField = field("Y coordinate", editorX + col + 4, 97, col, 11, draftY, v -> draftY = v);
-        zField = field("Z coordinate", editorX + 2 * (col + 4), 97, editorW - 2 * (col + 4), 11, draftZ, v -> draftZ = v);
-        dimensionButton = button("", editorX, 128, editorW, this::chooseDimension);
-        dimensionField = field("Custom dimension identifier", editorX + 68, 129, editorW - 68, 160, draftDim, v -> draftDim = v);
-        groupButton = button("", editorX, 159, editorW - 24, () -> chooseGroup(false));
-        groupCreateButton = button("+", editorX + editorW - 20, 159, 20, this::createGroup);
+        xField = field("X coordinate", editorX, fieldY, col, 11, draftX, v -> draftX = v);
+        yField = field("Y coordinate", editorX + col + 4, fieldY, col, 11, draftY, v -> draftY = v);
+        zField = field("Z coordinate", editorX + 2 * (col + 4), fieldY, editorW - 2 * (col + 4), 11, draftZ, v -> draftZ = v);
+        xField.setHint(Component.literal("X")); yField.setHint(Component.literal("Y")); zField.setHint(Component.literal("Z"));
+        dimensionButton = button("", editorX, dimY, editorW, this::chooseDimension);
+        dimensionField = field("Custom dimension identifier", editorX + 68, dimY + 1, editorW - 68, 160, draftDim, v -> draftDim = v);
+        groupButton = button("", editorX, groupY, editorW - 24, () -> chooseGroup(false));
+        groupCreateButton = button("+", editorX + editorW - 20, groupY, 20, this::createGroup);
         groupCreateButton.setTooltip(Tooltip.create(Component.literal("Create a named group.")));
-        radiusField = field("Sanctuary radius in blocks", editorX, 190, editorW, 12, draftRadius, v -> draftRadius = v);
-        saveButton = button("", editorX, 212, (editorW - 4) / 2, this::saveEntry);
-        deleteButton = button("Delete", editorX + (editorW + 4) / 2, 212, (editorW - 4) / 2, this::deleteEntry);
+        radiusField = field("Sanctuary radius in blocks", editorX, radiusY, editorW, 12, draftRadius, v -> draftRadius = v);
+        radiusField.setHint(Component.literal("Radius"));
+        saveButton = button("", editorX, saveY, (editorW - 4) / 2, this::saveEntry);
+        deleteButton = button("Delete", editorX + (editorW + 4) / 2, saveY, (editorW - 4) / 2, this::deleteEntry);
         int colW = (listW - 8) / 3, by = height - 76;
         button("All", LIST_X, by, colW, () -> { model.selectAll(); syncSelection(); });
         visibilityButton = button("", LIST_X + colW + 4, by, listW - colW - 4, this::toggleSelectedVisibility);
@@ -108,7 +119,52 @@ public final class VisualizationsScreen extends Screen {
     private void newEntry() {
         model.selected.clear(); selectedId = null; kind = EntryKind.SNITCH; draftRadius = "50";
         draftGroup = store.group(activeGroup) == null ? "" : activeGroup;
-        fillTarget(); writeFields(); updateButtons(); status = "New entry: choose a type and coordinates, then Add entry.";
+        status = locate(true); updateButtons();
+    }
+    /** Short windows drop the caption lines so Done still fits under the form. */
+    private void measureEditor() {
+        roomyLabels = height >= 300;
+        fieldY = roomyLabels ? 119 : 108;
+        dimY = roomyLabels ? 150 : 130;
+        groupY = roomyLabels ? 181 : 154;
+        radiusY = roomyLabels ? 212 : 178;
+        saveY = roomyLabels ? 234 : 200;
+        plainSaveY = roomyLabels ? 212 : 178;
+    }
+    private void useLookTarget() {
+        fillTarget(); writeFields(); status = "Target copied. Save to apply.";
+    }
+    private void applyAutoFind() { status = locate(false); }
+    /** Fills coordinates from the nearest loaded block for the selected type. */
+    private String locate(boolean fallBackToLook) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc != null && mc.level != null) draftDim = mc.level.dimension().identifier().toString();
+        NearbyBlockSearch.Material material = NearbyBlockSearch.material(kind);
+        NearbyBlockSearch.World world = nearbyWorld();
+        BlockPos origin = searchOrigin();
+        NearbyBlockSearch.Hit hit = world == null ? null
+                : NearbyBlockSearch.nearest(origin.getX(), origin.getY(), origin.getZ(), material, world);
+        if (hit != null) {
+            draftX = Integer.toString(hit.x()); draftY = Integer.toString(hit.y()); draftZ = Integer.toString(hit.z());
+            writeFields();
+            return "Nearest " + material.noun + " at " + hit.x() + ", " + hit.y() + ", " + hit.z() + ". Save to apply.";
+        }
+        if (fallBackToLook) {
+            fillTarget(); writeFields();
+            return "No " + material.noun + " in loaded chunks. Using the block you're looking at.";
+        }
+        return "No " + material.noun + " in loaded chunks.";
+    }
+    private NearbyBlockSearch.World nearbyWorld() {
+        if (nearbyOverride != null) return nearbyOverride;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.level == null) return null;
+        return new NearbyBlockSearch.ClientWorld(mc);
+    }
+    private BlockPos searchOrigin() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc != null && mc.player != null) return mc.player.blockPosition();
+        return BlockPos.ZERO;
     }
     private void fillTarget() {
         Minecraft mc = Minecraft.getInstance();
@@ -140,14 +196,14 @@ public final class VisualizationsScreen extends Screen {
     private void updateButtons() {
         boolean single = model.selected.size() <= 1;
         typeButton.setMessage(Component.literal(pickerLabel(kind.label, typeButton))); typeButton.active = single;
-        targetButton.active = single;
+        autoButton.active = targetButton.active = single;
         for (EditBox field : List.of(xField, yField, zField, dimensionField, radiusField)) field.active = single;
         dimensionButton.setWidth(standardDimension(draftDim) ? editorW : 64);
         dimensionButton.setMessage(Component.literal(pickerLabel(standardDimension(draftDim) ? friendlyDim(draftDim) : "Custom", dimensionButton)));
         dimensionButton.active = single; dimensionField.visible = !standardDimension(draftDim);
         groupButton.setMessage(Component.literal(pickerLabel(groupName(draftGroup), groupButton))); groupButton.active = single; groupCreateButton.active = single;
         radiusField.visible = kind == EntryKind.SANCTUARY;
-        int actionsY = kind == EntryKind.SANCTUARY ? 212 : 190;
+        int actionsY = kind == EntryKind.SANCTUARY ? saveY : plainSaveY;
         saveButton.setY(actionsY); deleteButton.setY(actionsY);
         saveButton.setMessage(Component.literal(selectedId == null ? "Add entry" : "Save")); saveButton.active = single;
         deleteButton.active = bulkDeleteButton.active = !model.selected.isEmpty();
@@ -160,7 +216,7 @@ public final class VisualizationsScreen extends Screen {
     }
     private void chooseType() {
         List<Choice> choices = Arrays.stream(EntryKind.values()).map(k -> new Choice(k.name(), k.label)).toList();
-        choose(typeButton, choices, kind.name(), value -> { kind = EntryKind.valueOf(value); updateButtons(); });
+        choose(typeButton, choices, kind.name(), value -> { kind = EntryKind.valueOf(value); status = locate(false); updateButtons(); });
     }
     private void chooseDimension() {
         choose(dimensionButton, List.of(new Choice("minecraft:overworld", "Overworld"), new Choice("minecraft:the_nether", "Nether"),
@@ -330,7 +386,7 @@ public final class VisualizationsScreen extends Screen {
         String count = store.size() + " entries · " + model.selected.size() + " selected";
         text(ctx, count, Math.max(150, width - 8 - font.width(count)), 10, width - 158, 0xFF9CA8BD);
         ctx.fill(LIST_X, LIST_Y, LIST_X + listW, LIST_Y + listH, 0xFF1A202C);
-        int paneBottom = kind == EntryKind.SANCTUARY ? 238 : 216;
+        int paneBottom = (kind == EntryKind.SANCTUARY ? saveY : plainSaveY) + 26;
         ctx.fill(editorX - 4, 50, width - 4, paneBottom, 0xFF1A202C);
         ctx.drawString(font, model.selected.size() > 1 ? model.selected.size() + " entries selected" : selectedId == null ? "New entry" : "Edit entry", editorX, 52, 0xFFBACAE5);
         ctx.enableScissor(LIST_X, LIST_Y, LIST_X + listW, LIST_Y + listH);
@@ -360,10 +416,12 @@ public final class VisualizationsScreen extends Screen {
             ctx.fill(LIST_X + listW - 3, y, LIST_X + listW, y + thumb, 0xFF7992BC);
         }
         int col = (editorW - 8) / 3;
-        ctx.drawString(font, "X", editorX, 87, 0xFFABB8CF); ctx.drawString(font, "Y", editorX + col + 4, 87, 0xFFABB8CF); ctx.drawString(font, "Z", editorX + 2 * (col + 4), 87, 0xFFABB8CF);
-        ctx.drawString(font, "Dimension", editorX, 118, 0xFFABB8CF); ctx.drawString(font, "Group", editorX, 149, 0xFFABB8CF);
-        if (kind == EntryKind.SANCTUARY) text(ctx, "Radius (blocks, 1–512)", editorX, 180, editorW, 0xFFABB8CF);
-        else text(ctx, "Coverage uses visualization settings.", editorX, 181, editorW, 0xFFABB8CF);
+        if (roomyLabels) {
+            ctx.drawString(font, "X", editorX, fieldY - 10, 0xFFABB8CF); ctx.drawString(font, "Y", editorX + col + 4, fieldY - 10, 0xFFABB8CF); ctx.drawString(font, "Z", editorX + 2 * (col + 4), fieldY - 10, 0xFFABB8CF);
+            ctx.drawString(font, "Dimension", editorX, dimY - 10, 0xFFABB8CF); ctx.drawString(font, "Group", editorX, groupY - 10, 0xFFABB8CF);
+            if (kind == EntryKind.SANCTUARY) text(ctx, "Radius (blocks, 1–512)", editorX, radiusY - 10, editorW, 0xFFABB8CF);
+            else text(ctx, "Coverage uses visualization settings.", editorX, plainSaveY - 10, editorW, 0xFFABB8CF);
+        }
         int y = height - 27, lines = 0;
         for (var line : font.split(Component.literal(status), listW)) { if (lines++ == 2) break; ctx.drawString(font, line, 8, y, 0xFFBACAE5); y += 10; }
         super.render(ctx, mx, my, delta);
