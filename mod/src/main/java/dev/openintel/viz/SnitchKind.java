@@ -1,10 +1,11 @@
 package dev.openintel.viz;
 
 /**
- * Logging vs notifier is chosen by the player. Civ+ snitches are usually
+ * Snitch vs Logging Snitch is chosen by the player. Civ+ snitches are usually
  * disguised, so the block type is not a reliable signal.
  */
 public enum SnitchKind {
+    /** Persisted name retained for compatibility; displayed as Snitch. */
     NOTIFIER,
     LOGGING;
 

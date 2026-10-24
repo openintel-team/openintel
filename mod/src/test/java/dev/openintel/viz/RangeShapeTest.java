@@ -15,6 +15,8 @@ public final class RangeShapeTest {
         shells();
         renderedShells();
         persistence();
+        RangeGroupTest.run();
+        dev.openintel.gui.VisualizationsInteractionTest.run();
         System.out.println("Range shape tests passed");
     }
 
@@ -309,14 +311,37 @@ public final class RangeShapeTest {
             assertEquals(SnitchKind.NOTIFIER, RangeStore.readFile(file).get(0).snitchKind);
 
             List<RangeShape> many = new ArrayList<>();
-            for (int i = 0; i < RangeStore.MAX_SHAPES + 4; i++) {
+            for (int i = 0; i < 4096; i++) {
                 RangeShape s = new RangeShape(RangeType.SNITCH, i, 1, 2, "minecraft:overworld");
                 s.id = "n" + i;
                 many.add(s);
             }
             RangeStore.writeFile(file, many);
-            assertEquals(RangeStore.MAX_SHAPES, RangeStore.readFile(file).size());
+            assertEquals(4096, RangeStore.readFile(file).size());
             assertEquals("n0", RangeStore.readFile(file).get(0).id);
+            Path export = dir.resolve("export.json");
+            RangeStore.exportFile(export, List.of(logging, notifier, bastion, sanctuary));
+            List<RangeShape> imported = RangeStore.readImport(export);
+            assertEquals(4, imported.size());
+            assertEquals(SnitchKind.LOGGING, imported.get(0).snitchKind);
+            assertEquals(42.0, imported.get(3).sanctuaryRadius);
+            assertFalse(imported.get(2).enabled, "Export preserves visibility");
+            List<RangeShape> merged = new ArrayList<>(List.of(logging));
+            assertEquals(3, RangeStore.merge(merged, imported));
+            assertEquals(0, RangeStore.merge(merged, RangeStore.readImport(export)));
+            assertEquals(4, merged.size());
+            RangeShape collision = new RangeShape(RangeType.BASTION, 90, 80, 70, "minecraft:overworld");
+            collision.id = logging.id;
+            assertEquals(1, RangeStore.merge(merged, List.of(collision)));
+            assertFalse(collision.id.equals(logging.id), "ID collisions get independent IDs");
+            for (String invalid : List.of("{}", "{\"version\":3,\"shapes\":[]}",
+                    "{\"shapes\":[{\"type\":\"BOGUS\",\"x\":0,\"y\":0,\"z\":0,\"dimension\":\"minecraft:overworld\"}]}",
+                    "{\"shapes\":[{\"type\":\"SNITCH\",\"x\":0.5,\"y\":0,\"z\":0,\"dimension\":\"minecraft:overworld\"}]}")) {
+                Files.writeString(file, invalid);
+                boolean rejected = false;
+                try { RangeStore.readImport(file); } catch (java.io.IOException expected) { rejected = true; }
+                assertTrue(rejected, "Invalid import must fail: " + invalid);
+            }
         } finally {
             try (var walk = Files.walk(dir)) {
                 walk.sorted(Comparator.reverseOrder()).forEach(p -> {
