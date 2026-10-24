@@ -26,6 +26,8 @@ public final class RangeShapeTest {
         RangeOverlay.drawSnitch(mesh, 0, 64, 0, 8, -1, 0x3300FFFF, eye, true);
         var snitch = mesh.build();
         assertFalse(snitch.faces().isEmpty(), "Actual snitch renderer emits a shell");
+        assertEquals(1350, snitch.faceCount());
+        assertEquals(2700, snitch.lineCount());
         for (var f : snitch.faces()) {
             assertTrue(f.onTop(), "See-through survives geometry collection");
             for (var v : new net.minecraft.world.phys.Vec3[]{f.a(), f.b(), f.c(), f.d()}) {
@@ -281,6 +283,23 @@ public final class RangeShapeTest {
             List<RangeShape> again = RangeStore.readFile(file);
             assertEquals(SnitchKind.LOGGING, again.get(0).snitchKind);
             assertEquals(4, again.size());
+
+            // The world overlay rebuilds only when this revision moves.
+            RangeStore store = new RangeStore(dir.resolve("revision.json"));
+            long revision = store.revision();
+            store.add(new RangeShape(RangeType.SNITCH, 0, 64, 0, "minecraft:overworld"));
+            assertTrue(store.revision() != revision, "adding a shape changes the revision");
+            revision = store.revision();
+            String id = store.shapes().get(0).id;
+            store.mutate(id, s -> s.enabled = false);
+            assertTrue(store.revision() != revision, "editing a shape changes the revision");
+            revision = store.revision();
+            store.toggleGroup(store.createGroup("Layer").id);
+            assertTrue(store.revision() != revision, "group visibility changes the revision");
+            revision = store.revision();
+            store.shapes();
+            store.visibleShapes();
+            assertEquals(revision, store.revision());
 
             Files.writeString(file, """
                     {
