@@ -218,11 +218,21 @@ With Chest Tracker installed, its screen grows a **Relic maps** button beside th
 
 | Shape | Default | Notes |
 |---|---|---|
-| Snitch | Radius 8 | Block shell around the block. Width steps inward from the axis. Logging and notifier are separate kinds |
+| Snitch | Radius 8 | Block shell around the block. Width steps inward from the axis. Snitch and Logging Snitch are separate kinds |
 | Bastion | Civ+ field, 19 blocks across | Horizontal disk. Row reaches from the bastion are 9,9,9,9,9,8,7,7,5,4. Blocks at distance exactly 10 are outside. Blocks below the bastion are uncovered. A 64-block column is drawn upward. Protection continues above that column. Other slider values draw a block-center circle |
 | Sanctuary | Radius per shape | Same block-center disk. Live-map sanctuaries use the War Table feed and do not need a manual shape |
 
-Snitches on this server are skulk sensors by default and are often disguised, commonly as obsidian. Bastions are sponge. Sanctuaries are beacons. The editor places a shape on the block you are looking at. `/oi visualizations` opens it. See-through draws the wireframe and fill over terrain. Coverage and Investigate use dedicated Fabric render pipelines, registered with Iris when installed. Faces sit on exact block boundaries; depth-tested coverage uses GPU depth bias instead of expanding blocks. These passes preserve world depth for shader packs.
+Snitches on this server are skulk sensors by default and are often disguised, commonly as obsidian. Bastions are sponge. Sanctuaries are beacons. `/oi visualizations` opens the coverage editor.
+
+The searchable grouped list has immediate visibility checkboxes. A group checkbox hides its coverage without changing each entry's own setting. Click a group header to collapse it. **Groups…** creates, renames, or removes named groups; removing a group keeps its entries under **Ungrouped**. Assign an entry through the inspector's **Group** picker or create a group with **+**.
+
+The compact inspector offers one anchored Type dropdown: **Snitch**, **Logging Snitch**, **Bastion**, or **Sanctuary**. Edit X/Y/Z and choose Overworld, Nether, End, or a custom dimension ID. **Target** copies the targeted block (or your position). Only sanctuaries have a per-entry radius in blocks (1–512); snitch and bastion coverage use the Visualizations settings. Add/Save and Delete sit beside the fields. Type, dimension, group, bulk Move, group management, and export-scope choices open as anchored dropdowns, with larger drawn arrows. They stay inside the viewport, support keyboard navigation and Escape/outside-click dismissal, and add search for long lists. Group-name dialogs show a live counter beside the field (0/80). Unsaved fields survive resizing and opening pickers.
+
+Ctrl/Cmd-click adds or removes entries from a selection; Shift-click selects a visible range. **All** selects the visible rows. Bulk **Visibility**, **Move…**, and **Delete** operate on that selection. Visibility is one On/Off/Mixed toggle; a mixed selection is turned on first, without changing group switches. Deleting selects the next visible entry, or the previous entry at the end. **Undo** (Ctrl/Cmd+Z outside text fields) restores the last deleted batch with its order, group, and visibility; up to 20 batches are retained until restart. Delete also works as a keyboard shortcut outside text fields.
+
+Lists have no fixed entry cap, and only visible rows are drawn. Import/Export uses one compact versioned JSON file with groups, membership, dimensions, visibility, snitch kinds, and sanctuary radii. Export all entries or just one group (including Ungrouped), using a new filename. Import validates the complete file before applying it, keeps existing duplicate entries, reuses existing groups with the same name while preserving their local visibility, and remaps conflicting group IDs. Version 1 files and existing ungrouped lists remain readable; new files use version 2. The file path can be typed or pasted.
+
+See-through draws the wireframe and fill over terrain. Coverage and Investigate use dedicated Fabric render pipelines, registered with Iris when installed. Faces sit on exact block boundaries; depth-tested coverage uses GPU depth bias instead of expanding blocks. These passes preserve world depth for shader packs.
 
 ### Investigate
 
