@@ -4,7 +4,7 @@
 
 <h1 align="center">OpenIntel — takoyakifan fork</h1>
 
-OpenIntel **3.1.0+takoyakifan.mc26.2** is an open-source Fabric intelligence client for
+OpenIntel **3.2.0+takoyakifan.mc26.2** is an open-source Fabric intelligence client for
 **Minecraft 26.3 / Java 25**. It combines nearby-player radar, responsive
 HUDs, clean text, local snitch/relic tracking, and optional team intelligence
 through a self-hosted relay. It does not add its own minimap, waypoint
@@ -17,7 +17,7 @@ features do not require a relay connection.
 
 Supported branches: [`26.3`](https://github.com/takoyakifan/openintel/tree/26.3) (default), [`26.2`](https://github.com/takoyakifan/openintel/tree/26.2), [`26.1.2`](https://github.com/takoyakifan/openintel/tree/26.1.2), and [`1.21.11`](https://github.com/takoyakifan/openintel/tree/1.21.11). This branch targets Minecraft **26.2**.
 
-Fork releases use `3.1.0+takoyakifan.mc<version>` so the installed version and jar filename identify this fork and its Minecraft target. The mod ID remains `openintel` and the integration API remains major version **1**. Install one OpenIntel variant at a time.
+Fork releases use `3.2.0+takoyakifan.mc<version>` so the installed version and jar filename identify this fork and its Minecraft target. The mod ID remains `openintel` and the integration API remains major version **1**. Install one OpenIntel variant at a time.
 
 ## Canary builds
 
@@ -442,10 +442,10 @@ All controls are rebindable under the OpenIntel keybind category.
 
 ## Fabric mod integration API (v1)
 
-OpenIntel **1.7.0** provides the public v1 Java API under `dev.openintel.api`.
+OpenIntel **3.2.0+takoyakifan.mc26.2** provides the public v1 Java API under `dev.openintel.api`.
 Use `OpenIntelApi` as the entry point; do not link against `tracker`, `net`,
 `render`, or `api.internal` implementation classes. This is a client-side
-Fabric API for Minecraft **1.21.11**, not the Discord/admin REST API.
+Fabric API for Minecraft **26.2**, not the Discord/admin REST API.
 
 ### Add the dependency
 
@@ -464,15 +464,15 @@ repositories {
 }
 
 dependencies {
-    modImplementation "dev.openintel:openintel:1.7.0"
+    modImplementation "dev.openintel:openintel:3.2.0+takoyakifan.mc26.2"
 }
 ```
 
-Use matching Minecraft/Yarn versions. OpenIntel is installed separately in
+Use matching Minecraft versions and official Mojang mappings. OpenIntel is installed separately in
 `mods/`; do not nest a personalized/token-bearing jar in your mod. No public
 Maven repository is provisioned by this project. Alternatively, place the
 neutral remapped jar in your project's `libs/` and use
-`modImplementation files("libs/openintel-1.7.0.jar")`.
+`modImplementation files("libs/openintel-3.2.0+takoyakifan.mc26.2.jar")`.
 
 For a required integration, add `"openintel": ">=1.7.0"` to your mod's
 `fabric.mod.json` `depends` object. Declare this entrypoint:
