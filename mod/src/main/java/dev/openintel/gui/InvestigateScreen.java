@@ -14,6 +14,9 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
+import dev.openintel.investigate.InvestigateLogImport;
+import java.nio.file.Path;
+import java.util.concurrent.CompletableFuture;
 import java.util.List;
 import java.util.Locale;
 
@@ -25,7 +28,11 @@ public final class InvestigateScreen extends Screen {
     private int listX, listY, listW, listH;
     private int scroll;
     private static final int ROW_H = 14;
-    private String status = "Paste snitch or Discord log lines, then Parse.";
+    private String status = "Import a Discord .txt export or paste logs, then Parse.";
+    private String parsedText;
+    private String parsedDimension;
+    private boolean importing;
+    private int importRevision;
 
     private static final String[] DIMS = {
             "minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"
@@ -42,27 +49,32 @@ public final class InvestigateScreen extends Screen {
 
     @Override
     protected void init() {
+        String draft = pasteBox == null ? "" : pasteBox.getValue();
         int pasteH = Math.min(120, height / 3);
         pasteBox = MultiLineEditBox.builder()
                 .setX(8)
                 .setY(24)
                 .setPlaceholder(Component.literal("Paste snitch logs here…"))
                 .build(font, width - 16, pasteH, Component.literal("logs"));
-        pasteBox.setCharacterLimit(200_000);
-        pasteBox.setLineLimit(2000);
+        pasteBox.setCharacterLimit(InvestigateLogImport.MAX_BYTES);
+        pasteBox.setLineLimit(Integer.MAX_VALUE);
+        pasteBox.setValue(draft);
         addRenderableWidget(pasteBox);
 
         int by = 28 + pasteH;
-        addRenderableWidget(Button.builder(Component.literal("Paste clipboard"),
-                b -> pasteClipboard()).bounds(8, by, 110, 20).build());
+        int slot = Math.min(110, (width - 28) / 4);
+        addRenderableWidget(Button.builder(Component.literal("Import .txt…"),
+                b -> importFile()).bounds(8, by, slot, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Paste"),
+                b -> pasteClipboard()).bounds(12 + slot, by, slot, 20).build());
         addRenderableWidget(Button.builder(Component.literal("Parse"),
-                b -> parse()).bounds(122, by, 60, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Watch"),
-                b -> watch()).bounds(186, by, 60, 20).build());
+                b -> parse()).bounds(16 + slot * 2, by, slot, 20).build());
         addRenderableWidget(Button.builder(Component.literal("Clear"),
-                b -> clear()).bounds(250, by, 60, 20).build());
+                b -> clear()).bounds(20 + slot * 3, by, slot, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Watch playback"),
+                b -> watch()).bounds(8, height - 30, 110, 20).build());
         addRenderableWidget(Button.builder(Component.literal("Done"),
-                b -> onClose()).bounds(width - 88, by, 80, 20).build());
+                b -> onClose()).bounds(width - 88, height - 30, 80, 20).build());
 
         int dimIndex = 0;
         for (int i = 0; i < DIMS.length; i++) {
@@ -71,16 +83,46 @@ public final class InvestigateScreen extends Screen {
         defaultDim = DIMS[dimIndex];
         addRenderableWidget(CycleButton.<String>builder(s -> Component.literal(shortDim(s)), defaultDim)
                 .withValues(DIMS)
-                .create(314, by, 120, 20, Component.literal("Dim"),
+                .create(8, by + 24, Math.min(260, width - 16), 20, Component.literal("World if missing"),
                         (btn, value) -> defaultDim = value));
 
         listX = 8;
-        listY = by + 28;
+        listY = by + 64;
         listW = width - 16;
-        listH = height - listY - 28;
+        listH = Math.max(0, height - listY - 58);
+    }
+
+    private void importFile() {
+        if (importing) return;
+        minecraft.setScreen(new InvestigateFileScreen(this, this::readFile));
+    }
+
+    private void readFile(Path selected) {
+        int revision = ++importRevision;
+        importing = true;
+        status = "Reading log file…";
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                return InvestigateLogImport.read(selected);
+            } catch (Exception ex) {
+                throw new java.util.concurrent.CompletionException(ex);
+            }
+        }).whenComplete((text, error) -> Minecraft.getInstance().execute(() -> {
+            if (revision != importRevision) return;
+            importing = false;
+            if (error != null) {
+                status = "Could not read logs. Choose a UTF-8 text file up to 2 MiB.";
+                return;
+            }
+            pasteBox.setValue(text);
+            parse();
+            status = "Imported " + selected.getFileName() + ": " + status;
+        }));
     }
 
     private void pasteClipboard() {
+        importRevision++;
+        importing = false;
         String clip = Minecraft.getInstance().keyboardHandler.getClipboard();
         if (clip == null || clip.isBlank()) {
             status = "Clipboard is empty.";
@@ -93,19 +135,26 @@ public final class InvestigateScreen extends Screen {
     }
 
     private void parse() {
-        SnitchLogParser.ParseResult result = SnitchLogParser.parsePaste(pasteBox.getValue());
+        parsedText = pasteBox.getValue();
+        parsedDimension = defaultDim;
+        SnitchLogParser.ParseResult result = SnitchLogParser.parsePaste(parsedText);
         InvestigateSession.get().load(result, defaultDim);
         status = result.events().size() + " events"
                 + (result.skippedNoCoords() > 0
-                ? ", skipped " + result.skippedNoCoords() + " without coords"
+                ? ", skipped " + result.skippedNoCoords() + " non-event lines"
                 : "")
                 + ".";
         scroll = 0;
     }
 
     private void watch() {
+        if (importing) {
+            status = "Reading log file — please wait.";
+            return;
+        }
         InvestigateSession session = InvestigateSession.get();
-        if (session.size() == 0) {
+        if ((parsedText != null || !pasteBox.getValue().isBlank() || session.size() == 0)
+                && (!pasteBox.getValue().equals(parsedText) || !defaultDim.equals(parsedDimension))) {
             parse();
         }
         if (session.size() == 0) {
@@ -118,6 +167,8 @@ public final class InvestigateScreen extends Screen {
     }
 
     private void clear() {
+        importRevision++;
+        importing = false;
         InvestigateSession.get().clear();
         pasteBox.setValue("");
         status = "Cleared.";
@@ -156,11 +207,16 @@ public final class InvestigateScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
         ctx.fill(0, 0, width, height, 0xC0101015);
         super.extractRenderState(ctx, mouseX, mouseY, delta);
-        ctx.text(font, "Investigate — paste snitch / Discord logs", 8, 8, 0xFFE8EAF0);
+        ctx.text(font, "Investigate — import and review logs", 8, 8, 0xFFE8EAF0);
 
         List<InvestigateSession.Event> events = InvestigateSession.get().events();
+        ctx.text(font, "Events — " + events.size() + " loaded", listX, listY - 12, 0xFFE8EAF0);
         int selected = InvestigateSession.get().index();
         ctx.enableScissor(listX, listY, listX + listW, listY + listH);
+        if (events.isEmpty()) {
+            ctx.text(font, "Import or paste logs, then Parse to review events.",
+                    listX + 4, listY + 6, 0xFF8E93A6);
+        }
         int y = listY - scroll;
         for (int i = 0; i < events.size(); i++) {
             InvestigateSession.Event ev = events.get(i);
@@ -179,7 +235,7 @@ public final class InvestigateScreen extends Screen {
             y += ROW_H;
         }
         ctx.disableScissor();
-        ctx.text(font, status, 8, height - 18, 0xFF8E93A6);
+        ctx.text(font, font.plainSubstrByWidth(status, width - 16), 8, height - 46, 0xFF8E93A6);
     }
 
     private static String shortDim(String dim) {

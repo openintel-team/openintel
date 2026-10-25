@@ -101,7 +101,7 @@ public final class SnitchLogParser {
                 continue;
             }
             ParsedLine parsed = parseLine(trimmed);
-            if (!parsed.hasCoords()) {
+            if (!parsed.hasCoords() || parsed.player() == null || parsed.action() == null) {
                 skippedNoCoords++;
                 continue;
             }
