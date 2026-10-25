@@ -228,23 +228,6 @@ public class OIConfig {
     /** Horizontal alignment of event-feed text within its HUD box. */
     public FeedAlign eventFeedAlign = FeedAlign.RIGHT;
 
-    /** HUD keeps the corner feed. Chat sends the same lines into the OI Events tab. */
-    public EventLogPlace eventLogPlace = EventLogPlace.HUD;
-
-    /** Where event-log lines are shown. */
-    public enum EventLogPlace {
-        HUD("options.openintel.feed.place.hud"),
-        CHAT("options.openintel.feed.place.chat");
-
-        public final String translationKey;
-        EventLogPlace(String key) { this.translationKey = key; }
-
-        public static EventLogPlace byName(String name) {
-            for (EventLogPlace place : values()) if (place.name().equalsIgnoreCase(name)) return place;
-            return HUD;
-        }
-    }
-
     /** Event feed text alignment inside the HUD box. */
     public enum FeedAlign {
         LEFT("options.openintel.feed.align.left"),
@@ -681,7 +664,6 @@ public class OIConfig {
                 if (c.armorHudLayout == null) c.armorHudLayout = ArmorHudLayout.HORIZONTAL;
                 if (c.armorHudMode == null) c.armorHudMode = ArmorHudMode.PERCENT;
                 if (c.eventFeedAlign == null) c.eventFeedAlign = FeedAlign.RIGHT;
-                if (c.eventLogPlace == null) c.eventLogPlace = EventLogPlace.HUD;
                 boolean repairChatChannel = c.chatChannel == null
                         || (!c.chatChannel.equals("chat")
                         && !c.chatChannel.equals("snitches")

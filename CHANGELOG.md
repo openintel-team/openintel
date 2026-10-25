@@ -4,8 +4,8 @@
 
 - Add display-only Chat, Snitches, Mining, Client, and OI Events filters with
   independent fading controls, while preserving stored chat history.
-- Keep a scrollable session event log, add HUD/Chat output selection, and allow
-  resizing the HUD feed from its edges and corners.
+- Keep a scrollable session event log and allow resizing the HUD feed from
+  its edges and corners.
 - Support multiple relay profiles with independent sharing controls and loop-safe
   forwarding; negotiate same-host WSS upgrades before sending credentials.
 - Add grouped coverage entries, search, import/export, anchored dropdowns, and
