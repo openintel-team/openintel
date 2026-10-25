@@ -43,7 +43,13 @@ public final class RangeOverlay {
      * for this store revision.
      */
     public record ShapesKey(String dim, long revision, boolean snitch, boolean bastion, boolean seeThrough,
-                            double snitchRadius, double bastionRadius, BitSet inRange) { }
+                            double snitchRadius, double bastionRadius, BitSet inRange, int buildHeight) { }
+
+    /**
+     * Thick bastion rings drawn at Y 0 and lifted to the player's block Y.
+     * {@code rings} indexes bastions already in range whose layer is not the player's.
+     */
+    public record BastionHeightKey(String dim, long revision, boolean seeThrough, double bastionRadius, BitSet rings) { }
 
     /** Manually placed sanctuaries, which can be far larger than the draw range. */
     public record DiskKey(String dim, long revision, boolean seeThrough, int cellX, int cellY, int cellZ) { }
@@ -77,7 +83,31 @@ public final class RangeOverlay {
             if (near) inRange.set(i);
         }
         if (inRange.isEmpty()) return null;
-        return new ShapesKey(dim, revision, cfg.vizSnitch, cfg.vizBastion, cfg.vizSeeThrough, snitchR, bastionR, inRange);
+        return new ShapesKey(dim, revision, cfg.vizSnitch, cfg.vizBastion, cfg.vizSeeThrough, snitchR, bastionR,
+                inRange, client.level.getMaxY());
+    }
+
+    /** Null when every in-range bastion already sits on the player's layer. */
+    public static BastionHeightKey bastionHeightKey(Minecraft client) {
+        if (client == null || client.level == null || client.player == null) return null;
+        OIConfig cfg = OpenIntelClient.config();
+        if (cfg == null || !cfg.vizEnabled || !cfg.vizBastion) return null;
+        String dim = client.level.dimension().identifier().toString();
+        double bastionR = bastionRadius(cfg);
+        Vec3 eye = client.player.position();
+        int playerY = client.player.blockPosition().getY();
+        RangeStore store = RangeStore.get();
+        List<RangeShape> shapes = store.visibleShapes();
+        BitSet rings = new BitSet();
+        for (int i = 0; i < shapes.size(); i++) {
+            RangeShape shape = shapes.get(i);
+            if (shape == null || !shape.enabled || shape.type != RangeType.BASTION) continue;
+            if (!dimEquals(dim, shape.dimension) || !bastionPlayerBorder(shape.y, playerY)) continue;
+            if (!nearShape(eye, shape.x + 0.5, shape.y + 0.5, shape.z + 0.5, bastionR)) continue;
+            rings.set(i);
+        }
+        if (rings.isEmpty()) return null;
+        return new BastionHeightKey(dim, store.revision(), cfg.vizSeeThrough, bastionR, rings);
     }
 
     /** Null when no manual sanctuary can be drawn in this dimension. */
@@ -121,8 +151,16 @@ public final class RangeOverlay {
                 mesh.append(snitchTemplate(key.snitchRadius(), logging ? LOGGING_STROKE : SNITCH_STROKE,
                         logging ? LOGGING_FILL : SNITCH_FILL, seeThrough), shape.x, shape.y, shape.z);
             } else if (shape.type == RangeType.BASTION && key.bastion()) {
-                mesh.append(bastionTemplate(key.bastionRadius(), seeThrough), shape.x, shape.y, shape.z);
+                placeBastion(mesh, shape.x, shape.y, shape.z, key.bastionRadius(), seeThrough, key.buildHeight());
             }
+        }
+    }
+
+    public static void collectBastionHeights(BastionHeightKey key, WorldOverlayMesh.Builder mesh) {
+        List<RangeShape> shapes = RangeStore.get().visibleShapes();
+        for (int i = key.rings().nextSetBit(0); i >= 0 && i < shapes.size(); i = key.rings().nextSetBit(i + 1)) {
+            RangeShape shape = shapes.get(i);
+            drawBastionPlayerBorder(mesh, shape.x, 0, shape.z, key.bastionRadius(), key.seeThrough());
         }
     }
 
@@ -132,7 +170,7 @@ public final class RangeOverlay {
             if (shape == null || !shape.enabled || shape.type != RangeType.SANCTUARY) continue;
             if (!dimEquals(key.dim(), shape.dimension)) continue;
             drawDisk(mesh, shape.x + 0.5, shape.y, shape.z + 0.5, shape.sanctuaryRadius,
-                    SANCTUARY_STROKE, SANCTUARY_FILL, eye, key.seeThrough(), false, false);
+                    SANCTUARY_STROKE, SANCTUARY_FILL, eye, key.seeThrough(), false);
         }
     }
 
@@ -142,7 +180,7 @@ public final class RangeOverlay {
         for (Sanctuaries.Sanctuary s : Sanctuaries.all()) {
             if (s == null || !s.overworld()) continue;
             drawDisk(mesh, s.x(), 0, s.z(), s.radius(),
-                    SANCTUARY_STROKE, SANCTUARY_FILL, eye, key.seeThrough(), false, false);
+                    SANCTUARY_STROKE, SANCTUARY_FILL, eye, key.seeThrough(), false);
         }
     }
 
@@ -166,9 +204,33 @@ public final class RangeOverlay {
         mesh.append(snitchTemplate(radius, stroke, fill, seeThrough), bx, by, bz);
     }
 
-    static void drawBastion(WorldOverlayMesh.Builder mesh, int bx, int by, int bz, double radius, Vec3 eye, boolean seeThrough) {
-        if (!nearShape(eye, bx + 0.5, by + 0.5, bz + 0.5, radius)) return;
+    static void drawBastion(WorldOverlayMesh.Builder mesh, int bx, int by, int bz, double radius, Vec3 eye,
+                            boolean seeThrough, int buildHeight) {
+        if (eye != null && !nearShape(eye, bx + 0.5, by + 0.5, bz + 0.5, radius)) return;
+        placeBastion(mesh, bx, by, bz, radius, seeThrough, buildHeight);
+    }
+
+    /** Thick outer ring at {@code y}, without the center plus or the vertical posts. */
+    static void drawBastionPlayerBorder(WorldOverlayMesh.Builder mesh, int bx, int y, int bz, double radius,
+                                        boolean seeThrough) {
+        drawPerimeter(mesh, bx + 0.5, y, bz + 0.5, radius, BASTION_STROKE, BASTION_FILL, null, seeThrough, true);
+    }
+
+    /** The bastion layer already draws this ring, so it is omitted when the heights match. */
+    static boolean bastionPlayerBorder(int bastionY, int playerY) {
+        return bastionY != playerY;
+    }
+
+    private static void placeBastion(WorldOverlayMesh.Builder mesh, int bx, int by, int bz, double radius,
+                                     boolean seeThrough, int buildHeight) {
         mesh.append(bastionTemplate(radius, seeThrough), bx, by, bz);
+        if (buildHeight <= by) return;
+        int[] ring = RangeGeometry.bastionRingOffsets(radius);
+        for (int i = 0; i + 1 < ring.length; i += 2) {
+            double px = bx + ring[i] + 0.5;
+            double pz = bz + ring[i + 1] + 0.5;
+            mesh.line(px, by, pz, px, buildHeight, pz, BASTION_STROKE, 1.5f, seeThrough);
+        }
     }
 
     /** Shell around a snitch at the origin, built once per radius and style. */
@@ -197,7 +259,7 @@ public final class RangeOverlay {
         WorldOverlayMesh cached = TEMPLATES.get(key);
         if (cached != null) return cached;
         WorldOverlayMesh.Builder mesh = new WorldOverlayMesh.Builder();
-        drawDisk(mesh, 0.5, 0, 0.5, radius, BASTION_STROKE, BASTION_FILL, null, seeThrough, true, true);
+        drawDisk(mesh, 0.5, 0, 0.5, radius, BASTION_STROKE, BASTION_FILL, null, seeThrough, true);
         return remember(key, mesh.build());
     }
 
@@ -207,9 +269,18 @@ public final class RangeOverlay {
         return mesh;
     }
 
-    /** {@code eye} null draws the whole disk. */
+    /** {@code eye} null draws the whole disk. Bastion disks include the hollow center plus. */
     private static void drawDisk(WorldOverlayMesh.Builder mesh, double centerX, int y, double centerZ, double radius,
-                                 int stroke, int fill, Vec3 eye, boolean seeThrough, boolean posts, boolean bastion) {
+                                 int stroke, int fill, Vec3 eye, boolean seeThrough, boolean bastion) {
+        drawPerimeter(mesh, centerX, y, centerZ, radius, stroke, fill, eye, seeThrough, bastion);
+        if (!bastion) return;
+        if (eye != null && !nearShape(eye, centerX, y + 0.5, centerZ, radius)) return;
+        drawBastionCenter(mesh, (int) Math.floor(centerX), y, (int) Math.floor(centerZ), radius, stroke, fill, eye, seeThrough);
+    }
+
+    /** Thick perimeter faces. {@code eye} null draws the whole ring. */
+    private static void drawPerimeter(WorldOverlayMesh.Builder mesh, double centerX, int y, double centerZ, double radius,
+                                      int stroke, int fill, Vec3 eye, boolean seeThrough, boolean bastion) {
         if (eye != null && !nearShape(eye, centerX, y + 0.5, centerZ, radius)) return;
         int[] ring = bastion
                 ? RangeGeometry.bastionRingOffsets(radius)
@@ -217,7 +288,6 @@ public final class RangeOverlay {
         if (ring.length == 0) return;
         int baseX = (int) Math.floor(centerX);
         int baseZ = (int) Math.floor(centerZ);
-        int top = y + RangeGeometry.BASTION_COLUMN_HEIGHT;
         for (int i = 0; i + 1 < ring.length; i += 2) {
             int x = baseX + ring[i];
             int z = baseZ + ring[i + 1];
@@ -232,11 +302,7 @@ public final class RangeOverlay {
                 mesh.face(x, y, z, Direction.SOUTH, stroke, fill, 2f, seeThrough);
             if (!horizontalCover(bastion, centerX, centerZ, radius, x, z - 1))
                 mesh.face(x, y, z, Direction.NORTH, stroke, fill, 2f, seeThrough);
-            if (!posts) continue;
-            double px = x + 0.5, pz = z + 0.5;
-            mesh.line(px, y, pz, px, top, pz, stroke, 1.5f, seeThrough);
         }
-        if (bastion) drawBastionCenter(mesh, baseX, y, baseZ, radius, stroke, fill, eye, seeThrough);
     }
 
     /**
