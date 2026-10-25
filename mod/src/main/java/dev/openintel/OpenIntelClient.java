@@ -30,6 +30,7 @@ import dev.openintel.render.PotionHud;
 import dev.openintel.render.PresenceHud;
 import dev.openintel.render.UiFont;
 import dev.openintel.tracker.Tracker;
+import dev.openintel.wartable.LiveMap;
 import dev.openintel.wartable.WarTable;
 import dev.openintel.wartable.WarTableScreen;
 import dev.openintel.xaero.RelicChestSort;
@@ -213,6 +214,9 @@ public class OpenIntelClient implements ClientModInitializer {
             SnitchRelay.reset();
             reconnectRelay();
             if (client.getCurrentServer() != null) dev.openintel.update.UpdateChecker.onMultiplayerJoin();
+            // Ask the live map for the current image. A saved copy is drawn only
+            // after the server confirms that file is still current.
+            if (config.liveMapBase != null && !config.liveMapBase.isBlank()) LiveMap.ensureLoaded();
         });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             relay.disconnect();

@@ -37,13 +37,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * Each renderer gets its own persistent pyramid, so switching between the
  * site's renderers does not poison another layer's tiles or require a fresh
- * download when switching back. The live map re-renders roughly hourly; each
- * cached renderer refreshes independently when stale.
+ * download when switching back. Joining a world asks for the current render.
+ * A saved pyramid is drawn only after the server confirms that file is still
+ * current; a newer render is built before it replaces the one on screen.
+ * The live map re-renders roughly hourly, and the previous image is hidden
+ * until that check finishes.
  */
 public final class LiveMap {
     private LiveMap() { }
 
-    public static final int TILE = 256;
+    public static final int TILE = LiveMapCache.TILE;
     private static final long REFRESH_MS = 55 * 60 * 1000;
     private static final long FAILURE_RETRY_MS = 30 * 1000;
     private static final long RENDERER_REFRESH_MS = 5 * 60 * 1000;
@@ -53,14 +56,23 @@ public final class LiveMap {
     public enum State { EMPTY, LOADING, READY, FAILED }
 
     private record Entry(State state, MapProjection projection, int maxLevel,
-                         long fetchedAt, String error) {
-        static Entry empty() { return new Entry(State.EMPTY, null, 0, 0, null); }
+                         long fetchedAt, long attemptAt, String error) {
+        static Entry empty() { return new Entry(State.EMPTY, null, 0, 0, 0, null); }
         static Entry loading(Entry previous) {
             return new Entry(State.LOADING,
                     previous != null ? previous.projection : null,
                     previous != null ? previous.maxLevel : 0,
                     previous != null ? previous.fetchedAt : 0,
+                    System.currentTimeMillis(),
                     null);
+        }
+        LiveMapCache.Freshness freshness() {
+            return switch (state) {
+                case EMPTY -> LiveMapCache.Freshness.EMPTY;
+                case LOADING -> LiveMapCache.Freshness.LOADING;
+                case READY -> LiveMapCache.Freshness.READY;
+                case FAILED -> LiveMapCache.Freshness.FAILED;
+            };
         }
     }
 
@@ -146,7 +158,7 @@ public final class LiveMap {
         return Files.isRegularFile(tileFile(level, tx, ty));
     }
 
-    /** Kick the selected renderer if its cache is missing or stale. */
+    /** Ask for the current render when the confirmed copy is missing or due. */
     public static void ensureLoaded() {
         refreshRenderers();
         ensureLoaded(renderer());
@@ -155,11 +167,13 @@ public final class LiveMap {
     public static void ensureLoaded(String name) {
         String target = safeRenderer(name);
         Entry current = entry(target);
-        long staleAfter = current.state() == State.FAILED ? FAILURE_RETRY_MS : REFRESH_MS;
-        if ((current.state() == State.READY || current.state() == State.FAILED)
-                && System.currentTimeMillis() - current.fetchedAt() < staleAfter) return;
+        long now = System.currentTimeMillis();
+        if (!LiveMapCache.needsFetch(current.freshness(), current.fetchedAt(),
+                current.attemptAt(), now, REFRESH_MS, FAILURE_RETRY_MS)) return;
         if (!loading.add(target)) return;
-        entries.put(target, Entry.loading(entries.get(target)));
+        // Hide whatever was on screen. A saved pyramid is not drawn until this
+        // fetch confirms it is still the server's file.
+        entries.put(target, Entry.loading(null));
         Thread t = new Thread(() -> load(target), "openintel-livemap-" + target);
         t.setDaemon(true);
         t.start();
@@ -223,8 +237,7 @@ public final class LiveMap {
             String base = baseUrl();
             dbg(target, "base=" + base);
             if (base == null) {
-                entries.put(target, new Entry(State.FAILED, null, 0,
-                        System.currentTimeMillis(), "no live map url configured"));
+                rememberFailure(target, "no live map url configured");
                 return;
             }
             String metaUrl = base + "/maps/map-" + target + ".json";
@@ -237,29 +250,53 @@ public final class LiveMap {
             if (proj == null) throw new IllegalStateException("bad map metadata");
             dbg(target, "projection ok " + proj.width() + "x" + proj.height());
 
-            byte[] png = getBytes(pngUrl);
-            dbg(target, "png fetched (" + png.length + " bytes)");
-
             Path root = rendererRoot(target);
-            Files.createDirectories(root.resolve("tiles"));
+            LiveMapCache.Cached cached = LiveMapCache.read(root);
+            boolean metaMatches = cached != null && proj.equals(cached.projection());
+            Body png = getBytes(pngUrl,
+                    metaMatches ? cached.etag() : null,
+                    metaMatches ? cached.lastModified() : null);
+            String hash = png.bytes() == null
+                    ? (cached == null ? null : cached.sha256())
+                    : LiveMapCache.sha256(png.bytes());
+            if (cached != null && LiveMapCache.confirmedCurrent(
+                    png.status(), metaMatches, cached.sha256(), hash)) {
+                long fetchedAt = System.currentTimeMillis();
+                LiveMapCache.writeStamp(root, proj.width(), proj.height(), cached.maxLevel(),
+                        fetchedAt, png.etag(), png.lastModified(), hash);
+                entries.put(target, new Entry(State.READY, proj, cached.maxLevel(),
+                        fetchedAt, fetchedAt, null));
+                dbg(target, "READY unchanged");
+                return;
+            }
+            if (png.bytes() == null) throw new IllegalStateException("HTTP " + png.status());
+            dbg(target, "png fetched (" + png.bytes().length + " bytes)");
+
+            Files.createDirectories(root);
             Path pngPath = root.resolve("source.png");
-            Files.write(pngPath, png);
+            Files.write(pngPath, png.bytes());
             Files.writeString(root.resolve("source.json"), GSON.toJson(meta));
             dbg(target, "source written, building pyramid");
 
             int maxLevel = buildPyramid(root, pngPath);
-            entries.put(target, new Entry(State.READY, proj, maxLevel,
-                    System.currentTimeMillis(), null));
+            long fetchedAt = System.currentTimeMillis();
+            LiveMapCache.writeStamp(root, proj.width(), proj.height(), maxLevel, fetchedAt,
+                    png.etag(), png.lastModified(), hash);
+            entries.put(target, new Entry(State.READY, proj, maxLevel, fetchedAt, fetchedAt, null));
             dbg(target, "READY maxLevel=" + maxLevel);
         } catch (Throwable e) {
             dbg(target, "FAILED " + e);
             e.printStackTrace();
-            entries.put(target, new Entry(State.FAILED, null, 0,
-                    System.currentTimeMillis(),
-                    e.getClass().getSimpleName() + ": " + e.getMessage()));
+            rememberFailure(target, e.getClass().getSimpleName() + ": " + e.getMessage());
         } finally {
             loading.remove(target);
         }
+    }
+
+    /** A failed check does not put an older pyramid back on screen. */
+    private static void rememberFailure(String target, String message) {
+        long now = System.currentTimeMillis();
+        entries.put(target, new Entry(State.FAILED, null, 0, now, now, message));
     }
 
     private static void dbg(String target, String msg) {
@@ -294,21 +331,44 @@ public final class LiveMap {
         return res.body();
     }
 
-    private static byte[] getBytes(String url) throws Exception {
-        HttpRequest req = HttpRequest.newBuilder(URI.create(url))
+    private record Body(int status, byte[] bytes, String etag, String lastModified) { }
+
+    /** 304 keeps the saved image; any other success is a new render. */
+    private static Body getBytes(String url, String etag, String lastModified) throws Exception {
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofSeconds(60))
-                .header("User-Agent", "OpenIntel-WarTable")
-                .GET().build();
-        HttpResponse<byte[]> res = HTTP.send(req, HttpResponse.BodyHandlers.ofByteArray());
-        if (res.statusCode() / 100 != 2) throw new IllegalStateException("HTTP " + res.statusCode());
-        return res.body();
+                .header("User-Agent", "OpenIntel-WarTable");
+        if (etag != null && !etag.isBlank()) request.header("If-None-Match", etag);
+        else if (lastModified != null && !lastModified.isBlank()) request.header("If-Modified-Since", lastModified);
+        HttpResponse<byte[]> res = HTTP.send(request.GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+        int status = res.statusCode();
+        if (status != 304 && status / 100 != 2) throw new IllegalStateException("HTTP " + status);
+        return new Body(status,
+                status == 304 ? null : res.body(),
+                res.headers().firstValue("etag").orElse(etag),
+                res.headers().firstValue("last-modified").orElse(lastModified));
     }
 
     /**
      * Slice the source image into 256px tiles, then downsample level by level
-     * until the whole map fits on a single tile.
+     * until the whole map fits on a single tile. The new pyramid is written
+     * beside the one on screen and swapped in only after it is complete, so a
+     * join-time refresh cannot tear tiles the War Table is already showing.
      */
     private static int buildPyramid(Path root, Path pngPath) throws Exception {
+        Path next = root.resolve("tiles-next");
+        if (Files.exists(next)) deleteTree(next);
+        try {
+            int maxLevel = writePyramid(root.getFileName().toString(), next, pngPath);
+            swapTiles(root, next);
+            return maxLevel;
+        } catch (Exception e) {
+            if (Files.exists(next)) deleteTree(next);
+            throw e;
+        }
+    }
+
+    private static int writePyramid(String renderer, Path tileRoot, Path pngPath) throws Exception {
         BufferedImage source = ImageIO.read(pngPath.toFile());
         if (source == null) throw new IllegalStateException("unreadable map image");
         BufferedImage argb = toArgb(source);
@@ -318,10 +378,9 @@ public final class LiveMap {
         while (true) {
             int cols = (int) Math.ceil(current.getWidth() / (double) TILE);
             int rows = (int) Math.ceil(current.getHeight() / (double) TILE);
-            Path dir = root.resolve("tiles").resolve("l" + level);
+            Path dir = tileRoot.resolve("l" + level);
             Files.createDirectories(dir);
-            dbg(root.getFileName().toString(),
-                    "level " + level + " " + cols + "x" + rows + " tiles");
+            dbg(renderer, "level " + level + " " + cols + "x" + rows + " tiles");
             for (int ty = 0; ty < rows; ty++) {
                 for (int tx = 0; tx < cols; tx++) {
                     // Edge tiles keep their true extent — the rest of the tile
@@ -340,16 +399,23 @@ public final class LiveMap {
             if (cols <= 1 && rows <= 1) { maxLevel = level; break; }
             current = downsample2x(current);
             level++;
-            if (level > 8) { maxLevel = level; break; }
-        }
-
-        // Stale tiles from a previous render of a different size are poison —
-        // drop any level above the fresh max for this renderer only.
-        for (int l = maxLevel + 1; l <= maxLevel + 4; l++) {
-            Path stale = root.resolve("tiles").resolve("l" + l);
-            if (Files.isDirectory(stale)) deleteTree(stale);
+            if (level > LiveMapCache.MAX_LEVEL) { maxLevel = LiveMapCache.MAX_LEVEL; break; }
         }
         return maxLevel;
+    }
+
+    private static void swapTiles(Path root, Path next) throws Exception {
+        Path tiles = root.resolve("tiles");
+        Path old = root.resolve("tiles-old");
+        if (Files.exists(old)) deleteTree(old);
+        if (Files.exists(tiles)) Files.move(tiles, old);
+        try {
+            Files.move(next, tiles);
+        } catch (Exception e) {
+            if (!Files.exists(tiles) && Files.exists(old)) Files.move(old, tiles);
+            throw e;
+        }
+        if (Files.exists(old)) deleteTree(old);
     }
 
     /** Full-size image → half size, bilinear. */
