@@ -5,7 +5,7 @@
 <h1 align="center">OpenIntel — takoyakifan fork</h1>
 
 OpenIntel **3.2.0+takoyakifan.mc26.2** is an open-source Fabric intelligence client for
-**Minecraft 26.3 / Java 25**. It combines nearby-player radar, responsive
+**Minecraft 26.2 / Java 25**. It combines nearby-player radar, responsive
 HUDs, clean text, local snitch/relic tracking, and optional team intelligence
 through a self-hosted relay. It does not add its own minimap, waypoint
 database, or navigation system.
