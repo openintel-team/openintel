@@ -100,6 +100,9 @@ public class WarTableScreen extends Screen {
     // tile texture LRU (access-ordered: eldest entry evicts first)
     private final LinkedHashMap<String, Identifier> tileTextures =
             new LinkedHashMap<>(64, 0.75f, true);
+    /** fetchedAt of the tiles currently on the GPU. A new render drops them. */
+    private long tileGeneration = Long.MIN_VALUE;
+    private MapProjection shownProjection;
 
     // Stroke overlay: rasterized to a screen-size texture, uploaded on
     // view/data change — the same drawTexture path as the map tiles, which
@@ -134,7 +137,10 @@ public class WarTableScreen extends Screen {
         LiveMap.ensureLoaded();
         Sanctuaries.ensureLoaded();
         MapProjection p = LiveMap.projection();
-        if (!viewInitialized && p != null) initializeView(p);
+        if (!viewInitialized && p != null) {
+            initializeView(p);
+            shownProjection = p;
+        }
 
         // Label input is always present; it only shows while LABEL or PIN is
         // armed and an anchor point has been clicked.
@@ -258,6 +264,14 @@ public class WarTableScreen extends Screen {
         rebuildToolbar();
     }
 
+    /** Drop GPU tiles when the confirmed render changes, so an older image cannot linger. */
+    private void discardStaleTiles() {
+        long generation = LiveMap.fetchedAt();
+        if (generation == tileGeneration) return;
+        clearTileTextures();
+        tileGeneration = generation;
+    }
+
     private void clearTileTextures() {
         var tm = Minecraft.getInstance().getTextureManager();
         for (Identifier id : tileTextures.values()) tm.release(id);
@@ -279,6 +293,7 @@ public class WarTableScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
         LiveMap.ensureLoaded();
         Sanctuaries.ensureLoaded();
+        discardStaleTiles();
         MapProjection proj = LiveMap.projection();
         admin = WarTable.canDraw();
         if (buttons.isEmpty() || admin != toolbarAdmin
@@ -287,7 +302,10 @@ public class WarTableScreen extends Screen {
             rebuildToolbar();
         }
 
-        if (proj != null && !viewInitialized) initializeView(proj);
+        if (proj != null && (!viewInitialized || !proj.equals(shownProjection))) {
+            initializeView(proj);
+            shownProjection = proj;
+        }
 
         if (LiveMap.state() == LiveMap.State.READY && proj != null) {
             // Eraser + sanctuary hover highlights track the cursor each frame.

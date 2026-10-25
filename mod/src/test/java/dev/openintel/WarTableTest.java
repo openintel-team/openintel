@@ -105,6 +105,7 @@ public final class WarTableTest {
 
         verifyLocalLayer();
         verifyDraftRendering(p);
+        dev.openintel.wartable.LiveMapCacheTest.check();
         System.out.println("War table tests passed");
     }
 
