@@ -39,15 +39,20 @@ public final class WorldOverlayRenderer {
 
     private static final RenderStateDataKey<List<LayerFrame>> FRAME = RenderStateDataKey.create();
     private static final WorldOverlayMesh EMPTY = WorldOverlayMesh.EMPTY;
-    private static final int RANGES = 0, SANCTUARIES = 1, LIVE_SANCTUARIES = 2, INVESTIGATE = 3, LAYERS = 4;
+    private static final int RANGES = 0, SANCTUARIES = 1, LIVE_SANCTUARIES = 2, INVESTIGATE = 3, BASTION_HEIGHTS = 4, LAYERS = 5;
     /** Translucent faces are re-sorted after the camera moves this far from the last sort. */
     private static final double SORT_STEP_SQ = 4.0 * 4.0;
 
     private static net.minecraft.client.multiplayer.ClientLevel collectedLevel;
     private static final Object[] keys = new Object[LAYERS];
-    private static final WorldOverlayMesh[] meshes = {EMPTY, EMPTY, EMPTY, EMPTY};
+    private static final WorldOverlayMesh[] meshes = new WorldOverlayMesh[LAYERS];
     private static List<LayerFrame> collected = List.of();
-    private static final GpuLayer[] gpu = {new GpuLayer(), new GpuLayer(), new GpuLayer(), new GpuLayer()};
+    private static final GpuLayer[] gpu = new GpuLayer[LAYERS];
+
+    static {
+        Arrays.fill(meshes, EMPTY);
+        for (int i = 0; i < LAYERS; i++) gpu[i] = new GpuLayer();
+    }
 
     public static final RenderPipeline FILL_DEPTH = pipeline("overlay_fill_depth", false, false);
     public static final RenderPipeline FILL_TOP = pipeline("overlay_fill_top", false, true);
@@ -115,10 +120,14 @@ public final class WorldOverlayRenderer {
         update(LIVE_SANCTUARIES, live, b -> RangeOverlay.collectLive(live, b));
         InvestigateOverlay.Key investigate = InvestigateOverlay.key(client);
         update(INVESTIGATE, investigate, b -> InvestigateOverlay.collect(investigate, b));
+        RangeOverlay.BastionHeightKey bastionHeights = RangeOverlay.bastionHeightKey(client);
+        update(BASTION_HEIGHTS, bastionHeights, b -> RangeOverlay.collectBastionHeights(bastionHeights, b));
+        int playerY = RangeOverlay.liveY(client);
         collected = List.of(new LayerFrame(meshes[RANGES], 0),
                 new LayerFrame(meshes[SANCTUARIES], 0),
-                new LayerFrame(meshes[LIVE_SANCTUARIES], RangeOverlay.liveY(client)),
-                new LayerFrame(meshes[INVESTIGATE], 0));
+                new LayerFrame(meshes[LIVE_SANCTUARIES], playerY),
+                new LayerFrame(meshes[INVESTIGATE], 0),
+                new LayerFrame(meshes[BASTION_HEIGHTS], playerY));
     }
 
     private static void update(int layer, Object key, Consumer<WorldOverlayMesh.Builder> build) {
