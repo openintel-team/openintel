@@ -703,6 +703,10 @@ Coverage and Investigate use dedicated Fabric render pipelines, registered with 
 
 `gradlew worldOverlayTest` checks geometry, shared edges, vertex batches, and depth policies. The optional `gradlew worldOverlayShaderTest` uses a hidden OpenGL window to check coplanar fill visibility, terrain occlusion, unchanged pixel boundaries, and preserved world depth. It does not run Iris or a shader pack. In-game checks should cover shaders off/on, see-through off/on, grazing angles, walking through highlights, overlapping events, and dimension changes.
 
+### Investigate file import
+
+`/oi investigate` accepts pasted Discord or in-game snitch lines, or **Import .txt…** opens a local file picker for a Discord text export (UTF-8, up to 2 MiB). File imports replace the input and parse automatically; nothing is uploaded. Bot/webhook display names do not affect parsing, and multiple events in one Discord message retain their order. Lines without recognizable snitch events and coordinates are skipped. Parentheses use the selected fallback world; explicit bracket world names keep their dimension. Playback never enters the live snitch tracker.
+
 ### Investigate caption and camera focus
 
 The top caption highlights the player in blue, the action by event type (red for breaks, green for placement, orange for sanctuary events), and the focused coordinates in gold. Snitch names and dimensions use quieter text, with a warning when the event is in another dimension. Descriptions wrap to fit the viewport.
