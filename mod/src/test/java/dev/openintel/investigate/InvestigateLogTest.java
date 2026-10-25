@@ -5,7 +5,7 @@ import dev.openintel.snitch.SnitchLogParser;
 import java.util.Objects;
 
 public final class InvestigateLogTest {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         // Discord-style break / place with parentheses.
         SnitchLogParser.ParsedLine broke = SnitchLogParser.parseLine(
                 "Vault: Steve broke block at (100, 64, -200)");
@@ -52,6 +52,50 @@ public final class InvestigateLogTest {
         equal(1, paste.events().get(0).x());
         equal(4, paste.events().get(1).x());
         equal(7, paste.events().get(2).x());
+
+        // Discord TXT exports: author names are metadata, including renamed bots.
+        String export = """
+                ==============================================================
+                Guild: Example
+                Channel: snitches
+                ==============================================================
+                [2026-10-21 10:08\u202fPM] Any renamed webhook
+                {Embed}
+                A Snitch: Steve placed block [Poplar Planks] at (-12, 1, 239)
+                A Snitch: Alex entered snitch at (-14, 1, 239)
+                [2026-10-21 10:09 PM] Completely different bot
+                A Snitch: Steve broke block [Stone] at (-15, 1, 239)
+                Unrelated discussion about (1, 2, 3)
+                """;
+        var exported = SnitchLogParser.parsePaste(export);
+        equal(3, exported.events().size());
+        equal("Steve", exported.events().get(0).player());
+        equal("A Snitch", exported.events().get(0).snitch());
+        equal("placed block [Poplar Planks]", exported.events().get(0).action());
+        equal(SnitchLogParser.Kind.ENTER, exported.events().get(1).kind());
+        equal(SnitchLogParser.Kind.BREAK, exported.events().get(2).kind());
+        var temp = java.nio.file.Files.createTempFile("oi-investigate-", ".txt");
+        try {
+            java.nio.file.Files.writeString(temp, "\uFEFF" + export.replace("\n", "\r\n"));
+            equal(exported.events(), SnitchLogParser.parsePaste(InvestigateLogImport.read(temp)).events());
+            java.nio.file.Files.write(temp, new byte[InvestigateLogImport.MAX_BYTES + 1]);
+            try {
+                InvestigateLogImport.read(temp);
+                throw new AssertionError("Oversized export accepted");
+            } catch (java.io.IOException expected) { }
+            java.nio.file.Files.write(temp, new byte[]{(byte) 0xC3, 0x28});
+            try {
+                InvestigateLogImport.read(temp);
+                throw new AssertionError("Invalid UTF-8 accepted");
+            } catch (java.io.IOException expected) { }
+        } finally {
+            java.nio.file.Files.deleteIfExists(temp);
+        }
+        if (args.length > 0) {
+            var actual = SnitchLogParser.parsePaste(InvestigateLogImport.read(java.nio.file.Path.of(args[0])));
+            if (actual.events().isEmpty()) throw new AssertionError("No events in supplied export");
+            System.out.println("Supplied export: " + actual.events().size() + " events");
+        }
 
         InvestigateSession session = InvestigateSession.get();
         session.load(paste, "minecraft:the_nether");

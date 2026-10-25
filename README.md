@@ -705,6 +705,8 @@ Coverage and Investigate use dedicated Fabric render pipelines, registered with 
 
 ### Investigate caption and camera focus
 
+`/oi investigate` accepts pasted Discord or in-game snitch lines, or **Import .txt…** opens a local file picker for a Discord text export (UTF-8, up to 2 MiB). File imports replace the input and parse automatically; nothing is uploaded. Bot/webhook display names do not affect parsing, and multiple events in one Discord message retain their order. Lines without recognizable snitch events and coordinates are skipped. The **World if missing** setting supplies the dimension for lines without one.
+
 The top caption highlights the player in blue, the action by event type (red for breaks, green for placement, orange for sanctuary events), and the focused coordinates in gold. Snitch names and dimensions use quieter text, with a warning when the event is in another dimension. Descriptions wrap to fit the viewport.
 
 Under `/oi settings` → Investigate → Camera focus, **Focus transition** selects **Pan** (default), **Snap**, or **Off**. Pan duration defaults to 350 ms and is adjustable from 100–2000 ms. Starting Watch, stepping events, selecting a row, and autoplay aim at the focused block's center. The camera releases control after the turn; mouse look cancels an active pan. Menus, inactive windows, spectating other entities, and events in other dimensions suspend camera movement. Player position stays unchanged.
