@@ -1,5 +1,26 @@
 # Changelog
 
+## 3.2.0+takoyakifan.mc1.21.11 — chat, relays, and coverage
+
+- Add display-only Chat, Snitches, Mining, Client, and OI Events filters with
+  independent fading controls, while preserving stored chat history.
+- Keep a scrollable session event log, add HUD/Chat output selection, and allow
+  resizing the HUD feed from its edges and corners.
+- Support multiple relay profiles with independent sharing controls and loop-safe
+  forwarding; negotiate same-host WSS upgrades before sending credentials.
+- Add grouped coverage entries, search, import/export, anchored dropdowns, and
+  automatic coordinates from nearby already-loaded blocks.
+- Add a V keybind for coverage visibility and default new see-through settings off.
+- Match the default bastion field to Civ+ coverage, mark its center with a hollow
+  plus, extend outline posts to build height, and draw a border at the player's Y.
+- Cache coverage geometry and retain GPU buffers to reduce visualization overhead.
+- Check the War Table live map on world join and periodically; show saved imagery
+  only after the server confirms it is current.
+- Import Discord text exports into Investigate with a local .txt file picker and
+  preserve multiple-event order regardless of bot/webhook display names.
+- Keep routine relay connections quiet and announce a compatible newer release
+  once per launch; update relay dependencies and add per-branch canary builds.
+
 ## 3.1.0+takoyakifan.mc1.21.11 — investigation and overlay improvements
 
 - Refresh the relic-map library with a compact vertical layout, taller entries,
