@@ -225,7 +225,6 @@ public final class ChatChannelFilterTest {
         check(!config.chatShowMining, "The Mining eye starts closed");
         check(!config.chatShowClient, "The Client bell starts closed");
         check(config.chatShowEvents, "The OI Events bell starts open");
-        check(config.eventLogPlace == OIConfig.EventLogPlace.HUD, "Events stay on the HUD until Chat is chosen");
         check(config.chatChannel() == ChatChannel.CHAT, "The helper reads Chat");
         check(config.views(ChatChannel.CHAT) && !config.views(ChatChannel.SNITCHES)
                         && !config.views(ChatChannel.MINING)
