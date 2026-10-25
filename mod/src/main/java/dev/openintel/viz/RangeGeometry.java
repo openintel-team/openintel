@@ -16,10 +16,10 @@ import java.util.Map;
  *       is 19 blocks across. From the bastion block outward the row reaches
  *       are 9,9,9,9,9,8,7,7,5,4. A block is inside when its horizontal
  *       distance squared is under 100, so the blocks at distance exactly 10
- *       stay outside. Covered blocks have Y at or above the bastion block.
- *       The drawn column is a guide of {@link #BASTION_COLUMN_HEIGHT} blocks;
- *       protection continues above it, and blocks below the bastion are
- *       uncovered. Any other radius uses a block-center disk.</li>
+ *       stay outside. Covered blocks have Y at or above the bastion block,
+ *       with no upper limit. Outline posts are drawn up to the dimension
+ *       build limit, and blocks below the bastion are uncovered. Any other
+ *       radius uses a block-center disk.</li>
  *   <li>Sanctuary: the same horizontal disk with a caller-supplied radius.</li>
  * </ul>
  *
@@ -39,8 +39,6 @@ public final class RangeGeometry {
     public static final double BASTION_DIAMETER = 19.0;
     /** dx² + dz² must be strictly under this for the Civ+ field. */
     private static final int CIV_BASTION_LIMIT_SQ = 100;
-    /** Vertical span drawn for bastion columns (damage falloff window). */
-    public static final int BASTION_COLUMN_HEIGHT = 64;
 
     private static final Map<Long, int[]> SNITCH_SHELLS = new HashMap<>();
     private static final Map<DiskKey, int[]> DISK_RINGS = new HashMap<>();
