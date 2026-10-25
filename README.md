@@ -236,7 +236,7 @@ See-through draws the wireframe and fill over terrain. Coverage and Investigate 
 
 ### Investigate
 
-`/oi investigate` takes a paste of Discord or in-game snitch lines. Lines without coordinates are skipped. Parentheses and brackets follow the usual dimension rules. Previous, next, and play/pause step the highlights in the world (`Left`, `Right`, `Down` while a session is active). Clearing the session removes the highlights. Playback never enters the live snitch tracker.
+`/oi investigate` accepts pasted Discord or in-game snitch lines, or **Import .txt…** opens a local file picker for a Discord text export (UTF-8, up to 2 MiB). File imports replace the input and parse automatically; nothing is uploaded. Bot/webhook display names do not affect parsing, and multiple events in one Discord message retain their order. Lines without recognizable snitch events and coordinates are skipped. Parentheses and brackets follow the usual dimension rules. Previous, next, and play/pause step the highlights in the world (`Left`, `Right`, `Down` while a session is active). Clearing the session removes the highlights. Playback never enters the live snitch tracker.
 
 The top caption highlights the player in blue, the action by event type (red for breaks, green for placement, orange for sanctuary events), and the focused coordinates in gold. Snitch names and dimensions use quieter text, with a warning when the event is in another dimension. Descriptions wrap to fit the viewport.
 
