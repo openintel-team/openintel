@@ -201,7 +201,11 @@ public final class WorldOverlayMesh {
         }
 
         private void rehash() {
-            table = new int[table.length * 2];
+            // Appended parts raise lineCount without filling this table, so one doubling can be too small.
+            int cap = table.length;
+            long need = (long) lineCount * 2;
+            while (cap < need) cap <<= 1;
+            table = new int[cap];
             for (int i = 0; i < lineCount; i++) {
                 int o = i * 6;
                 insert(hash(lineVerts[o], lineVerts[o + 1], lineVerts[o + 2], lineVerts[o + 3], lineVerts[o + 4],

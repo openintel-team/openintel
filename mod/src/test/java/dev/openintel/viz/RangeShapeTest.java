@@ -14,6 +14,7 @@ public final class RangeShapeTest {
         sanctuaryBlocks();
         shells();
         renderedShells();
+        postsAfterAppendedShell();
         persistence();
         RangeGroupTest.run();
         dev.openintel.gui.VisualizationsInteractionTest.run();
@@ -37,7 +38,7 @@ public final class RangeShapeTest {
             }
         }
         mesh = new dev.openintel.render.WorldOverlayMesh.Builder();
-        RangeOverlay.drawBastion(mesh, 0, 64, 0, 10.5, eye, false);
+        RangeOverlay.drawBastion(mesh, 0, 64, 0, 10.5, eye, false, 320);
         var bastion = mesh.build();
         assertFalse(bastion.faces().isEmpty(), "Actual bastion renderer emits a disk");
         for (var f : bastion.faces()) {
@@ -49,12 +50,54 @@ public final class RangeShapeTest {
             }
         }
         assertBastionCenterPlus(bastion, 0, 64, 0);
+        assertBastionPosts(bastion, 0, 64, 0, 10.5, 320);
         mesh = new dev.openintel.render.WorldOverlayMesh.Builder();
-        RangeOverlay.drawBastion(mesh, 20, 70, -4, 8, eye, true);
-        assertBastionCenterPlus(mesh.build(), 20, 70, -4);
+        RangeOverlay.drawBastion(mesh, 20, 70, -4, 8, eye, true, 256);
+        var custom = mesh.build();
+        assertBastionCenterPlus(custom, 20, 70, -4);
+        assertBastionPosts(custom, 20, 70, -4, 8, 256);
+        for (var line : custom.lines()) assertTrue(line.onTop(), "See-through bastion posts stay see-through");
+        mesh = new dev.openintel.render.WorldOverlayMesh.Builder();
+        RangeOverlay.drawBastionPlayerBorder(mesh, 0, 90, 0, 10.5, false);
+        var border = mesh.build();
+        assertTrue(hasFaceCenter(border, 9.5, 91, 0.5), "Player border has the outer cap");
+        assertTrue(hasFaceCenter(border, 9.5, 90, 0.5), "Player border has the outer floor");
+        assertTrue(hasFaceCenter(border, 10, 90.5, 0.5), "Player border has the outer wall");
+        assertEquals(0, facesOnBlock(border, 0, 90, 0));
+        assertEquals(0, facesOnBlock(border, 1, 90, 0));
+        assertEquals(0, facesOnBlock(border, -1, 90, 0));
+        assertEquals(0, facesOnBlock(border, 0, 90, 1));
+        assertEquals(0, facesOnBlock(border, 0, 90, -1));
+        for (var line : border.lines()) {
+            double span = Math.abs(line.a().y() - line.b().y());
+            assertTrue(span <= 1.0, "Player border stays a flat ring");
+        }
+        assertTrue(RangeOverlay.bastionPlayerBorder(64, 90), "A higher player gets the extra border");
+        assertTrue(RangeOverlay.bastionPlayerBorder(64, 40), "A lower player gets the extra border");
+        assertFalse(RangeOverlay.bastionPlayerBorder(64, 64), "The bastion layer already has its border");
         mesh = new dev.openintel.render.WorldOverlayMesh.Builder();
         RangeOverlay.drawSnitch(mesh, 1000, 64, 0, 8, -1, -1, eye, true);
         assertTrue(mesh.build().faces().isEmpty(), "Distant shapes stay culled");
+    }
+
+    /** A snitch shell is appended, then bastion posts are inserted. That must return. */
+    private static void postsAfterAppendedShell() {
+        var done = new java.util.concurrent.atomic.AtomicBoolean();
+        Thread worker = new Thread(() -> {
+            var mesh = new dev.openintel.render.WorldOverlayMesh.Builder();
+            var eye = new net.minecraft.world.phys.Vec3(0.5, 64.5, 0.5);
+            RangeOverlay.drawSnitch(mesh, 0, 64, 0, 8, -1, 0x3300FFFF, eye, false);
+            RangeOverlay.drawBastion(mesh, 40, 64, 0, 10.5, eye, false, 320);
+            done.set(mesh.build().lineCount() > 2700);
+        });
+        worker.setDaemon(true);
+        worker.start();
+        try {
+            worker.join(3000);
+        } catch (InterruptedException e) {
+            throw new AssertionError(e);
+        }
+        assertTrue(done.get(), "Bastion posts after an appended snitch must finish");
     }
 
     private static void snitchBlocks() {
@@ -135,9 +178,8 @@ public final class RangeShapeTest {
         // Below the bastion block is uncovered. At and far above it is covered.
         assertFalse(RangeGeometry.bastionCoversBlock(0, 64, 0, 0, 63, 0), "below bastion");
         assertTrue(RangeGeometry.bastionCoversBlock(0, 64, 0, 0, 64, 0), "at bastion Y");
-        assertTrue(RangeGeometry.bastionCoversBlock(0, 64, 0, 0, 64 + RangeGeometry.BASTION_COLUMN_HEIGHT, 0),
-                "column height still protected");
-        assertTrue(RangeGeometry.bastionCoversBlock(0, 64, 0, 0, 64 + 1000, 0), "above the drawn column");
+        assertTrue(RangeGeometry.bastionCoversBlock(0, 64, 0, 0, 128, 0), "above the bastion is still protected");
+        assertTrue(RangeGeometry.bastionCoversBlock(0, 64, 0, 0, 64 + 1000, 0), "far above the bastion");
         // Configured radius, not only the default.
         assertTrue(RangeGeometry.bastionCoversBlock(0, 64, 0, 4, 64, 0, 4), "bastion radius 4 edge");
         assertFalse(RangeGeometry.bastionCoversBlock(0, 64, 0, 5, 64, 0, 4), "bastion radius 4 just past");
@@ -375,6 +417,36 @@ public final class RangeShapeTest {
                 });
             }
         }
+    }
+
+    /** One vertical post per perimeter block, from the bastion layer up to the build limit. */
+    private static void assertBastionPosts(dev.openintel.render.WorldOverlayMesh mesh,
+                                           int x, int y, int z, double radius, int buildHeight) {
+        int[] ring = RangeGeometry.bastionRingOffsets(radius);
+        assertTrue(ring.length > 0, "bastion ring");
+        for (int i = 0; i + 1 < ring.length; i += 2) {
+            double px = x + ring[i] + 0.5;
+            double pz = z + ring[i + 1] + 0.5;
+            assertTrue(hasVertical(mesh, px, y, pz, buildHeight),
+                    "outline reaches build height at " + px + "," + pz);
+        }
+        for (var line : mesh.lines()) {
+            if (line.a().x() != line.b().x() || line.a().z() != line.b().z()) continue;
+            double lo = Math.min(line.a().y(), line.b().y());
+            double hi = Math.max(line.a().y(), line.b().y());
+            if (hi - lo <= 1.0) continue;
+            assertEquals(y, lo);
+            assertEquals(buildHeight, hi);
+        }
+    }
+
+    private static boolean hasVertical(dev.openintel.render.WorldOverlayMesh mesh,
+                                       double x, double y0, double z, double y1) {
+        for (var line : mesh.lines()) {
+            if (line.a().x() == x && line.b().x() == x && line.a().z() == z && line.b().z() == z
+                    && line.a().y() == y0 && line.b().y() == y1) return true;
+        }
+        return false;
     }
 
     /**
