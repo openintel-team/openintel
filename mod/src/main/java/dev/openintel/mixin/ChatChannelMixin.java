@@ -3,14 +3,15 @@ package dev.openintel.mixin;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.openintel.OpenIntelClient;
+import dev.openintel.chat.CachedChatChannel;
 import dev.openintel.chat.ChatChannel;
 import dev.openintel.chat.ChatChannelFilter;
+import dev.openintel.chat.ChatTranscript;
 import dev.openintel.chat.LocalChatMessage;
 import dev.openintel.config.OIConfig;
 import net.minecraft.client.GuiMessage;
 import net.minecraft.client.GuiMessageTag;
 import net.minecraft.client.gui.components.ChatComponent;
-import net.minecraft.util.FormattedCharSequence;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -142,15 +143,9 @@ public abstract class ChatChannelMixin {
         boolean compact = openintel$channels.size() > size + 32;
         Map<GuiMessage.Line, CachedChatChannel> live = compact ? new IdentityHashMap<>() : null;
         List<GuiMessage.Line> visible = new ArrayList<>(Math.min(size, 64));
-        List<GuiMessage.Line> group = new ArrayList<>();
-        for (GuiMessage.Line line : trimmedMessages) {
-            if (line.endOfEntry() && !group.isEmpty()) {
-                openintel$acceptGroup(visible, group, open, config, live);
-                group.clear();
-            }
-            group.add(line);
+        for (List<GuiMessage.Line> group : ChatTranscript.messages(trimmedMessages)) {
+            openintel$acceptGroup(visible, group, open, config, live);
         }
-        if (!group.isEmpty()) openintel$acceptGroup(visible, group, open, config, live);
         if (live != null) {
             openintel$channels.clear();
             openintel$channels.putAll(live);
@@ -206,27 +201,12 @@ public abstract class ChatChannelMixin {
                 if (tag != null && tag.logTag() != null) logTag = tag.logTag();
             }
             cached = new CachedChatChannel(tail, lines, ChatChannelFilter.classify(
-                    openintel$groupText(group), openintel$cachedPattern,
+                    ChatTranscript.readingOrderLines(group), openintel$cachedPattern,
                     ChatChannelFilter.clientOrigin(false, locallyAdded, logTag)));
             openintel$channels.put(anchor, cached);
         }
         if (live != null) live.put(anchor, cached);
         return cached.channel;
-    }
-
-    /** Reading order is the reverse of the newest-first trimmed list. */
-    @Unique
-    private static String openintel$groupText(List<GuiMessage.Line> group) {
-        StringBuilder builder = new StringBuilder();
-        for (int i = group.size() - 1; i >= 0; i--) {
-            FormattedCharSequence content = group.get(i).content();
-            if (content == null) continue;
-            content.accept((index, style, codePoint) -> {
-                builder.appendCodePoint(codePoint);
-                return true;
-            });
-        }
-        return builder.toString();
     }
 
     /** A pattern that fails to compile classifies nothing as snitches. */
@@ -238,22 +218,5 @@ public abstract class ChatChannelMixin {
         } catch (RuntimeException ignored) {
             return null;
         }
-    }
-}
-
-/**
- * Classification of one trimmed message. Not a mixin inner class: Mixin would
- * copy one of those onto {@code ChatComponent}. The newest line is the map
- * key; the oldest line and the line count say whether that text is unchanged.
- */
-final class CachedChatChannel {
-    final GuiMessage.Line tail;
-    final int lines;
-    final ChatChannel channel;
-
-    CachedChatChannel(GuiMessage.Line tail, int lines, ChatChannel channel) {
-        this.tail = tail;
-        this.lines = lines;
-        this.channel = channel;
     }
 }

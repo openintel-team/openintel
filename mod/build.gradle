@@ -213,6 +213,13 @@ tasks.register('chatChannelFilterTest', JavaExec) {
     enableAssertions = true
 }
 
+tasks.register('chatVersionParityTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.chat.ChatVersionParityTest'
+    enableAssertions = true
+}
+
 tasks.register('versionPinTest') {
     def propertiesFile = layout.projectDirectory.file('gradle.properties')
     def modJson = layout.projectDirectory.file('src/main/resources/fabric.mod.json')
@@ -253,7 +260,7 @@ tasks.register('relayBridgeTest', JavaExec) {
     enableAssertions = true
 }
 
-check.dependsOn relayProfilesTest, relayBridgeTest, investigatePresentationTest, worldOverlayTest, versionPinTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest, chatChannelFilterTest, releaseUpdateTest
+check.dependsOn relayProfilesTest, relayBridgeTest, investigatePresentationTest, worldOverlayTest, versionPinTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest, chatChannelFilterTest, chatVersionParityTest, releaseUpdateTest
 
 publishing {
     publications {

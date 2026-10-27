@@ -6,7 +6,11 @@ import dev.openintel.config.OIConfig;
 
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -384,6 +388,49 @@ public final class ChatChannelFilterTest {
                         "Chat channel mixin is registered: " + name);
             }
         }
+        rejectHelperClassesInTheMixinPackage();
+    }
+
+    /**
+     * Mixin refuses to load a normal class from its own package. The first chat
+     * draw after joining references that class and the client disconnects.
+     */
+    private static void rejectHelperClassesInTheMixinPackage() throws Exception {
+        JsonObject config;
+        try (var input = ChatChannelFilterTest.class.getResourceAsStream("/openintel.mixins.json")) {
+            check(input != null, "Mixin config is on the test classpath");
+            config = JsonParser.parseReader(new InputStreamReader(input, StandardCharsets.UTF_8)).getAsJsonObject();
+        }
+        Set<String> allowed = new HashSet<>();
+        if (config.has("plugin") && config.get("plugin").isJsonPrimitive()) {
+            allowed.add(simpleName(config.get("plugin").getAsString()));
+        }
+        for (String side : new String[]{"mixins", "client", "server"}) {
+            if (!config.has(side) || !config.get(side).isJsonArray()) continue;
+            for (var element : config.getAsJsonArray(side)) {
+                allowed.add(simpleName(element.getAsString()));
+            }
+        }
+        String packageName = config.get("package").getAsString();
+        var url = ChatChannelFilterTest.class.getClassLoader()
+                .getResource(packageName.replace('.', '/') + "/ChatChannelMixin.class");
+        check(url != null, "Chat mixin class is on the test classpath");
+        check("file".equals(url.getProtocol()), "Chat mixin class is a loose class file");
+        Path dir = Path.of(url.toURI()).getParent();
+        try (var classes = Files.list(dir)) {
+            for (Path path : classes.toList()) {
+                String file = path.getFileName().toString();
+                if (!file.endsWith(".class") || file.contains("$")) continue;
+                String simple = file.substring(0, file.length() - ".class".length());
+                check(allowed.contains(simple),
+                        "A class in the mixin package is loaded as a normal class and crashes on join: " + simple);
+            }
+        }
+    }
+
+    private static String simpleName(String binaryName) {
+        int dot = binaryName.lastIndexOf('.');
+        return dot < 0 ? binaryName : binaryName.substring(dot + 1);
     }
 
     private static void check(boolean condition, String reason) {
