@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.2.1+takoyakifan.mc26.3 — join crash hotfix
+
+- Minecraft 1.21.11 no longer crashes on join. The chat channel cache now lives
+  outside the mixin package, which Mixin refused to load.
+- Minecraft 26.3, 26.2, and 26.1.2 have no gameplay change in this hotfix. Their
+  versions are aligned so the release is one number.
+
 ## 3.2.0+takoyakifan.mc26.3 — chat, relays, and coverage
 
 - Add display-only Chat, Snitches, Mining, Client, and OI Events filters with
