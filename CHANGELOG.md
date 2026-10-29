@@ -1,13 +1,18 @@
 # Changelog
 
-## 3.2.1+takoyakifan.mc26.2 — join crash hotfix
+## Unreleased
+
+- Use OpenIntel branding and Minecraft-specific version identifiers.
+- Link update notifications, builds, and documentation to the OpenIntel team repository.
+
+## 3.2.1+mc26.2 — join crash hotfix
 
 - Minecraft 1.21.11 no longer crashes on join. The chat channel cache now lives
   outside the mixin package, which Mixin refused to load.
 - Minecraft 26.3, 26.2, and 26.1.2 have no gameplay change in this hotfix. Their
   versions are aligned so the release is one number.
 
-## 3.2.0+takoyakifan.mc26.2 — chat, relays, and coverage
+## 3.2.0+mc26.2 — chat, relays, and coverage
 
 - Add display-only Chat, Snitches, Mining, Client, and OI Events filters with
   independent fading controls, while preserving stored chat history.
@@ -28,7 +33,7 @@
 - Keep routine relay connections quiet and announce a compatible newer release
   once per launch; update relay dependencies and add per-branch canary builds.
 
-## 3.1.0+takoyakifan.mc26.2 — investigation and overlay improvements
+## 3.1.0+mc26.2 — investigation and overlay improvements
 
 - Refresh the relic-map library with a compact vertical layout, taller entries,
   clearer selection/capacity states, and search preserved across window resizes.
@@ -46,19 +51,17 @@
 - Expand regression coverage for geometry, depth policies, camera transitions,
   caption emphasis, settings persistence, and event-selection lifecycle.
 
-## 3.0.1+takoyakifan.mc26.2 — defaults and compatibility
+## 3.0.1+mc26.2 — defaults and compatibility
 
 - New installs use Minecraft's font by default. Clean font remains available
   under HUD → Text → Font. Existing saved font preferences are preserved.
 - The Minecraft 1.21.11 build corrects the font and logo shader uniform layout
   to match that version's GUI rendering pipeline.
 - Provide fresh Fabric builds for Minecraft 26.3, 26.2, 26.1.2, and 1.21.11
-  together in one fork release. The mod ID and integration API stay unchanged.
+  together in one release. The mod ID and integration API stay unchanged.
 
-## 3.0.0+takoyakifan.mc26.2 — takoyakifan fork
+## 3.0.0+mc26.2 — maps, relics, and coverage
 
-- Establish the 3.0 fork release line, with the account and Minecraft target in
-  each version string and the fork name visible in the installed mod metadata.
 - Support Minecraft 26.3, 26.2, 26.1.2, and 1.21.11 on separate branches.
 - Integrate directly with Xaero's fullscreen World Map; preserve independent
   HUD/map marker settings, War Table labels, and relic presentation.
