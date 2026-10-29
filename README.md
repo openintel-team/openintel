@@ -2,9 +2,9 @@
   <img src="mod/src/main/resources/assets/openintel/icon.png" alt="OpenIntel logo" width="128">
 </p>
 
-<h1 align="center">OpenIntel — takoyakifan fork</h1>
+<h1 align="center">OpenIntel</h1>
 
-OpenIntel **3.2.1+takoyakifan.mc1.21.11** is an open-source Fabric intelligence client for
+OpenIntel **3.2.1+mc1.21.11** is an open-source Fabric intelligence client for
 **Minecraft 1.21.11 / Java 21**. It combines nearby-player radar, responsive
 HUDs, clean text, local snitch/relic tracking, and optional team intelligence
 through a self-hosted relay. It does not add its own minimap, waypoint
@@ -15,19 +15,19 @@ address, Minecraft-server address, Discord configuration, or user database is
 included. Configure your own relay if you want shared intelligence; local
 features do not require a relay connection.
 
-Supported branches: [`26.3`](https://github.com/takoyakifan/openintel/tree/26.3) (default), [`26.2`](https://github.com/takoyakifan/openintel/tree/26.2), [`26.1.2`](https://github.com/takoyakifan/openintel/tree/26.1.2), and [`1.21.11`](https://github.com/takoyakifan/openintel/tree/1.21.11). This branch targets Minecraft **1.21.11**.
+Supported branches: [`main`](https://github.com/openintel-team/openintel/tree/main) (default, latest Minecraft target), [`26.2`](https://github.com/openintel-team/openintel/tree/26.2), [`26.1.2`](https://github.com/openintel-team/openintel/tree/26.1.2), and [`1.21.11`](https://github.com/openintel-team/openintel/tree/1.21.11). This branch targets Minecraft **1.21.11**.
 
-Fork releases use `3.2.1+takoyakifan.mc<version>` so the installed version and jar filename identify this fork and its Minecraft target. The mod ID remains `openintel` and the integration API remains major version **1**. Install one OpenIntel variant at a time.
+Releases use `3.2.1+mc<version>` to identify the Minecraft target. The mod ID is `openintel` and the integration API is major version **1**. Install only the jar for your Minecraft version.
 
 ## Canary builds
 
-Every push to a branch runs [Canary mod build](https://github.com/takoyakifan/openintel/actions/workflows/build-mod.yml) for that branch, including the headless build checks. To try changes before the next release:
+Every push to a branch runs [Canary mod build](https://github.com/openintel-team/openintel/actions/workflows/build-mod.yml) for that branch, including the headless build checks. To try changes before the next release:
 
 1. Open the workflow, select your Minecraft branch, and open its latest successful run.
 2. Under **Artifacts**, download the `openintel-mc<version>-<branch>-<commit>` ZIP. GitHub requires you to sign in to download it.
 3. Extract the ZIP and put the jar in `.minecraft/mods` with Fabric API, replacing your previous OpenIntel jar.
 
-Artifacts expire after **30 days**. These are development builds; CI does not verify in-game behavior. The jar keeps the branch's mod version, while the artifact name and run identify its exact commit. Stable versions are on the [Releases page](https://github.com/takoyakifan/openintel/releases). Maintainers can also use **Run workflow** to build a branch manually. New branches inherit this workflow when created from an enabled branch.
+Artifacts expire after **30 days**. These are development builds; CI does not verify in-game behavior. The jar keeps the branch's mod version, while the artifact name and run identify its exact commit. Stable versions are on the [Releases page](https://github.com/openintel-team/openintel/releases). Maintainers can also use **Run workflow** to build a branch manually. New branches inherit this workflow when created from an enabled branch.
 
 ## Features
 
@@ -452,7 +452,7 @@ All controls are rebindable under the OpenIntel keybind category.
 
 ## Fabric mod integration API (v1)
 
-OpenIntel **3.2.1+takoyakifan.mc1.21.11** provides the public v1 Java API under `dev.openintel.api`.
+OpenIntel **3.2.1+mc1.21.11** provides the public v1 Java API under `dev.openintel.api`.
 Use `OpenIntelApi` as the entry point; do not link against `tracker`, `net`,
 `render`, or `api.internal` implementation classes. This is a client-side
 Fabric API for Minecraft **1.21.11**, not the Discord/admin REST API.
@@ -474,7 +474,7 @@ repositories {
 }
 
 dependencies {
-    modImplementation "dev.openintel:openintel:3.2.1+takoyakifan.mc1.21.11"
+    modImplementation "dev.openintel:openintel:3.2.1+mc1.21.11"
 }
 ```
 
@@ -482,7 +482,7 @@ Use matching Minecraft versions and official Mojang mappings. OpenIntel is insta
 `mods/`; do not nest a personalized/token-bearing jar in your mod. No public
 Maven repository is provisioned by this project. Alternatively, place the
 neutral remapped jar in your project's `libs/` and use
-`modImplementation files("libs/openintel-3.2.1+takoyakifan.mc1.21.11.jar")`.
+`modImplementation files("libs/openintel-3.2.1+mc1.21.11.jar")`.
 
 For a required integration, add `"openintel": ">=1.7.0"` to your mod's
 `fabric.mod.json` `depends` object. Declare this entrypoint:
