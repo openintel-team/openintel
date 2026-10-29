@@ -22,63 +22,63 @@ public final class ReleaseUpdateTest {
     private static void sameReleaseStaysQuiet() {
         String json = releases("""
                 {"tag_name":"v3.1.0","draft":false,"prerelease":false,"assets":[
-                  {"name":"openintel-takoyakifan-fabric-3.1.0-mc26.3.jar"}]}
+                  {"name":"openintel-fabric-3.1.0-mc26.3.jar"}]}
                 """);
-        check(ReleaseUpdate.newerVersion("3.1.0+takoyakifan.mc26.3", "26.3", json) == null,
+        check(ReleaseUpdate.newerVersion("3.1.0+mc26.3", "26.3", json) == null,
                 "The installed release is not announced again");
     }
 
     private static void newerReleaseForThisGame() {
         String json = releases("""
                 {"tag_name":"v3.2.0","draft":false,"prerelease":false,"assets":[
-                  {"name":"openintel-takoyakifan-fabric-3.2.0-mc26.3.jar"},
-                  {"name":"openintel-takoyakifan-fabric-3.2.0-mc1.21.11.jar"}]}
+                  {"name":"openintel-fabric-3.2.0-mc26.3.jar"},
+                  {"name":"openintel-fabric-3.2.0-mc1.21.11.jar"}]}
                 """);
-        check("3.2.0".equals(ReleaseUpdate.newerVersion("3.1.0+takoyakifan.mc26.3", "26.3", json)),
+        check("3.2.0".equals(ReleaseUpdate.newerVersion("3.1.0+mc26.3", "26.3", json)),
                 "A newer jar for this Minecraft version is announced");
-        check("3.2.0".equals(ReleaseUpdate.newerVersion("3.1.0+takoyakifan.mc1.21.11", "1.21.11", json)),
+        check("3.2.0".equals(ReleaseUpdate.newerVersion("3.1.0+mc1.21.11", "1.21.11", json)),
                 "The same release is announced on 1.21.11");
     }
 
     private static void otherGameVersionStaysQuiet() {
         String json = releases("""
                 {"tag_name":"v3.2.0","draft":false,"prerelease":false,"assets":[
-                  {"name":"openintel-takoyakifan-fabric-3.2.0-mc26.2.jar"}]}
+                  {"name":"openintel-fabric-3.2.0-mc26.2.jar"}]}
                 """);
-        check(ReleaseUpdate.newerVersion("3.1.0+takoyakifan.mc26.3", "26.3", json) == null,
+        check(ReleaseUpdate.newerVersion("3.1.0+mc26.3", "26.3", json) == null,
                 "A jar for another Minecraft version is not an update for this one");
     }
 
     private static void prereleaseAndDraftStayQuiet() {
         String json = releases("""
                 {"tag_name":"v3.4.0","draft":true,"prerelease":false,"assets":[
-                  {"name":"openintel-takoyakifan-fabric-3.4.0-mc26.3.jar"}]},
+                  {"name":"openintel-fabric-3.4.0-mc26.3.jar"}]},
                 {"tag_name":"v3.3.0","draft":false,"prerelease":true,"assets":[
-                  {"name":"openintel-takoyakifan-fabric-3.3.0-mc26.3.jar"}]}
+                  {"name":"openintel-fabric-3.3.0-mc26.3.jar"}]}
                 """);
-        check(ReleaseUpdate.newerVersion("3.1.0+takoyakifan.mc26.3", "26.3", json) == null,
+        check(ReleaseUpdate.newerVersion("3.1.0+mc26.3", "26.3", json) == null,
                 "Drafts and prereleases are not announced");
     }
 
     private static void highestReleaseWins() {
         String json = releases("""
                 {"tag_name":"v3.2.0","draft":false,"prerelease":false,"assets":[
-                  {"name":"openintel-takoyakifan-fabric-3.2.0-mc26.3.jar"}]},
+                  {"name":"openintel-fabric-3.2.0-mc26.3.jar"}]},
                 {"tag_name":"v3.0.9","draft":false,"prerelease":false,"assets":[
-                  {"name":"openintel-takoyakifan-fabric-3.0.9-mc26.3.jar"}]},
+                  {"name":"openintel-fabric-3.0.9-mc26.3.jar"}]},
                 {"tag_name":"v3.2.1","draft":false,"prerelease":false,"assets":[
-                  {"name":"openintel-takoyakifan-fabric-3.2.1-mc26.3.jar"}]}
+                  {"name":"openintel-fabric-3.2.1-mc26.3.jar"}]}
                 """);
-        check("3.2.1".equals(ReleaseUpdate.newerVersion("3.1.0+takoyakifan.mc26.3", "26.3", json)),
+        check("3.2.1".equals(ReleaseUpdate.newerVersion("3.1.0+mc26.3", "26.3", json)),
                 "The newest applicable release is the one announced");
-        check(ReleaseUpdate.newerVersion("3.3.0+takoyakifan.mc26.3", "26.3", json) == null,
+        check(ReleaseUpdate.newerVersion("3.3.0+mc26.3", "26.3", json) == null,
                 "A newer local build is not told to downgrade");
     }
 
     private static void unreadableResponseStaysQuiet() {
-        check(ReleaseUpdate.newerVersion("3.1.0+takoyakifan.mc26.3", "26.3", "{\"message\":\"limit\"}") == null,
+        check(ReleaseUpdate.newerVersion("3.1.0+mc26.3", "26.3", "{\"message\":\"limit\"}") == null,
                 "An error document is not an update");
-        check(ReleaseUpdate.newerVersion("3.1.0+takoyakifan.mc26.3", "26.3", "not json") == null,
+        check(ReleaseUpdate.newerVersion("3.1.0+mc26.3", "26.3", "not json") == null,
                 "A broken response is not an update");
         check(ReleaseUpdate.newerVersion("unknown", "26.3", "[]") == null,
                 "An unreadable local version is not compared");
