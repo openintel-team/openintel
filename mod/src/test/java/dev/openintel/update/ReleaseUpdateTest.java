@@ -13,7 +13,7 @@ public final class ReleaseUpdateTest {
         highestReleaseWins();
         unreadableResponseStaysQuiet();
         noticeIsOncePerLaunch();
-        if (!ReleaseUpdate.RELEASES_PAGE.equals("https://github.com/takoyakifan/openintel/releases")) {
+        if (!ReleaseUpdate.RELEASES_PAGE.equals("https://github.com/openintel-team/openintel/releases")) {
             throw new AssertionError("Update notice links to the releases page");
         }
         System.out.println("ReleaseUpdateTest passed");
