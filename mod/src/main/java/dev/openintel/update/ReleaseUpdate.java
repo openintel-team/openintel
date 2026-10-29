@@ -6,12 +6,12 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 /**
- * Compares this install with the public takoyakifan release list.
+ * Compares this install with the public OpenIntel team release list.
  * The chat link stays on the releases page itself; release JSON never chooses the URL.
  */
 public final class ReleaseUpdate {
-    public static final String RELEASES_PAGE = "https://github.com/takoyakifan/openintel/releases";
-    static final String RELEASES_API = "https://api.github.com/repos/takoyakifan/openintel/releases?per_page=20";
+    public static final String RELEASES_PAGE = "https://github.com/openintel-team/openintel/releases";
+    static final String RELEASES_API = "https://api.github.com/repos/openintel-team/openintel/releases?per_page=20";
 
     private ReleaseUpdate() { }
 
