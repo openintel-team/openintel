@@ -2,34 +2,34 @@
   <img src="mod/src/main/resources/assets/openintel/icon.png" alt="OpenIntel logo" width="128">
 </p>
 
-<h1 align="center">OpenIntel — takoyakifan fork</h1>
+<h1 align="center">OpenIntel</h1>
 
 <p align="center">
-  Fabric client <strong>3.2.1+takoyakifan.mc26.3</strong> for Minecraft <strong>26.3</strong> and Java 25.<br>
-  A fork of <a href="https://github.com/hiimcapri/openintel">hiimcapri/openintel</a> with Civ map, relic, and coverage changes on top of the shared relay client.
+  Fabric client <strong>3.2.1+mc26.3</strong> for Minecraft <strong>26.3</strong> and Java 25.<br>
+  Player intelligence, Civ maps, relic tracking, and coverage tools with an optional shared relay.
 </p>
 
 OpenIntel shares player positions, snitch alerts, and map annotations through a relay you run yourself. Local radar, HUDs, macros, relic maps, and coverage drawings work without that relay. The client does not ship a minimap or a waypoint database. Fullscreen map markers use JourneyMap or Xaero's World Map when those mods are installed.
 
 Public source and release jars are token-neutral. Set your own relay address, Minecraft server, and token after install. Local features do not require a connection.
 
-Supported branches: [`26.3`](https://github.com/takoyakifan/openintel/tree/26.3) (default), [`26.2`](https://github.com/takoyakifan/openintel/tree/26.2), [`26.1.2`](https://github.com/takoyakifan/openintel/tree/26.1.2), and [`1.21.11`](https://github.com/takoyakifan/openintel/tree/1.21.11). This branch targets Minecraft **26.3**.
+Supported branches: [`main`](https://github.com/openintel-team/openintel/tree/main) (default, latest Minecraft target), [`26.2`](https://github.com/openintel-team/openintel/tree/26.2), [`26.1.2`](https://github.com/openintel-team/openintel/tree/26.1.2), and [`1.21.11`](https://github.com/openintel-team/openintel/tree/1.21.11). This branch targets Minecraft **26.3**.
 
-Fork releases use `3.2.1+takoyakifan.mc<version>` so the installed version and jar filename identify this fork and its Minecraft target. The mod ID remains `openintel` and the integration API remains major version **1**. Install one OpenIntel variant at a time.
+Releases use `3.2.1+mc<version>` to identify the Minecraft target. The mod ID is `openintel` and the integration API is major version **1**. Install only the jar for your Minecraft version.
 
 ## Canary builds
 
-Every push to a branch runs [Canary mod build](https://github.com/takoyakifan/openintel/actions/workflows/build-mod.yml) for that branch, including the headless build checks. To try changes before the next release:
+Every push to a branch runs [Canary mod build](https://github.com/openintel-team/openintel/actions/workflows/build-mod.yml) for that branch, including the headless build checks. To try changes before the next release:
 
 1. Open the workflow, select your Minecraft branch, and open its latest successful run.
 2. Under **Artifacts**, download the `openintel-mc<version>-<branch>-<commit>` ZIP. GitHub requires you to sign in to download it.
 3. Extract the ZIP and put the jar in `.minecraft/mods` with Fabric API, replacing your previous OpenIntel jar.
 
-Artifacts expire after **30 days**. These are development builds; CI does not verify in-game behavior. The jar keeps the branch's mod version, while the artifact name and run identify its exact commit. Stable versions are on the [Releases page](https://github.com/takoyakifan/openintel/releases). Maintainers can also use **Run workflow** to build a branch manually. New branches inherit this workflow when created from an enabled branch.
+Artifacts expire after **30 days**. These are development builds; CI does not verify in-game behavior. The jar keeps the branch's mod version, while the artifact name and run identify its exact commit. Stable versions are on the [Releases page](https://github.com/openintel-team/openintel/releases). Maintainers can also use **Run workflow** to build a branch manually. New branches inherit this workflow when created from an enabled branch.
 
 ## Contents
 
-- [What this fork changes](#what-this-fork-changes)
+- [Features](#features)
 - [Requirements](#requirements)
 - [Install](#install)
 - [Settings](#settings)
@@ -39,29 +39,27 @@ Artifacts expire after **30 days**. These are development builds; CI does not ve
 - [Integration API](#integration-api)
 - [Building](#building)
 
-## What this fork changes
+## Features
 
-Upstream OpenIntel's `26.2` line is the base. This tree targets Minecraft `~26.3` and keeps that client's relay, War Table, radar, pings, macros, clean font, and HUD editor. The rows below are the changes on top of that base.
+| Area | Features |
+|---|---|
+| Minecraft | **26.3**, Fabric Loader 0.19.5, Java 25 |
+| Xaero's World Map | Direct compile against Xaero's World Map and XaeroLib. No bridge jar |
+| World-map markers | Outlined player circles, outlined diamonds for snitches, pings, and pins, Civ relic icons, two-line labels. Minimap and saved waypoints are left alone |
+| War Table on the map | Separate toggles for HUD pins, world-map pins, place labels, and sanctuary names. Labels and sanctuary names are a small colored diamond plus one line |
+| Relic maps | Inventory scan only. Treasure Maps named for a relic are drawn. Filled maps named "World Map" are locators and are skipped |
+| Nearby relic pins | Horizontal range, default **300** blocks (50–2000). Label is name, enchantment, and distance |
+| Chests | Optional closest-to-furthest sort of located relic maps in chests, barrels, ender chests, and shulkers |
+| Relic library | Chest Tracker list of stored treasure maps, searchable by name or enchantment. Where Is It highlights the chests for a selection. Those pins show on the fullscreen world map only while that map was opened from the library |
+| Coverage | Block-aligned snitch shells (radius default **8**), the Civ+ bastion field (19 blocks across), and sanctuary rings. Manual shapes persist in `config/openintel-ranges.json`. Live-map sanctuaries reuse the War Table feed |
+| Investigate | Paste Discord or in-game snitch logs and step through break, place, and enter highlights. Playback does not write live snitch hits |
+| Snitch alerts without a world | HUD and world-map markers still appear. Dimension comes from the snitch name, then the tripper, then the reporter, then the local player. The feed includes Y when the alert has it |
+| Event feed | Defaults to the top-right, right-aligned, wrapping inside about a third of the screen |
+| Logo | Hidden by default. Turn it on under HUD → Elements |
+| Marker size | Opacity is a **0–100%** slider, default **59%**. Marker scale defaults to **60%** |
+| Settings entry | `/oi settings` and Mod Menu's config button |
 
-| Area | Upstream 26.2 | This fork |
-|---|---|---|
-| Minecraft | 26.2 | **26.3**, Fabric Loader 0.19.5, Java 25 |
-| Xaero's World Map | Optional bridge mod and vendored bridge jar | Direct compile against Xaero's World Map and XaeroLib. No bridge jar |
-| World-map markers | Small dots and diamonds on the fullscreen map | Outlined player circles, outlined diamonds for snitches, pings, and pins, Civ relic icons, two-line labels. Minimap and saved waypoints are left alone |
-| War Table on the map | HUD pin toggle | Separate toggles for HUD pins, world-map pins, place labels, and sanctuary names. Labels and sanctuary names are a small colored diamond plus one line |
-| Relic maps | Inventory scan, plus a chat line when a map is detected or claimed | Inventory scan only. Treasure Maps named for a relic are drawn. Filled maps named "World Map" are locators and are skipped |
-| Nearby relic pins | Every carried relic, gold diamond at eye height | Horizontal range, default **300** blocks (50–2000). Label is name, enchantment, and distance |
-| Chests | No relic sorting | Optional closest-to-furthest sort of located relic maps in chests, barrels, ender chests, and shulkers |
-| Relic library | None | Chest Tracker list of stored treasure maps, searchable by name or enchantment. Where Is It highlights the chests for a selection. Those pins show on the fullscreen world map only while that map was opened from the library |
-| Coverage | None in the client | Block-aligned snitch shells (radius default **8**), the Civ+ bastion field (19 blocks across), and sanctuary rings. Manual shapes persist in `config/openintel-ranges.json`. Live-map sanctuaries reuse the War Table feed |
-| Investigate | None | Paste Discord or in-game snitch logs and step through break, place, and enter highlights. Playback does not write live snitch hits |
-| Snitch alerts without a world | Feed only | HUD and world-map markers still appear. Dimension comes from the snitch name, then the tripper, then the reporter, then the local player. The feed includes Y when the alert has it |
-| Event feed | Presence, sightings, and snitch lines | Defaults to the top-right, right-aligned, wrapping inside about a third of the screen |
-| Logo | Toggleable watermark | Hidden by default. Turn it on under HUD → Elements |
-| Marker size | Opacity stored as 0–255 alpha | Opacity is a **0–100%** slider, default **59%**. Marker scale defaults to **60%** |
-| Settings entry | `/oi settings` | `/oi settings` and Mod Menu's config button |
-
-A file-level port back to upstream lives in [`docs/UPSTREAM_PORT_GUIDE.md`](docs/UPSTREAM_PORT_GUIDE.md).
+See the [map integration reference](docs/MAP_INTEGRATION.md) for architecture and verification.
 
 ## Requirements
 
@@ -93,7 +91,7 @@ From `mod/`:
 gradlew.bat build        # Windows
 ```
 
-The jar is `mod/build/libs/openintel-3.2.1+takoyakifan.mc26.3.jar`. Put it in `.minecraft/mods` with Fabric API. On first launch the mod writes `config/openintel.json`.
+The jar is `mod/build/libs/openintel-3.2.1+mc26.3.jar`. Put it in `.minecraft/mods` with Fabric API. On first launch the mod writes `config/openintel.json`.
 
 Open `/oi settings` → **General** and set:
 
@@ -395,7 +393,7 @@ Administrative actions append JSON lines to `relay/audit.jsonl` and a readable c
 
 ## Integration API
 
-The public Java API is `dev.openintel.api`, major version **1**. The installed mod version is **3.2.1+takoyakifan.mc26.3**. Use `OpenIntelApi` as the entry point. Do not link against `tracker`, `net`, `render`, or `api.internal`.
+The public Java API is `dev.openintel.api`, major version **1**. The installed mod version is **3.2.1+mc26.3**. Use `OpenIntelApi` as the entry point. Do not link against `tracker`, `net`, `render`, or `api.internal`.
 
 This is a client Fabric API for Minecraft 26.3 with official Mojang names. It is separate from the Discord bot and the admin HTTP API.
 
@@ -410,7 +408,7 @@ cd mod
 repositories { mavenLocal() }
 
 dependencies {
-    modImplementation "dev.openintel:openintel:3.2.1+takoyakifan.mc26.3"
+    modImplementation "dev.openintel:openintel:3.2.1+mc26.3"
 }
 ```
 
@@ -463,7 +461,7 @@ HUD elements draw in local pixels after OpenIntel has translated the context. Th
 |---|---|
 | `mod/` | Fabric client |
 | `relay/` | Node.js relay, Discord bot, and admin HTTP API |
-| `docs/UPSTREAM_PORT_GUIDE.md` | How to carry this fork's map and relic work back to upstream |
+| `docs/MAP_INTEGRATION.md` | Map integration architecture and verification |
 
 ```bash
 cd mod && ./gradlew build
