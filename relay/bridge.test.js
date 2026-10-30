@@ -1,3 +1,4 @@
+async function main() {
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -5,7 +6,7 @@ const vm = require('node:vm');
 const { EventEmitter } = require('node:events');
 const visibility = require('./visibility');
 
-function fixture() {
+async function fixture() {
   let now = 1800000000000;
   const users = [
     { name: 'AdminOne', token: 'a', role: 'admin', relayCut: true },
@@ -39,6 +40,7 @@ function fixture() {
     setInterval(fn) { timers.push(fn); }, fetch() { throw new Error('No live services allowed'); },
     require(name) {
       if (name === './visibility') return visibility;
+      if (name === './authentication') return { createIdentityVerification: (ws, options) => require('./authentication').createIdentityVerification(ws, { ...options, verify: async name => ({ name, id: 'a'.repeat(32) }) }) };
       if (name === 'express') return Object.assign(() => app, { json: () => () => {} });
       if (name === 'ws') return { WebSocketServer: FakeServer };
       if (name === 'http') return { createServer: () => Object.assign(new EventEmitter(), { listen(port, fn) { fn(); } }) };
@@ -52,14 +54,20 @@ function fixture() {
     },
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8'), context);
-  function login(index) {
+  async function login(index) {
     const socket = new Socket(); server.clients.add(socket);
     server.emit('connection', socket, { socket: { remoteAddress: '127.0.0.1' } });
     socket.submit({ type: 'hello', token: users[index].token, minecraftServer: 'play.example.net' });
+    assert.equal(socket.authedAs, null);
+    assert.equal(socket.take('welcome').length, 0);
+    assert.equal(socket.take('auth_challenge').length, 1);
+    socket.submit({ type: 'authenticate', clientNonce: 'b'.repeat(40) });
+    await new Promise(resolve => setImmediate(resolve));
     assert.equal(socket.take('welcome')[0].bridgeVersion, 1);
+    assert.equal(JSON.parse(files.get('users.json')).users.find(u => u.name === users[index].name).minecraftUuid, 'a'.repeat(32));
     return socket;
   }
-  const sessions = users.map((_, i) => login(i));
+  const sessions = await Promise.all(users.map((_, i) => login(i)));
   const clear = () => server.clients.forEach(s => { s.messages = []; });
   clear();
   return { sessions, files, context, login, clear, tick() { timers[0](); }, advance(ms) { now += ms; },
@@ -68,7 +76,7 @@ function fixture() {
       routes.get('/users').at(-1)({ body: { users } }, { json() {} });
     } };
 }
-const f = fixture();
+const f = await fixture();
 const [a, b, member, trial, quarantine] = f.sessions;
 let sequence = 0;
 const event = (type = 'ping', extra = {}) => ({ type, x: 1, y: 64, z: 2,
@@ -94,7 +102,7 @@ forward(b, ping);
 forward(b, received[0]);
 b.submit({ ...ping, type: 'ping' });
 assert.equal(a.take('ping').length, 0);
-const duplicate = f.login(1);
+const duplicate = await f.login(1);
 forward(duplicate, ping);
 assert.equal(a.take('ping').length, 0);
 f.clear();
@@ -243,7 +251,7 @@ assert.equal(added.stroke.bridge.id, add.bridge.id);
 assert.equal(added.stroke.t, add.t);
 assert.equal(added.stroke.from, 'AdminOne');
 assert.equal(member.take('wartable').length, 0);
-const sync = f.login(1).take('wartable_sync')[0];
+const sync = (await f.login(1)).take('wartable_sync')[0];
 assert.equal(sync.strokes[0].bridge.id, add.bridge.id);
 assert.equal(sync.strokes[0].t, add.t);
 forward(a, event('wartable', { action: 'clear' }));
@@ -294,3 +302,6 @@ f.advance(6 * 60 * 60 * 1000 + 1);
 vm.runInContext(`claimBridge({id: 'after-expiry'})`, f.context);
 assert.equal(vm.runInContext('bridgeSeen.size', f.context), 1);
 console.log('Bridge relay tests passed: identity, loop dedupe, timestamps, validation, permissions, cut, persistence and bounded TTL');
+
+}
+main().catch(error => { console.error(error); process.exitCode = 1; });

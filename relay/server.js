@@ -88,6 +88,7 @@ const http = require("http");
 const express = require("express");
 const { WebSocketServer } = require("ws");
 const { attachRelayTransport } = require("./transport");
+const { createIdentityVerification } = require("./authentication");
 
 const filePath = (name) => path.join(__dirname, name);
 const CONFIG = JSON.parse(fs.readFileSync(filePath("config.json"), "utf8"));
@@ -542,14 +543,40 @@ function applyAllegiance(kind, action, name, actorLabel, context = {}) {
 wss.on("connection", (ws, req) => {
   ws.authedAs = null;
   const ip = req.socket.remoteAddress;
+  const identity = createIdentityVerification(ws, { userByToken,
+    onRejected(reason) {
+      logAuthRejection(`identity:${ip}`, `❌ Minecraft account verification failed from \`${ip}\` (${reason})`);
+    },
+    onVerified(user, minecraftUuid) {
+      // Pin the first verified account so a recycled Minecraft name cannot take
+      // over an invitation after its owner changes names.
+      if (user.minecraftUuid == null) {
+        const updated = { ...USERS, users: USERS.users.map(u => u === user ? { ...u, minecraftUuid } : u) };
+        saveJson("users.json", updated);
+        USERS = updated;
+        user = userByToken(user.token);
+      }
+      ws.authedAs = user.name;
+      ws.role = validRole(user.role) ? lower(user.role) : "member";
+      ws.visibilityKey = visibilityKey(user, USERS.users);
+      ws.send(JSON.stringify({ ...allegiancePayload(user), type: "welcome", minecraftServer: MINECRAFT_SERVER,
+        role: ws.role, relayCut: user.relayCut === true, bridgeVersion: 1 }));
+      if (!isTrial(user)) ws.send(JSON.stringify(wartableSync(user)));
+      adminLog(`✅ **${user.name}** connected (${ws.role})`);
+    }
+  });
 
   ws.on("message", (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
     if (!msg || typeof msg !== "object" || Array.isArray(msg)) return;
 
+    if (msg.type === "authenticate") {
+      void identity.complete(msg.clientNonce);
+      return;
+    }
     if (msg.type === "hello") {
-      const user = userByToken(msg.token);
+      const user = typeof msg.token === "string" && msg.token.length > 0 ? userByToken(msg.token) : null;
       if (!user) {
         ws.send(JSON.stringify({ type: "deny", reason: "bad_token" }));
         logAuthRejection(`token:${ip}`, `❌ Auth failure from \`${ip}\``);
@@ -565,13 +592,7 @@ wss.on("connection", (ws, req) => {
         return;
       }
       ws.minecraftServer = minecraftServer;
-      ws.authedAs = user.name;
-      ws.role = validRole(user.role) ? lower(user.role) : "member";
-      ws.visibilityKey = visibilityKey(user, USERS.users);
-      ws.send(JSON.stringify({ ...allegiancePayload(user), type: "welcome", minecraftServer: MINECRAFT_SERVER,
-        role: ws.role, relayCut: user.relayCut === true, bridgeVersion: 1 }));
-      if (!isTrial(user)) ws.send(JSON.stringify(wartableSync(user)));
-      adminLog(`✅ **${user.name}** connected (${ws.role})`);
+      identity.begin(msg.token);
       return;
     }
 
@@ -1200,7 +1221,7 @@ if (DISCORD.botToken) {
         }
         if (action === "token") {
           try {
-            await msg.author.send(`OpenIntel token for **${user.name}** (${user.role ?? "member"}):\n\`${user.token}\`\nAnyone holding it authenticates as ${user.name} - treat it like a password.`);
+            await msg.author.send(`OpenIntel token for **${user.name}** (${user.role ?? "member"}):\n\`${user.token}\`\nRequires the Minecraft account ${user.name} to authenticate. Keep it private and never share Minecraft account credentials.`);
           } catch {
             commandAudit(msg, tier, "user.token", user.name, { before: null, after: null, success: false, reason: "DM delivery failed" });
             return void msg.reply("could not DM you the token. Enable DMs and retry.");
