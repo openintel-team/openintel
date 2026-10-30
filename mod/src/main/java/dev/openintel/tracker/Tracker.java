@@ -246,6 +246,10 @@ public class Tracker {
                 if (reason.equals("wrong_server")) {
                     String expected = msg.has("expectedServer") ? msg.get("expectedServer").getAsString() : "configured server";
                     OpenIntelClient.status("relay rejected this Minecraft server — expected " + expected);
+                } else if (reason.equals("identity_verification_failed")) {
+                    OpenIntelClient.status("relay could not verify the invited Minecraft account — check your login and relay token");
+                } else if (reason.equals("authentication_timeout")) {
+                    OpenIntelClient.status("relay account verification timed out — update the mod and reconnect");
                 } else {
                     OpenIntelClient.status("relay rejected token — ask an admin to approve you");
                 }
