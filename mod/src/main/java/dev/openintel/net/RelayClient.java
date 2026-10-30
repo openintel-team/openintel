@@ -52,6 +52,9 @@ public class RelayClient implements WebSocket.Listener {
     private volatile boolean wantConnected = false;
     private volatile boolean authenticated;
     private volatile String role;
+    private WebSocket identitySocket;
+    private WebSocket provenSocket;
+    private RelayIdentityProof.Lease identityProof;
     private volatile long lastAttempt = 0;
     private volatile int backoffMs = 1000;
 
@@ -199,6 +202,24 @@ public class RelayClient implements WebSocket.Listener {
             inFlightGeneration.compareAndSet(attemptGeneration, -1);
             return;
         }
+        RelayIdentityProof.Lease lease = RelayIdentityProof.reserve();
+        identityProof = lease;
+        lease.whenReady().whenComplete((ignored, error) -> Minecraft.getInstance().execute(() -> {
+            if (!isCurrentSession(attemptGeneration) || socket.get() != null) {
+                lease.close();
+                inFlightGeneration.compareAndSet(attemptGeneration, -1);
+                return;
+            }
+            if (error != null) {
+                inFlightGeneration.compareAndSet(attemptGeneration, -1);
+                setState(ConnectionState.DISCONNECTED, null);
+                return;
+            }
+            openConnection(attemptGeneration, attemptUrl, attemptToken, attemptMinecraftServer);
+        }));
+    }
+
+    private void openConnection(long attemptGeneration, String attemptUrl, String attemptToken, String attemptMinecraftServer) {
         try {
             RelayTransport.connect(HTTP, URI.create(attemptUrl), this,
                             upgraded -> Minecraft.getInstance().execute(() -> {
@@ -265,6 +286,10 @@ public class RelayClient implements WebSocket.Listener {
     }
 
     private void setState(ConnectionState state, String suppliedRole) {
+        if (state != ConnectionState.AUTHENTICATING && identityProof != null) {
+            identityProof.close();
+            identityProof = null;
+        }
         this.state = state;
         authenticated = state == ConnectionState.AUTHENTICATED;
         role = authenticated ? suppliedRole : null;
@@ -298,6 +323,45 @@ public class RelayClient implements WebSocket.Listener {
 
     // ---- WebSocket.Listener ----
 
+    private void proveIdentity(WebSocket ws, long expectedGeneration, JsonObject message) {
+        if (authenticated || identitySocket == ws) {
+            identityFailed(ws);
+            return;
+        }
+        identitySocket = ws;
+        try {
+            var user = Minecraft.getInstance().getUser();
+            String clientNonce = RelayIdentityProof.clientNonce();
+            String serverId = RelayIdentityProof.sessionServerId(message.get("challenge").getAsString(), clientNonce);
+            identityProof.join(HTTP, user.getProfileId(), user.getAccessToken(), serverId).whenComplete((ignored, error) ->
+                    dispatch(ws, expectedGeneration, () -> {
+                        if (error != null) {
+                            identityFailed(ws);
+                            return;
+                        }
+                        provenSocket = ws;
+                        JsonObject proof = new JsonObject();
+                        proof.addProperty("type", "authenticate");
+                        proof.addProperty("clientNonce", clientNonce);
+                        ws.sendText(GSON.toJson(proof), true).whenComplete((sent, sendError) -> {
+                            if (sendError != null) dispatch(ws, expectedGeneration, () -> identityFailed(ws));
+                        });
+                    }));
+        } catch (Exception error) {
+            identityFailed(ws);
+        }
+    }
+
+    private void identityFailed(WebSocket ws) {
+        wantConnected = false;
+        generation.incrementAndGet();
+        socket.compareAndSet(ws, null);
+        partials.remove(ws);
+        ws.abort();
+        setState(ConnectionState.DENIED, null);
+        onStatus.accept("relay Minecraft account verification failed");
+    }
+
     @Override
     public void onOpen(WebSocket ws) { }
 
@@ -320,7 +384,14 @@ public class RelayClient implements WebSocket.Listener {
                     JsonObject message = GSON.fromJson(full, JsonObject.class);
                     if (message == null || !message.has("type")) return;
                     String type = message.get("type").getAsString();
-                    if (type.equals("welcome")) {
+                    if (type.equals("auth_challenge")) {
+                        proveIdentity(ws, expectedGeneration, message);
+                        return;
+                    } else if (type.equals("welcome")) {
+                        if (provenSocket != ws) {
+                            identityFailed(ws);
+                            return;
+                        }
                         if (message.has("minecraftServer") && !minecraftServer.equals(
                                 OpenIntelClient.normalizeMinecraftServer(message.get("minecraftServer").getAsString()))) {
                             disconnect();
