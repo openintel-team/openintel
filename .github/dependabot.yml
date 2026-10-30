@@ -1,0 +1,114 @@
+# This default-branch configuration also covers the maintained Minecraft branches.
+# Major version updates get separate PRs; security updates retain their own policy.
+version: 2
+updates:
+- package-ecosystem: npm
+  directory: /relay
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+    timezone: America/Toronto
+  open-pull-requests-limit: 5
+  groups:
+    minor-and-patch:
+      update-types:
+      - minor
+      - patch
+- package-ecosystem: npm
+  directory: /relay
+  target-branch: '26.2'
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+    timezone: America/Toronto
+  open-pull-requests-limit: 5
+  groups:
+    minor-and-patch:
+      update-types:
+      - minor
+      - patch
+- package-ecosystem: npm
+  directory: /relay
+  target-branch: 26.1.2
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+    timezone: America/Toronto
+  open-pull-requests-limit: 5
+  groups:
+    minor-and-patch:
+      update-types:
+      - minor
+      - patch
+- package-ecosystem: npm
+  directory: /relay
+  target-branch: 1.21.11
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+    timezone: America/Toronto
+  open-pull-requests-limit: 5
+  groups:
+    minor-and-patch:
+      update-types:
+      - minor
+      - patch
+- package-ecosystem: github-actions
+  directory: /
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+    timezone: America/Toronto
+  open-pull-requests-limit: 5
+  groups:
+    minor-and-patch:
+      update-types:
+      - minor
+      - patch
+- package-ecosystem: github-actions
+  directory: /
+  target-branch: '26.2'
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+    timezone: America/Toronto
+  open-pull-requests-limit: 5
+  groups:
+    minor-and-patch:
+      update-types:
+      - minor
+      - patch
+- package-ecosystem: github-actions
+  directory: /
+  target-branch: 26.1.2
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+    timezone: America/Toronto
+  open-pull-requests-limit: 5
+  groups:
+    minor-and-patch:
+      update-types:
+      - minor
+      - patch
+- package-ecosystem: github-actions
+  directory: /
+  target-branch: 1.21.11
+  schedule:
+    interval: weekly
+    day: monday
+    time: 09:00
+    timezone: America/Toronto
+  open-pull-requests-limit: 5
+  groups:
+    minor-and-patch:
+      update-types:
+      - minor
+      - patch
