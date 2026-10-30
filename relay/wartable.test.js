@@ -1,3 +1,4 @@
+async function main() {
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -39,6 +40,7 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8'), {
   fetch: async () => ({ ok: true }),
   require(name) {
     if (name === './visibility') return visibility;
+      if (name === './authentication') return { createIdentityVerification: (ws, options) => require('./authentication').createIdentityVerification(ws, { ...options, verify: async name => ({ name, id: 'a'.repeat(32) }) }) };
     if (name === 'express') return express;
     if (name === 'ws') return { WebSocketServer: FakeServer };
     if (name === 'http') return { createServer: () => Object.assign(new EventEmitter(), { listen(port, callback) { callback(); } }) };
@@ -51,15 +53,20 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8'), {
     return require(name);
   },
 }, { filename: 'server.js' });
-function login(user) {
+async function login(user) {
   const socket = new Socket();
   server.clients.add(socket);
   server.emit('connection', socket, { socket: { remoteAddress: '127.0.0.1' } });
   socket.submit({ type: 'hello', token: user.token, minecraftServer: 'play.example.net' });
+  assert.equal(socket.authedAs, null);
+  assert.equal(socket.take('welcome').length, 0);
+  assert.equal(socket.take('auth_challenge').length, 1);
+  socket.submit({ type: 'authenticate', clientNonce: 'b'.repeat(40) });
+  await new Promise(resolve => setImmediate(resolve));
   assert.equal(socket.take('welcome')[0].role, user.role);
   return socket;
 }
-const sessions = users.map(login);
+const sessions = await Promise.all(users.map(login));
 const [a, b, ...rest] = sessions;
 const trialSocket = rest.at(-1);
 const members = rest.slice(0, -1);
@@ -108,7 +115,7 @@ clear();
 b.submit({ type: 'wartable', action: 'add', stroke: {
   id: 'admin-zone-1', tool: 'area', color: -16711681, width: 4, points: [0, 0, 100, 0, 100, 100, 0, 100] } });
 assert.equal(JSON.parse(files.get('wartable.json')).strokes.length, 2);
-const late = login(users.find(u => u.name === 'captain'));
+const late = await login(users.find(u => u.name === 'captain'));
 assert.equal(late.take('wartable_sync')[0].strokes.length, 2);
 late.close();
 clear();
@@ -147,10 +154,10 @@ for (const socket of members) {
   assert.deepEqual(socket.take('wartable_sync').at(-1).strokes.map(s => s.id), ['public-sync-1']);
 }
 assert.equal(trialSocket.take('wartable_sync').length, 0);
-const publicLogin = login(users.find(u => u.name === 'member'));
+const publicLogin = await login(users.find(u => u.name === 'member'));
 assert.deepEqual(publicLogin.take('wartable_sync')[0].strokes.map(s => s.id), ['public-sync-1']);
 publicLogin.close();
-const adminLogin = login(users[0]);
+const adminLogin = await login(users[0]);
 assert.equal(adminLogin.take('wartable_sync')[0].strokes.length, 2);
 adminLogin.close();
 clear();
@@ -163,3 +170,6 @@ a.submit({ type: 'cut', action: 'off' });
 for (const socket of members) assert.equal(socket.take('wartable_sync').at(-1).strokes.length, 2);
 
 console.log('War table relay tests passed: admin gate, sync on login, add/delete/clear broadcast, validation, persistence, trial exclusion, cut visibility and demotion');
+
+}
+main().catch(error => { console.error(error); process.exitCode = 1; });

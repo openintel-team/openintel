@@ -278,3 +278,10 @@ tasks.register('relayTransportTest', JavaExec) {
     mainClass = 'dev.openintel.net.RelayTransportTest'
 }
 check.dependsOn relayTransportTest
+
+tasks.register('relayIdentityProofTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.net.RelayIdentityProofTest'
+}
+check.dependsOn relayIdentityProofTest
