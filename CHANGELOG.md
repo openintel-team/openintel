@@ -1,7 +1,12 @@
 # Changelog
 
-## Unreleased
+## 3.3.0+mc26.3 — verified relay accounts
 
+- Require the invited Minecraft account as well as the relay token before granting relay access.
+- Verify fresh connection challenges through Mojang and pin the verified account UUID.
+- Serialize account proofs across multiple relay profiles and show verification failure messages.
+- Require updated clients and relays together; token-only clients no longer authenticate.
+- Update relay dependencies and add account-verification regression tests.
 - Use OpenIntel branding and Minecraft-specific version identifiers.
 - Link update notifications, builds, and documentation to the OpenIntel team repository.
 

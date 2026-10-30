@@ -5,7 +5,7 @@
 <h1 align="center">OpenIntel</h1>
 
 <p align="center">
-  Fabric client <strong>3.2.1+mc26.3</strong> for Minecraft <strong>26.3</strong> and Java 25.<br>
+  Fabric client <strong>3.3.0+mc26.3</strong> for Minecraft <strong>26.3</strong> and Java 25.<br>
   Player intelligence, Civ maps, relic tracking, and coverage tools with an optional shared relay.
 </p>
 
@@ -15,7 +15,7 @@ Public source and release jars are token-neutral. Set your own relay address, Mi
 
 Supported branches: [`main`](https://github.com/openintel-team/openintel/tree/main) (default, latest Minecraft target), [`26.2`](https://github.com/openintel-team/openintel/tree/26.2), [`26.1.2`](https://github.com/openintel-team/openintel/tree/26.1.2), and [`1.21.11`](https://github.com/openintel-team/openintel/tree/1.21.11). This branch targets Minecraft **26.3**.
 
-Releases use `3.2.1+mc<version>` to identify the Minecraft target. The mod ID is `openintel` and the integration API is major version **1**. Install only the jar for your Minecraft version.
+Releases use `3.3.0+mc<version>` to identify the Minecraft target. The mod ID is `openintel` and the integration API is major version **1**. Install only the jar for your Minecraft version.
 
 ## Canary builds
 
@@ -91,7 +91,7 @@ From `mod/`:
 gradlew.bat build        # Windows
 ```
 
-The jar is `mod/build/libs/openintel-3.2.1+mc26.3.jar`. Put it in `.minecraft/mods` with Fabric API. On first launch the mod writes `config/openintel.json`.
+The jar is `mod/build/libs/openintel-3.3.0+mc26.3.jar`. Put it in `.minecraft/mods` with Fabric API. On first launch the mod writes `config/openintel.json`.
 
 Open `/oi settings` → **General** and set:
 
@@ -397,7 +397,7 @@ Administrative actions append JSON lines to `relay/audit.jsonl` and a readable c
 
 ## Integration API
 
-The public Java API is `dev.openintel.api`, major version **1**. The installed mod version is **3.2.1+mc26.3**. Use `OpenIntelApi` as the entry point. Do not link against `tracker`, `net`, `render`, or `api.internal`.
+The public Java API is `dev.openintel.api`, major version **1**. The installed mod version is **3.3.0+mc26.3**. Use `OpenIntelApi` as the entry point. Do not link against `tracker`, `net`, `render`, or `api.internal`.
 
 This is a client Fabric API for Minecraft 26.3 with official Mojang names. It is separate from the Discord bot and the admin HTTP API.
 
@@ -412,7 +412,7 @@ cd mod
 repositories { mavenLocal() }
 
 dependencies {
-    modImplementation "dev.openintel:openintel:3.2.1+mc26.3"
+    modImplementation "dev.openintel:openintel:3.3.0+mc26.3"
 }
 ```
 
