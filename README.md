@@ -4,7 +4,7 @@
 
 <h1 align="center">OpenIntel</h1>
 
-OpenIntel **3.2.1+mc26.2** is an open-source Fabric intelligence client for
+OpenIntel **3.3.0+mc26.2** is an open-source Fabric intelligence client for
 **Minecraft 26.2 / Java 25**. It combines nearby-player radar, responsive
 HUDs, clean text, local snitch/relic tracking, and optional team intelligence
 through a self-hosted relay. It does not add its own minimap, waypoint
@@ -17,7 +17,7 @@ features do not require a relay connection.
 
 Supported branches: [`main`](https://github.com/openintel-team/openintel/tree/main) (default, latest Minecraft target), [`26.2`](https://github.com/openintel-team/openintel/tree/26.2), [`26.1.2`](https://github.com/openintel-team/openintel/tree/26.1.2), and [`1.21.11`](https://github.com/openintel-team/openintel/tree/1.21.11). This branch targets Minecraft **26.2**.
 
-Releases use `3.2.1+mc<version>` to identify the Minecraft target. The mod ID is `openintel` and the integration API is major version **1**. Install only the jar for your Minecraft version.
+Releases use `3.3.0+mc<version>` to identify the Minecraft target. The mod ID is `openintel` and the integration API is major version **1**. Install only the jar for your Minecraft version.
 
 ## Canary builds
 
@@ -258,7 +258,14 @@ each change is announced in both the alerts and admin Discord channels.
 
 ### Relay server
 
-For encrypted connections, put the relay behind a TLS reverse proxy and set `secureWebSocketUrl` to its public `wss://` URL on the same hostname as the original relay. Updated clients that have a saved `ws://` URL request a secure redirect before sending their token. The relay advertises its configured WSS endpoint only to those clients, so older mods keep working. The client saves the WSS destination as soon as it is advertised; certificate failures and later reconnects never silently fall back to WS. Cross-host and plaintext redirects are rejected. Without a configured secure endpoint, legacy WS connections still work. This first upgrade is opportunistic: an attacker controlling the initial plaintext connection could hide the redirect. Enter a WSS URL directly when you need encryption from the first connection.
+Set the listen port, admin token, and webhook URLs in `config.json`. Approved players and their tokens live in `users.json`, not in the mod jar. Invitations must use the player's current Java Edition Minecraft account name.
+
+Relay authentication requires both the personal relay token and ownership of the invited Minecraft account. For each connection the relay issues a fresh, short-lived challenge. The mod registers it directly with Mojang using the active Minecraft session; the relay verifies Mojang's response for the invited name before sending any intel. Copying an OpenIntel config or instance to a different Minecraft account does not grant access. Minecraft access tokens are never sent to the relay or stored by OpenIntel.
+
+Update both the mod and relay together: older clients that only send a token are rejected. Online Minecraft authentication and outbound HTTPS to `sessionserver.mojang.com` are required on both sides; failures deny access. Existing relay tokens remain valid for their invited accounts. Invite names are matched case-insensitively. On first successful verification the relay also pins the account UUID in `users.json`, preventing a different account from taking over a recycled name. Preserve `minecraftUuid` when updating invitations, including through REST; update the invitation name if the account changes its name. This verifies account ownership, not presence on the configured game server. Sharing a launcher login/session still shares the Minecraft account itself; this protocol cannot protect against sharing those credentials.
+
+For encrypted connections, put the relay behind a TLS reverse proxy and set `secureWebSocketUrl` to its public `wss://` URL on the same hostname as the original relay. Updated clients that have a saved `ws://` URL request a secure redirect before sending their token. The relay advertises its configured WSS endpoint only to those clients, so the transport redirect remains opt-in. Relay authentication still requires an updated mod. The client saves the WSS destination as soon as it is advertised; certificate failures and later reconnects never silently fall back to WS. Cross-host and plaintext redirects are rejected. Without a configured secure endpoint, legacy WS connections still work. This first upgrade is opportunistic: an attacker controlling the initial plaintext connection could hide the redirect. Enter a WSS URL directly when you need encryption from the first connection.
+
 ```bash
 cd relay
 npm ci
@@ -442,7 +449,7 @@ All controls are rebindable under the OpenIntel keybind category.
 
 ## Fabric mod integration API (v1)
 
-OpenIntel **3.2.1+mc26.2** provides the public v1 Java API under `dev.openintel.api`.
+OpenIntel **3.3.0+mc26.2** provides the public v1 Java API under `dev.openintel.api`.
 Use `OpenIntelApi` as the entry point; do not link against `tracker`, `net`,
 `render`, or `api.internal` implementation classes. This is a client-side
 Fabric API for Minecraft **26.2**, not the Discord/admin REST API.
@@ -464,7 +471,7 @@ repositories {
 }
 
 dependencies {
-    modImplementation "dev.openintel:openintel:3.2.1+mc26.2"
+    modImplementation "dev.openintel:openintel:3.3.0+mc26.2"
 }
 ```
 
@@ -472,7 +479,7 @@ Use matching Minecraft versions and official Mojang mappings. OpenIntel is insta
 `mods/`; do not nest a personalized/token-bearing jar in your mod. No public
 Maven repository is provisioned by this project. Alternatively, place the
 neutral remapped jar in your project's `libs/` and use
-`modImplementation files("libs/openintel-3.2.1+mc26.2.jar")`.
+`modImplementation files("libs/openintel-3.3.0+mc26.2.jar")`.
 
 For a required integration, add `"openintel": ">=1.7.0"` to your mod's
 `fabric.mod.json` `depends` object. Declare this entrypoint:
