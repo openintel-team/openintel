@@ -152,7 +152,12 @@ public class ClickGuiScreen extends Screen implements ClickGui.RebindHandler {
     private int paneTop()       { return MARGIN; }
     private int paneRight()     { return width - MARGIN; }
     private int paneBottom()    { return height - PANE_BOTTOM_PAD; }
-    private int contentTop()    { return paneTop() + INSET_TOP; }
+    private int crosshairPreviewHeight() {
+        return !searching() && "crosshair".equals(categories.get(selected).id())
+                ? Math.min(116, Math.max(0, paneBottom() - paneTop() - OPTION_H * 2)) : 0;
+    }
+
+    private int contentTop()    { return paneTop() + crosshairPreviewHeight() + INSET_TOP; }
     private int contentBottom() { return paneBottom() - INSET_BOTTOM; }
     private int viewportHeight() {
         return Math.max(0, contentBottom() - contentTop());
@@ -317,6 +322,16 @@ public class ClickGuiScreen extends Screen implements ClickGui.RebindHandler {
         int cL = pL + INSET_X, cR = pR - INSET_X;
 
         ctx.fill(pL, pT, pR, pB, PANE_BG);
+        int previewH = crosshairPreviewHeight();
+        if (previewH > 0) {
+            ctx.fill(cL, pT + 20, cR, pT + previewH - 4, 0xFF303A42);
+            ctx.text(font, "Preview - 1:1", cL + 4, pT + 6, ACCENT);
+            ctx.enableScissor(cL, pT + 20, cR, pT + previewH - 4);
+            dev.openintel.render.CrosshairRenderer.preview(ctx, OpenIntelClient.config().crosshair,
+                    (cL + cR) / 2, pT + (previewH + 16) / 2);
+            ctx.disableScissor();
+        }
+        pT += previewH;
 
         // Visible rows re-show their widgets below; everything else stays
         // dark — visible=false is also the input gate.

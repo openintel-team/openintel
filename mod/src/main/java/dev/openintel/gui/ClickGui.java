@@ -83,6 +83,31 @@ public final class ClickGui {
                         }))
         )));
 
+        // --------------------------------------------------------- crosshair
+        cats.add(new Category("crosshair", "Crosshair", List.of(
+                new Group("Style"),
+                new Option("Crosshair", "Switch to Custom to edit your crosshair, or Vanilla to restore Minecraft's crosshair.",
+                        crosshairToggle(cfg)),
+                new Option("Color", "Crosshair color and opacity.",
+                        colorButton(self, "Crosshair color", () -> cfg.crosshair.color,
+                                v -> cfg.crosshair.color = v, null, null)),
+                new Option("Length", "Length of each arm in GUI pixels. Set to 0 for a dot-only crosshair.",
+                        slider("options.openintel.crosshair.length", 0, 20, cfg.crosshair.length,
+                                " px", v -> cfg.crosshair.length = v)),
+                new Option("Width", "Thickness of the arms and center dot in GUI pixels.",
+                        slider("options.openintel.crosshair.width", 1, 8, cfg.crosshair.width,
+                                " px", v -> cfg.crosshair.width = v)),
+                new Option("Gap", "Space between the center square and each arm in GUI pixels.",
+                        slider("options.openintel.crosshair.gap", 0, 20, cfg.crosshair.gap,
+                                " px", v -> cfg.crosshair.gap = v)),
+                new Option("Outlines", "Add a one-pixel black outline for contrast.",
+                        bool("options.openintel.crosshair.outline", cfg.crosshair.outline,
+                                v -> cfg.crosshair.outline = v)),
+                new Option("Center dot", "Show a center square using the selected width.",
+                        bool("options.openintel.crosshair.dot", cfg.crosshair.dot,
+                                v -> cfg.crosshair.dot = v))
+        )));
+
         // ---------------------------------------------------------- markers
         cats.add(new Category("markers", "Markers", List.of(
                 new Group("Player markers"),
@@ -426,6 +451,13 @@ public final class ClickGui {
 
     private static Component fontLabel(boolean clean) {
         return Component.translatable(clean ? "options.openintel.hud.font.clean" : "options.openintel.hud.font.minecraft");
+    }
+
+    private static Button crosshairToggle(OIConfig cfg) {
+        return Button.builder(Component.literal(cfg.crosshair.enabled ? "Custom" : "Vanilla"), button -> {
+            cfg.crosshair.enabled = !cfg.crosshair.enabled;
+            button.setMessage(Component.literal(cfg.crosshair.enabled ? "Custom" : "Vanilla"));
+        }).build();
     }
 
     private static void applyFont(OIConfig config, boolean clean) {
