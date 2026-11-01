@@ -1,0 +1,104 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, '26.2', '26.1.2', '1.21.11']
+  schedule:
+    - cron: '37 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: java-kotlin
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+          - language: actions
+            build-mode: none
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Record initial disk space
+        run: df -h / "$RUNNER_TEMP" "$GITHUB_WORKSPACE"
+
+      - name: Free unused SDK space for Java analysis
+        if: matrix.language == 'java-kotlin'
+        run: |
+          # These preinstalled SDKs are unused by the Java/Fabric build.
+          # Leave Java, Gradle, and CodeQL toolchains and dependencies intact.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+          df -h / "$RUNNER_TEMP" "$GITHUB_WORKSPACE"
+
+      - name: Set up Java
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          # Loom needs Java 25; Gradle selects the branch's compiler toolchain.
+          java-version: '25'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # Do not restore build outputs that could bypass traced compilation.
+          dependency-caching: false
+          threads: 2
+          ram: 6144
+
+      - name: Compile Java for CodeQL
+        if: matrix.language == 'java-kotlin'
+        working-directory: mod
+        # Trace production compilation only. The canary workflow runs all checks.
+        run: ./gradlew --no-daemon --no-parallel --max-workers=2 --no-build-cache --rerun-tasks compileJava
+
+      - name: Record disk usage before analysis
+        run: |
+          df -h / "$RUNNER_TEMP" "$GITHUB_WORKSPACE"
+          for directory in "$GITHUB_WORKSPACE/mod" "$HOME/.gradle" "$RUNNER_TEMP/codeql_databases"; do
+            if [[ -d "$directory" ]]; then
+              du -sh "$directory"
+            fi
+          done
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          category: /language:${{ matrix.language }}
+
+      - name: Record final disk space
+        if: always()
+        run: |
+          df -h / "$RUNNER_TEMP" "$GITHUB_WORKSPACE"
+          {
+            echo '### CodeQL runner disk space'
+            echo '```text'
+            df -h / "$RUNNER_TEMP" "$GITHUB_WORKSPACE"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
