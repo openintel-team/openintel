@@ -6,6 +6,7 @@ import dev.openintel.chat.ChatChannel;
 import dev.openintel.chat.ChatChannelBar;
 import dev.openintel.config.OIConfig;
 import dev.openintel.render.EventFeed;
+import dev.openintel.render.UiFont;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -49,8 +50,9 @@ public abstract class ChatChannelBarMixin extends Screen {
             graphics.fill(x0, y0, x1, y1, fill);
             if (on) graphics.fill(x0, y1 - 1, x1, y1, 0xFFD5DCE6);
             int textY = y0 + (chip.plate().height() - this.font.lineHeight) / 2;
-            graphics.drawString(this.font, ChatChannelBar.label(chip.channel()), chip.name().x(), textY,
-                    on ? 0xFFF4F7FB : 0xFF9AA3B0, false);
+            int nameX = chip.name().x(), textColor = on ? 0xFFF4F7FB : 0xFF9AA3B0;
+            UiFont.withHudFont(() -> graphics.drawString(this.font, ChatChannelBar.label(chip.channel()),
+                    nameX, textY, textColor, false));
             openintel$bell(graphics, chip.bell(), config.showsNew(chip.channel()));
         }
     }

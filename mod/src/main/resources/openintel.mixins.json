@@ -22,6 +22,7 @@
     "HudTextFontMixin",
     "ChatHudFontMixin",
     "JourneyMapTextMixin",
+    "CrosshairMixin",
     "FocusGlowMixin",
     "KeyBindingAccessor",
     "PlayerNameplateMixin",

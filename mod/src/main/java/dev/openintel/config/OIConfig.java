@@ -178,6 +178,11 @@ public class OIConfig {
     /** Bottom-right watermark. Off until turned on under HUD → Elements. */
     public boolean logoHudEnabled = false;
 
+    // --------------------------------------------------------- crosshair ----
+
+    /** Custom crosshair geometry; vanilla crosshair until enabled. */
+    public dev.openintel.render.CrosshairStyle crosshair = new dev.openintel.render.CrosshairStyle();
+
     // ---------------------------------------------------------- presence ----
 
     /** Side-panel list of all relay-tracked players. */
@@ -770,6 +775,8 @@ public class OIConfig {
                     if (c.snitchMarkerColorAuto) c.snitchMarkerColor = 0xFFAAAAAA;
                     defaults = true;
                 }
+                if (c.crosshair == null) c.crosshair = new dev.openintel.render.CrosshairStyle();
+                c.crosshair.sanitize();
                 // Persist repaired IDs as well as one-time legacy migration.
                 String relayBefore = GSON.toJson(c.relays);
                 c.relayProfiles();
