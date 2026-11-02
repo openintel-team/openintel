@@ -67,6 +67,17 @@ jobs:
             mod/gradle.properties
             mod/gradle/wrapper/gradle-wrapper.properties
 
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: relay/package-lock.json
+
+      - name: Install relay dependencies
+        working-directory: relay
+        run: npm ci
+
       - name: Build and run headless checks
         working-directory: mod
         run: ./gradlew --no-daemon build
