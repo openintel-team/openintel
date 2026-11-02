@@ -44,8 +44,10 @@ public final class RelayIdentityProofTest {
         }
         FakeHttp http = new FakeHttp();
         RelayIdentityProof.join(http, profile, "minecraft-fixture-token", serverId).join();
+        check(System.getProperty("openintel.sessionServer") == null, "Session server override is unset");
         check(http.request.uri().equals(URI.create("https://sessionserver.mojang.com/session/minecraft/join")),
                 "Credentials only go to Mojang's fixed HTTPS endpoint");
+        check("sessionserver.mojang.com".equals(http.request.uri().getHost()), "Default session host is Mojang");
         check(http.request.method().equals("POST") && http.request.timeout().orElseThrow().equals(Duration.ofSeconds(15)),
                 "Bounded session request");
         JsonObject body = JsonParser.parseString(readBody(http.request)).getAsJsonObject();

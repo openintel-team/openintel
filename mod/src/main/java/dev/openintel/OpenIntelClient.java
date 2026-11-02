@@ -236,6 +236,14 @@ public class OpenIntelClient implements ClientModInitializer {
             XaeroIntegration.initialize();
             dev.openintel.update.UpdateChecker.start();
         });
+        // Absent for a normal launch. The class is loaded only when the smoke task sets the property.
+        if (Boolean.getBoolean("openintel.liveSmoke")) {
+            try {
+                Class.forName("dev.openintel.smoke.LiveClientSmoke").getMethod("register").invoke(null);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("OpenIntel live smoke driver failed to start", e);
+            }
+        }
     }
 
     public static boolean reconnectRelay() {
