@@ -36,7 +36,7 @@ async function fixture() {
   }
   class Clock extends Date { static now() { return now; } }
   const context = vm.createContext({
-    __dirname, Buffer, Date: Clock, console: { log() {}, error() {} }, process: { argv: [], pid: 1 },
+    __dirname, Buffer, Date: Clock, console: { log() {}, error() {} }, process: { argv: [], pid: 1, env: {} },
     setInterval(fn) { timers.push(fn); }, fetch() { throw new Error('No live services allowed'); },
     require(name) {
       if (name === './visibility') return visibility;
