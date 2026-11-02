@@ -1,9 +1,17 @@
 const crypto = require('node:crypto');
 
-// Only Mojang's HTTPS response can establish account ownership. No client-supplied
-// name, UUID, or saved relay credential is an identity proof.
+// Only the session server's response can establish account ownership. Production
+// uses Mojang. OPENINTEL_SESSION_SERVER may point a test process at a loopback stub.
+// Relay messages and config.json cannot choose it. No client-supplied name, UUID,
+// or saved relay credential is an identity proof.
+function sessionServer() {
+  const configured = process.env.OPENINTEL_SESSION_SERVER;
+  if (!configured) return 'https://sessionserver.mojang.com';
+  return configured.endsWith('/') ? configured.slice(0, -1) : configured;
+}
+
 async function verifyMinecraftSession(name, serverId) {
-  const url = new URL('https://sessionserver.mojang.com/session/minecraft/hasJoined');
+  const url = new URL(`${sessionServer()}/session/minecraft/hasJoined`);
   url.searchParams.set('username', name);
   url.searchParams.set('serverId', serverId);
   const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(10_000) });

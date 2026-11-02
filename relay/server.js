@@ -90,7 +90,9 @@ const { WebSocketServer } = require("ws");
 const { attachRelayTransport } = require("./transport");
 const { createIdentityVerification } = require("./authentication");
 
-const filePath = (name) => path.join(__dirname, name);
+// Unset keeps the server directory. Tests set this so fixtures stay out of tracked JSON.
+const relayHome = process.env.OPENINTEL_RELAY_HOME;
+const filePath = (name) => path.join(relayHome ? relayHome : __dirname, name);
 const CONFIG = JSON.parse(fs.readFileSync(filePath("config.json"), "utf8"));
 const MINECRAFT_SERVER = normalizeMinecraftServer(CONFIG.minecraftServer);
 if (!MINECRAFT_SERVER) throw new Error("config.minecraftServer is required");

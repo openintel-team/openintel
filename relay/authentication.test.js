@@ -103,11 +103,13 @@ async function main() {
   }
 
   // Exercise the real verifier's fixed endpoint, HTTP status and failure handling.
+  const savedSessionServer = process.env.OPENINTEL_SESSION_SERVER;
+  delete process.env.OPENINTEL_SESSION_SERVER;
   const originalFetch = global.fetch;
   try {
     for (const status of [200, 204, 403, 500]) {
       global.fetch = async (url, options) => {
-        assert.equal(url.origin, 'https://sessionserver.mojang.com');
+        assert.equal(url.origin, 'https://sessionserver.mojang.com', 'unset OPENINTEL_SESSION_SERVER uses Mojang');
         assert.equal(url.pathname, '/session/minecraft/hasJoined');
         assert.equal(url.searchParams.get('username'), 'Invited');
         assert.equal(url.searchParams.get('serverId'), 'a'.repeat(40));
@@ -118,7 +120,11 @@ async function main() {
     }
     global.fetch = async () => { throw new Error('network'); };
     await assert.rejects(verifyMinecraftSession('Invited', 'a'.repeat(40)));
-  } finally { global.fetch = originalFetch; }
+  } finally {
+    global.fetch = originalFetch;
+    if (savedSessionServer === undefined) delete process.env.OPENINTEL_SESSION_SERVER;
+    else process.env.OPENINTEL_SESSION_SERVER = savedSessionServer;
+  }
   console.log('Minecraft identity tests passed: copied token, wrong account, replay, expiry, revocation, races and upstream failures');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -102,8 +102,12 @@ final class RelayIdentityProof {
         body.addProperty("accessToken", accessToken);
         body.addProperty("selectedProfile", profile.toString().replace("-", ""));
         body.addProperty("serverId", challenge);
-        // This endpoint is fixed; a relay cannot choose where account credentials go.
-        return HttpRequest.newBuilder(URI.create("https://sessionserver.mojang.com/session/minecraft/join"))
+        // Production uses Mojang. A test process may set -Dopenintel.sessionServer to a
+        // loopback stub. Relay messages and config.json cannot choose this host.
+        String sessionServer = System.getProperty("openintel.sessionServer");
+        if (sessionServer == null || sessionServer.isBlank()) sessionServer = "https://sessionserver.mojang.com";
+        else if (sessionServer.endsWith("/")) sessionServer = sessionServer.substring(0, sessionServer.length() - 1);
+        return HttpRequest.newBuilder(URI.create(sessionServer + "/session/minecraft/join"))
                 .timeout(Duration.ofSeconds(15))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString())).build();
