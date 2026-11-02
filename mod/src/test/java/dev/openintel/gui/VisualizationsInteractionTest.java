@@ -347,6 +347,10 @@ public final class VisualizationsInteractionTest {
         return type.cast(cls.getMethod("allocateInstance", Class.class).invoke(field.get(null), type));
     }
     // Minecraft 1.21.11 EditBox focus needs no native client focus callback.
+    // Headless callers set gameThread so isSameThread matches the test thread.
+    public static final class FocusOnlyClient extends net.minecraft.client.Minecraft {
+        private FocusOnlyClient() { super(null); }
+    }
     public static final class TextField extends EditBox {
         private String text;
         private TextField() { super(null, 0, 0, 100, 18, Component.empty()); }

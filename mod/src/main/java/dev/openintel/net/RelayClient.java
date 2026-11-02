@@ -6,6 +6,7 @@ import dev.openintel.OpenIntelClient;
 import dev.openintel.api.Snapshots.ConnectionState;
 import dev.openintel.api.internal.ApiBridge;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,6 +53,9 @@ public class RelayClient implements WebSocket.Listener {
     private volatile boolean wantConnected = false;
     private volatile boolean authenticated;
     private volatile String role;
+    // Production leaves this null and reads Minecraft.getUser(). The relay integration
+    // test and the live smoke driver set one account per client; broadcast delivers once per account name.
+    volatile User identity;
     private WebSocket identitySocket;
     private WebSocket provenSocket;
     private RelayIdentityProof.Lease identityProof;
@@ -301,11 +305,28 @@ public class RelayClient implements WebSocket.Listener {
         return generation.get() == expectedGeneration && wantConnected && selectedServerMatches();
     }
 
+    /**
+     * Server address for a relay session, or null when this client should stay disconnected.
+     * Singleplayer stays disconnected unless {@code openintel.liveSmoke} is set and a level is loaded.
+     * The property stays off for normal play.
+     */
+    static String connectableServer(Minecraft client) {
+        if (Boolean.getBoolean("openintel.liveSmoke") && client.level != null) {
+            var config = OpenIntelClient.config();
+            if (config == null) return null;
+            String configured = OpenIntelClient.normalizeMinecraftServer(config.minecraftServer);
+            return configured.isEmpty() ? null : configured;
+        }
+        if (client.hasSingleplayerServer()) return null;
+        return OpenIntelClient.currentMinecraftServer(client);
+    }
+
     private boolean selectedServerMatches() {
         var client = Minecraft.getInstance();
         var config = OpenIntelClient.config();
-        return config != null && client.player != null && client.level != null && !client.hasSingleplayerServer()
-                && minecraftServer != null && minecraftServer.equals(OpenIntelClient.currentMinecraftServer(client))
+        String actual = connectableServer(client);
+        return config != null && client.player != null && client.level != null && actual != null
+                && minecraftServer != null && minecraftServer.equals(actual)
                 && (publishApi ? minecraftServer.equals(OpenIntelClient.normalizeMinecraftServer(config.minecraftServer))
                         : serverAllowed.getAsBoolean());
     }
@@ -330,7 +351,7 @@ public class RelayClient implements WebSocket.Listener {
         }
         identitySocket = ws;
         try {
-            var user = Minecraft.getInstance().getUser();
+            var user = identity != null ? identity : Minecraft.getInstance().getUser();
             String clientNonce = RelayIdentityProof.clientNonce();
             String serverId = RelayIdentityProof.sessionServerId(message.get("challenge").getAsString(), clientNonce);
             identityProof.join(HTTP, user.getProfileId(), user.getAccessToken(), serverId).whenComplete((ignored, error) ->

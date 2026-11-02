@@ -422,7 +422,7 @@ public class Tracker {
      */
     private static String inferDimFromName(String snitch) {
         if (snitch == null) return null;
-        if (snitch.matches("(?i)^end([_\\-\\s]|[A-Z]|$).*")
+        if (snitch.matches("(?i)^end(?-i:[A-Z]|[_\\-\\s]|$).*")
                 || snitch.matches("(?i).*[_\\-\\s]end([_\\-\\s]|$).*")) {
             return "minecraft:the_end";
         }
