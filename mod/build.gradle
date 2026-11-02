@@ -16,8 +16,21 @@ repositories {
     maven { url = 'https://api.modrinth.com/maven' }
 }
 
+def liveClientSmokeRequested = gradle.startParameter.taskNames.any { name ->
+    name == 'liveClientSmoke' || name.endsWith(':liveClientSmoke')
+}
+
 loom {
     accessWidenerPath = file('src/main/resources/openintel.accesswidener')
+    if (liveClientSmokeRequested) {
+        runs {
+            client {
+                vmArg '-Dopenintel.liveSmoke=true'
+                programArg '--quickPlaySingleplayer'
+                programArg 'OpenIntelSmoke'
+            }
+        }
+    }
 }
 
 dependencies {
@@ -241,7 +254,64 @@ tasks.register('relayBridgeTest', JavaExec) {
     enableAssertions = true
 }
 
+tasks.register('allegianceTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.allegiance.AllegianceTest'
+    enableAssertions = true
+}
+
+tasks.register('snitchLogParserTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.snitch.SnitchLogParserTest'
+    enableAssertions = true
+}
+
+tasks.register('oiConfigMigrationTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.config.OIConfigMigrationTest'
+    enableAssertions = true
+}
+
+tasks.register('trackerSnitchIntelTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.tracker.TrackerSnitchIntelTest'
+    enableAssertions = true
+}
+
+tasks.register('pingManagerTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.ping.PingManagerTest'
+    enableAssertions = true
+}
+
+tasks.register('snitchRelayTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.SnitchRelayTest'
+    enableAssertions = true
+}
+
+tasks.register('junkRejectorTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.junk.JunkRejectorTest'
+    enableAssertions = true
+}
+
+tasks.register('pingWheelLayoutTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.ping.PingWheelLayoutTest'
+    enableAssertions = true
+}
+
 check.dependsOn relayProfilesTest, relayBridgeTest, investigatePresentationTest, worldOverlayTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest, chatChannelFilterTest, versionPinTest, releaseUpdateTest, crosshairTest
+check.dependsOn allegianceTest, snitchLogParserTest, oiConfigMigrationTest, trackerSnitchIntelTest, pingManagerTest, snitchRelayTest, junkRejectorTest, pingWheelLayoutTest
 
 publishing {
     publications {
@@ -266,3 +336,25 @@ tasks.register('relayIdentityProofTest', JavaExec) {
     mainClass = 'dev.openintel.net.RelayIdentityProofTest'
 }
 check.dependsOn relayIdentityProofTest
+
+// Real node relay, loopback session stub, and the Java client.
+tasks.register('relayServerIntegrationTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.net.RelayServerIntegrationTest'
+}
+check.dependsOn relayServerIntegrationTest
+
+// Needs a display and a singleplayer world. Not a check dependency.
+tasks.named('runClient', JavaExec).configure {
+    if (liveClientSmokeRequested) {
+        javaLauncher = javaToolchains.launcherFor {
+            languageVersion = JavaLanguageVersion.of(25)
+        }
+    }
+}
+tasks.register('liveClientSmoke') {
+    group = 'verification'
+    description = 'Run the Minecraft client on JDK 25 with a display and the live smoke driver.'
+    dependsOn tasks.named('runClient')
+}

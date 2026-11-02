@@ -53,8 +53,9 @@ public final class RelayCoordinator extends RelayClient {
     }
 
     private static boolean matches(RelayProfile profile) {
-        return profile.enabled && OpenIntelClient.normalizeMinecraftServer(profile.minecraftServer)
-                .equals(OpenIntelClient.currentMinecraftServer(Minecraft.getInstance()));
+        if (!profile.enabled) return false;
+        String actual = RelayClient.connectableServer(Minecraft.getInstance());
+        return actual != null && OpenIntelClient.normalizeMinecraftServer(profile.minecraftServer).equals(actual);
     }
 
     public boolean reconnect() {
@@ -68,6 +69,7 @@ public final class RelayCoordinator extends RelayClient {
         if (updating) return false;
         updating = true;
         generation++;
+        String actual = RelayClient.connectableServer(minecraft);
         var profiles = OpenIntelClient.config().relayProfiles();
         // Cached annotations for removed/disabled profiles must not remain visible.
         for (RelayProfile profile : profiles) {
@@ -85,11 +87,10 @@ public final class RelayCoordinator extends RelayClient {
                 old.profile.share = next.share;
                 old.profile.name = next.name;
                 if (old.client.state() == ConnectionState.DENIED || old.client.state() == ConnectionState.DISCONNECTED)
-                    old.client.connect(next.url, next.token, OpenIntelClient.currentMinecraftServer(minecraft));
+                    old.client.connect(next.url, next.token, actual);
             }
         }
-        String actual = OpenIntelClient.currentMinecraftServer(minecraft);
-        if (actual != null && !minecraft.hasSingleplayerServer()) {
+        if (actual != null) {
             for (RelayProfile profile : profiles) {
                 if (!matches(profile) || profile.url.isBlank() || sessions.containsKey(profile.id)) continue;
                 Session session = new Session(copy(profile));
