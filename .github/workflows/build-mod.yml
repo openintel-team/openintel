@@ -1,16 +1,90 @@
 name: Canary mod build
-run-name: Canary · ${{ github.ref_name }}
+run-name: >-
+  ${{ github.event_name == 'pull_request'
+      && format('PR #{0}: {1}', github.event.pull_request.number, github.event.pull_request.title)
+      || format('Canary ({0}): {1}', inputs.target, inputs.title || 'Current branch tips') }}
 
 on:
-  push:
-    branches: ['**']
+  pull_request:
+    branches: [main, '26.2', '26.1.2', '1.21.11']
   workflow_dispatch:
+    inputs:
+      target:
+        description: Branches to build (main targets Minecraft 26.3)
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - main
+          - '26.2'
+          - '26.1.2'
+          - '1.21.11'
+      title:
+        description: Short description of the change or batch
+        type: string
+        required: false
+
+concurrency:
+  group: canary-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
+  plan:
+    name: Select branch commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Resolve exact commits
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TARGET: ${{ inputs.target }}
+          PR_BRANCH: ${{ github.base_ref }}
+        run: |
+          python3 - <<'PYTHON'
+          import json
+          import os
+          import subprocess
+
+          branches = ['main', '26.2', '26.1.2', '1.21.11']
+          if os.environ['EVENT_NAME'] == 'pull_request':
+              # Check the proposed merge, including PRs from forks.
+              entries = [{'branch': os.environ['PR_BRANCH'], 'sha': os.environ['GITHUB_SHA']}]
+          else:
+              target = os.environ['TARGET']
+              if target != 'all' and target not in branches:
+                  raise SystemExit('Unsupported build target')
+              selected = branches if target == 'all' else [target]
+              refs = [f'refs/heads/{branch}' for branch in selected]
+              result = subprocess.run(
+                  ['git', 'ls-remote', '--exit-code', 'origin', *refs],
+                  check=True, capture_output=True, text=True,
+              )
+              commits = {ref: sha for sha, ref in (line.split() for line in result.stdout.splitlines())}
+              if any(ref not in commits for ref in refs):
+                  raise SystemExit('A selected branch could not be resolved')
+              entries = [{'branch': branch, 'sha': commits[f'refs/heads/{branch}']} for branch in selected]
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              print('matrix=' + json.dumps({'include': entries}), file=output)
+          PYTHON
+
   build:
+    name: Build ${{ matrix.branch }}
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -20,14 +94,18 @@ jobs:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ matrix.sha }}
           persist-credentials: false
 
       - name: Read branch build settings
         id: settings
+        env:
+          BUILD_BRANCH: ${{ matrix.branch }}
         run: |
           python3 - <<'PY'
           import os
           import re
+          import subprocess
           from pathlib import Path
 
           properties = {}
@@ -41,8 +119,8 @@ jobs:
           minecraft = properties['minecraft_version']
           version = properties['mod_version']
           jar = f"mod/build/libs/{properties['archives_base_name']}-{version}.jar"
-          branch = re.sub(r'[^A-Za-z0-9._-]', '-', os.environ['GITHUB_REF_NAME'])[:80]
-          commit = os.environ['GITHUB_SHA'][:12]
+          branch = re.sub(r'[^A-Za-z0-9._-]', '-', os.environ['BUILD_BRANCH'])[:80]
+          commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               for key, value in {
                   # Loom 1.18 needs Java 25 to run, even for Java 21 mod targets.
@@ -50,8 +128,9 @@ jobs:
                   # the branch's actual compiler independently of this runtime.
                   'java': str(max(25, int(java.group(1)))),
                   'minecraft': minecraft,
+                  'commit': commit,
                   'jar': jar,
-                  'artifact': f'openintel-mc{minecraft}-{branch}-{commit}',
+                  'artifact': f'openintel-mc{minecraft}-{branch}-{commit[:12]}',
               }.items():
                   print(f'{key}={value}', file=output)
           PY
@@ -78,6 +157,10 @@ jobs:
         working-directory: relay
         run: npm ci
 
+      - name: Run relay tests
+        working-directory: relay
+        run: npm test
+
       - name: Build and run headless checks
         working-directory: mod
         run: ./gradlew --no-daemon build
@@ -96,11 +179,14 @@ jobs:
         env:
           ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
           MINECRAFT_VERSION: ${{ steps.settings.outputs.minecraft }}
+          BUILD_BRANCH: ${{ matrix.branch }}
+          BUILD_COMMIT: ${{ steps.settings.outputs.commit }}
         run: |
           {
             echo '## Canary mod build'
             printf 'Minecraft: **%s**\n\n' "$MINECRAFT_VERSION"
-            printf 'Commit: `%s`\n\n' "$GITHUB_SHA"
+            printf 'Branch: `%s`\n\n' "$BUILD_BRANCH"
+            printf 'Commit: `%s`\n\n' "$BUILD_COMMIT"
             printf '[Download the mod artifact](%s) (requires signing in to GitHub).\n\n' "$ARTIFACT_URL"
             echo 'Extract the ZIP and put its jar in your mods folder with Fabric API.'
             echo 'This development build includes the headless checks; in-game behavior is not verified by CI.'
