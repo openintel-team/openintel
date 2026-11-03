@@ -1,45 +1,47 @@
 package dev.openintel.jm;
 
 import dev.openintel.OpenIntelClient;
-import dev.openintel.allegiance.AllegianceManager.Allegiance;
-import dev.openintel.ping.PingManager;
-import dev.openintel.tracker.Tracker;
+import dev.openintel.map.MapMarker;
+import dev.openintel.map.MapMarkerSource;
+import dev.openintel.map.MapMarkerStyle;
+import dev.openintel.relic.RelicLibraryVisit;
 import journeymap.api.v2.client.IClientAPI;
 import journeymap.api.v2.client.display.Context;
 import journeymap.api.v2.client.display.MarkerOverlay;
-import journeymap.api.v2.client.model.MapImage;
 import journeymap.api.v2.client.model.TextProperties;
+import journeymap.api.v2.client.util.UIState;
 import net.minecraft.client.Minecraft;
-import com.mojang.blaze3d.platform.NativeImage;
-import net.minecraft.resources.ResourceKey;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
-import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
+import org.slf4j.LoggerFactory;
 
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * Mirrors OpenIntel's snitch hits and shared pings onto JourneyMap's
- * fullscreen map as MarkerOverlays. Runs as a Runnable from the client
- * tick loop; reconciles desired state against what's shown every second,
- * so expiry, disconnect clears and allegiance changes all take care of
- * themselves. Rendering on our side is untouched — JM-only extra.
+ * Mirrors {@link MapMarkerSource} onto JourneyMap's fullscreen map as
+ * MarkerOverlays. Runs from the client tick and reconciles the wanted list
+ * against what is shown: every 20 ticks, or every 4 while the fullscreen map
+ * is open. Loaded players are left to JourneyMap's own radar. Nothing is
+ * written as a waypoint.
  */
 final class JmBridge implements Runnable {
 
-    /** Desired marker: stable signature + display data. */
-    private record Desired(String sig, BlockPos pos, String dimension,
-                           int rgb, String title, String label) { }
+    /** Wanted overlay: the marker, its look, and the key that triggers a rebuild. */
+    private record Desired(MapMarker marker, MapMarkerStyle.Style style, String sig) { }
 
     private final IClientAPI api;
+    private final JmIcons icons = new JmIcons();
     private final Map<String, MarkerOverlay> shown = new HashMap<>();
     private final Map<String, String> sigs = new HashMap<>();
-    private NativeImage icon;
     private int ticks;
-    private boolean broken;
+    private boolean failed;
 
     JmBridge(IClientAPI api) {
         this.api = api;
@@ -47,69 +49,40 @@ final class JmBridge implements Runnable {
 
     @Override
     public void run() {
-        if (broken || ++ticks % 20 != 0) return;   // ~1s reconcile cadence
+        // The visit must still end when its map closes, even after a marker failure.
+        JmLibraryMap.tick();
+        if (failed) return;
         try {
+            ticks++;
+            int cadence = fullscreenActive() ? 4 : 20;
+            if (!JmLibraryMap.consumeDirty() && ticks % cadence != 0) return;
             sync();
         } catch (Throwable t) {
-            broken = true;   // never let an API hiccup hurt the client
+            // Never let an API hiccup hurt the client: warn once and stop, like the Xaero path.
+            failed = true;
+            LoggerFactory.getLogger("openintel").warn("JourneyMap integration disabled after an error", t);
+            for (MarkerOverlay overlay : shown.values()) removeQuietly(overlay);
+            shown.clear();
+            sigs.clear();
         }
     }
 
-    private void sync() {
-        var cfg = OpenIntelClient.config();
-        var tracker = OpenIntelClient.tracker();
-        Map<String, Desired> want = new HashMap<>();
+    private boolean fullscreenActive() {
+        UIState state = api.getUIState(Context.UI.Fullscreen);
+        return state != null && state.active;
+    }
 
-        if (cfg != null && cfg.jmMarkers && tracker != null) {
-            String myName = Minecraft.getInstance().getUser().getName();
-            // JM's own entity radar already draws players in render distance —
-            // a relay marker on top is just a duplicate label.
-            var level = Minecraft.getInstance().level;
-            java.util.Set<String> local = new java.util.HashSet<>();
-            if (level != null) {
-                for (var e : level.players()) local.add(e.getGameProfile().name().toLowerCase());
-            }
-            for (Tracker.RemotePlayer p : tracker.all()) {
-                if (p.name.equalsIgnoreCase(myName) || local.contains(p.name.toLowerCase())) continue;
-                Allegiance a = p.allegiance != null ? p.allegiance : Allegiance.NEUTRAL;
-                int rgb = a.argb & 0xFFFFFF;
-                // Position lives in the signature — a move means a new
-                // overlay, or the marker freezes at first sight forever.
-                // No "(via reporter)" — the reporter flaps as nearby clients
-                // hand off coverage, and the flicker reads worse than it helps.
-                BlockPos pos = BlockPos.containing(p.x, p.y, p.z);
-                want.put("player:" + p.name,
-                        new Desired("player|" + rgb + "|" + pos + "|" + p.dimension,
-                                pos, p.dimension, rgb, p.name, p.name));
-            }
-            for (Tracker.SnitchHit h : tracker.snitchHits()) {
-                int rgb = OpenIntelClient.allegiances().of(h.player).argb & 0xFFFFFF;
-                String label = h.snitch + " | " + h.player;
-                // Position in the signature here too — a re-hit at new
-                // coords must move the marker, same as player tracking.
-                BlockPos pos = BlockPos.containing(h.x, h.y, h.z);
-                want.put("snitch:" + h.player + "@" + h.snitch,
-                        new Desired("snitch|" + rgb + "|" + label + "|" + pos
-                                        + "|" + h.dimension,
-                                pos, h.dimension, rgb,
-                                "Snitch: " + h.snitch, label));
-            }
-            for (PingManager.Ping p : PingManager.active()) {
-                int rgb = p.color & 0xFFFFFF;
-                BlockPos pos = BlockPos.containing(p.x, p.y, p.z);
-                want.put("ping:" + p.id,
-                        new Desired("ping|" + rgb + "|" + p.label + "|" + pos
-                                        + "|" + p.dimension,
-                                pos, p.dimension, rgb,
-                                "Ping: " + p.label, p.sender));
-            }
-            for (var r : dev.openintel.xaero.RelicMapScanner.markers(Minecraft.getInstance())) {
-                String title = r.title();
-                String detail = r.label() == null || r.label().isBlank() ? title : title + " | " + r.label();
-                BlockPos pos = BlockPos.containing(r.x(), r.y(), r.z());
-                want.put(r.id(),
-                        new Desired("relic|" + pos + "|" + r.dimension() + "|" + detail,
-                                pos, r.dimension(), r.argb() & 0xFFFFFF, title, detail));
+    private void sync() throws Exception {
+        var cfg = OpenIntelClient.config();
+        Map<String, Desired> want = new LinkedHashMap<>();
+        if (cfg != null && cfg.jmMarkers) {
+            long now = System.currentTimeMillis();
+            Set<String> selected = MapMarkerSource.selectedLibrarySites(RelicLibraryVisit.current());
+            for (MapMarker marker : MapMarkerSource.all(Minecraft.getInstance(), cfg, now,
+                    MapMarkerSource.PlayerMode.SKIP_LOADED)) {
+                String site = MapMarkerStyle.librarySite(marker);
+                MapMarkerStyle.Style style = MapMarkerStyle.of(marker, site != null && selected.contains(site));
+                want.put(marker.id(), new Desired(marker, style, MapMarkerStyle.signature(marker, style)));
             }
         }
 
@@ -124,11 +97,12 @@ final class JmBridge implements Runnable {
             }
         }
 
-        // Add new markers; recreate any whose appearance changed.
+        // Add new markers; recreate any whose position or look changed.
         for (Map.Entry<String, Desired> e : want.entrySet()) {
             Desired d = e.getValue();
             if (d.sig.equals(sigs.get(e.getKey()))) continue;
             MarkerOverlay old = shown.remove(e.getKey());
+            sigs.remove(e.getKey());
             if (old != null) removeQuietly(old);
             MarkerOverlay overlay = show(d);
             if (overlay != null) {
@@ -138,56 +112,40 @@ final class JmBridge implements Runnable {
         }
     }
 
-    private MarkerOverlay show(Desired d) {
+    private MarkerOverlay show(Desired d) throws Exception {
         ResourceKey<Level> dim;
         try {
-            dim = ResourceKey.create(Registries.DIMENSION, Identifier.parse(d.dimension));
+            dim = ResourceKey.create(Registries.DIMENSION, Identifier.parse(d.marker.dimension()));
         } catch (Exception e) {
-            return null;   // "openintel:unknown" or a custom world id — skip
+            return null;   // a custom world id that is not a resource location — skip
         }
-        MarkerOverlay overlay = new MarkerOverlay("openintel", d.pos, icon(d.rgb));
+        MapMarkerStyle.Style style = d.style;
+        BlockPos pos = BlockPos.containing(d.marker.x(), d.marker.y(), d.marker.z());
+        MarkerOverlay overlay = new MarkerOverlay("openintel", pos, icons.image(style));
+        // JourneyMap splits overlay text on newlines: title, then caption.
+        String text = style.text("\n");
         overlay.setDimension(dim);
-        overlay.setTitle(d.title);
-        overlay.setLabel(d.label);
+        overlay.setTitle(text);
+        overlay.setLabel(text);
         overlay.setOverlayGroupName("OpenIntel");
         overlay.setActiveUIs(Context.UI.Fullscreen);
         overlay.setActiveMapTypes(Context.MapType.all());
         overlay.setTextProperties(new TextProperties()
-                .setColor(d.rgb)
+                .setColor(style.argb() & 0xFFFFFF)
                 .setFontShadow(false)
                 .setBackgroundColor(0x101014)
                 .setBackgroundOpacity(0.6f)
                 .setScale(1.0f)
-                .setOffsetY(24));
-        try {
-            api.show(overlay);
-            return overlay;
-        } catch (Exception e) {
-            broken = true;
-            return null;
-        }
+                .setOffsetY(JmIcons.textOffset(style.shape())));
+        String site = MapMarkerStyle.librarySite(d.marker);
+        if (site != null) overlay.setOverlayListener(JmLibraryMap.pinListener(site));
+        api.show(overlay);
+        return overlay;
     }
 
     private void removeQuietly(MarkerOverlay overlay) {
         try {
             api.remove(overlay);
         } catch (Throwable ignored) { }
-    }
-
-    /** Shared diamond icon, tinted per-marker by allegiance/ping color. */
-    private MapImage icon(int rgb) {
-        if (icon == null) {
-            icon = new NativeImage(16, 16, false);
-            for (int y = 0; y < 16; y++) {
-                for (int x = 0; x < 16; x++) {
-                    int d = Math.abs(x - 7) + Math.abs(y - 7);
-                    // Write every pixel — unwritten corners are garbage
-                    // memory that shows through as speckled noise.
-                    icon.setPixel(x, y,
-                            d <= 6 ? (d >= 5 ? 0xFF202020 : 0xFFFFFFFF) : 0);
-                }
-            }
-        }
-        return new MapImage(icon).setColor(rgb).centerAnchors();
     }
 }

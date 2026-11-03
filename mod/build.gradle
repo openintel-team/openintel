@@ -152,7 +152,14 @@ tasks.register('warTableTest', JavaExec) {
 tasks.register('mapMarkerTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'dev.openintel.xaero.MapMarkerTest'
+    mainClass = 'dev.openintel.map.MapMarkerTest'
+    enableAssertions = true
+}
+
+tasks.register('mapParityTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.map.MapParityTest'
     enableAssertions = true
 }
 
@@ -335,7 +342,7 @@ tasks.register('pingWheelLayoutTest', JavaExec) {
     enableAssertions = true
 }
 
-check.dependsOn relayProfilesTest, relayBridgeTest, investigatePresentationTest, worldOverlayTest, versionPinTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest, chatChannelFilterTest, chatVersionParityTest, releaseUpdateTest, crosshairTest
+check.dependsOn relayProfilesTest, relayBridgeTest, investigatePresentationTest, worldOverlayTest, versionPinTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, mapParityTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest, chatChannelFilterTest, chatVersionParityTest, releaseUpdateTest, crosshairTest
 check.dependsOn allegianceTest, snitchLogParserTest, oiConfigMigrationTest, trackerSnitchIntelTest, pingManagerTest, snitchRelayTest, junkRejectorTest, pingWheelLayoutTest
 
 publishing {
