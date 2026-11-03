@@ -394,15 +394,24 @@ public class OIConfig {
     /** Use the tripper's allegiance color instead of the configured snitch color. */
     public boolean snitchMarkerColorAuto = true;
 
-    // ------------------------------------------------------- journeymap ----
+    // -------------------------------------------------------- world map ----
 
-    /** Draw snitch hits + shared pings on JourneyMap's fullscreen map (soft dep). */
+    /** JourneyMap master switch: draw OpenIntel markers on JourneyMap's fullscreen map (soft dep). */
     public boolean jmMarkers = true;
 
-    /** Draw snitch hits + shared pings on Xaero's World Map screen (soft dep). */
+    /** Xaero's World Map master switch: draw OpenIntel markers on its fullscreen map (soft dep). */
+    public boolean xaeroWorldMap = true;
+
+    /** Relay players, snitch hits, and shared pings on the fullscreen world map (either mod). */
+    public boolean worldMapIntel = true;
+
+    /** Civ+ relic maps from the local inventory on the fullscreen world map (either mod). */
+    public boolean worldMapRelics = true;
+
+    /** Legacy Xaero-only intel switch. Read once to seed {@link #worldMapIntel}. */
     public boolean xaeroMarkers = true;
 
-    /** Draw Civ+ relic maps from the local inventory on Xaero's World Map. */
+    /** Legacy Xaero-only relic switch. Read once to seed {@link #worldMapRelics}. */
     public boolean xaeroRelicMaps = true;
 
     /** Horizontal range (blocks) for nearby relic HUD pins; clamped 50–2000. */
@@ -466,6 +475,35 @@ public class OIConfig {
         config.vizBastionRadius = Math.clamp(config.vizBastionRadius, 1.0, 64.0);
     }
 
+    // ---------------------------------------------- world map migration ----
+
+    /**
+     * Shared world-map settings. {@code worldMapIntel} and {@code worldMapRelics}
+     * start from the old Xaero-only switches when a config predates them, or on
+     * when those were never saved either. Missing master switches start on.
+     * Returns true when anything was filled in, so the caller saves.
+     */
+    public static boolean applyWorldMapDefaults(OIConfig config, JsonObject raw) {
+        boolean changed = false;
+        if (!raw.has("worldMapIntel")) {
+            config.worldMapIntel = !raw.has("xaeroMarkers") || config.xaeroMarkers;
+            changed = true;
+        }
+        if (!raw.has("worldMapRelics")) {
+            config.worldMapRelics = !raw.has("xaeroRelicMaps") || config.xaeroRelicMaps;
+            changed = true;
+        }
+        if (!raw.has("jmMarkers")) {
+            config.jmMarkers = true;
+            changed = true;
+        }
+        if (!raw.has("xaeroWorldMap")) {
+            config.xaeroWorldMap = true;
+            changed = true;
+        }
+        return changed;
+    }
+
     // ------------------------------------------------------- investigate ----
 
     public enum InvestigateCameraMode {
@@ -507,13 +545,13 @@ public class OIConfig {
     /** Render synced War Table pins as in-world HUD waypoint markers. */
     public boolean warTablePinMarkers = true;
 
-    /** Draw War Table pins on Xaero's World Map (independent of the HUD toggle). */
+    /** Draw War Table pins on the fullscreen world map (JourneyMap or Xaero), independent of the HUD toggle. */
     public boolean warTablePinWorldMap = true;
 
-    /** Draw War Table place labels on Xaero's World Map. */
+    /** Draw War Table place labels on the fullscreen world map (JourneyMap or Xaero). */
     public boolean warTableLabelWorldMap = true;
 
-    /** Draw live-map sanctuary names on Xaero's World Map. */
+    /** Draw live-map sanctuary names on the fullscreen world map (JourneyMap or Xaero). */
     public boolean warTableSanctuaryWorldMap = true;
 
     /** Static waypoint opacity, 30–150, independent of active relay markers. */
@@ -712,6 +750,7 @@ public class OIConfig {
                     c.xaeroRelicMaps = true;
                     defaults = true;
                 }
+                if (applyWorldMapDefaults(c, raw)) defaults = true;
                 // Gson leaves a missing int at 0; migrate to the 300-block default.
                 if (!raw.has("relicMarkerRange")) {
                     c.relicMarkerRange = 300;

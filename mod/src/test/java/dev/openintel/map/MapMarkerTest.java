@@ -1,4 +1,4 @@
-package dev.openintel.xaero;
+package dev.openintel.map;
 
 import dev.openintel.wartable.Sanctuaries;
 import dev.openintel.wartable.Stroke;
@@ -6,7 +6,7 @@ import dev.openintel.wartable.Stroke;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Standalone assertions, requiring neither a Minecraft client nor Xaero. */
+/** Standalone assertions, requiring neither a Minecraft client nor a map mod. */
 public final class MapMarkerTest {
     public static void main(String[] args) {
         MapMarker marker = new MapMarker("test", -24, 65, 120, "minecraft:overworld",

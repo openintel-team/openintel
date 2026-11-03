@@ -2,6 +2,8 @@ package dev.openintel.mixin;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.openintel.relic.GuiMapCamera;
+import dev.openintel.relic.LibraryMapInput;
+import dev.openintel.relic.LibraryMapOverlay;
 import dev.openintel.relic.RelicCarryHint;
 import dev.openintel.relic.RelicLibraryVisit;
 import dev.openintel.xaero.XaeroIntegration;
@@ -17,15 +19,20 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import xaero.map.gui.GuiMap;
 
 /**
- * Shift + left-drag lasso while a relic-library map visit is open.
+ * Click, shift + left-drag lasso, and overlay while a relic-library map visit is
+ * open. The selection logic is {@link LibraryMapInput}, shared with JourneyMap.
  * MC 26.3 uses SDL button indices: left = 1, right = 3.
  */
 @Mixin(GuiMap.class)
 public abstract class GuiMapLibraryMixin {
-    @Unique private String openintel$pressedSite;
-    @Unique private double openintel$pressX;
-    @Unique private double openintel$pressY;
-    @Unique private boolean openintel$selecting;
+    @Unique private LibraryMapInput openintel$input;
+
+    @Unique
+    private LibraryMapInput openintel$input() {
+        if (openintel$input == null) openintel$input = new LibraryMapInput();
+        return openintel$input;
+    }
+
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void openintel$lassoStart(MouseButtonEvent event, boolean doubled, CallbackInfoReturnable<Boolean> cir) {
         RelicLibraryVisit visit = RelicLibraryVisit.current();
@@ -33,44 +40,28 @@ public abstract class GuiMapLibraryMixin {
         if (event.button() != InputConstants.MOUSE_BUTTON_LEFT) return;
         Minecraft client = Minecraft.getInstance();
         if (client == null) return;
-        String site = XaeroIntegration.hoveredLibrarySite();
-        if (!client.hasShiftDown() && site == null) return;
-        openintel$pressedSite = site;
-        openintel$pressX = event.x();
-        openintel$pressY = event.y();
-        openintel$selecting = true;
         GuiMap map = (GuiMap) (Object) this;
-        int wx = GuiMapCamera.mouseBlockX(map);
-        int wz = GuiMapCamera.mouseBlockZ(map);
-        if (client.hasShiftDown()) visit.beginLasso(wx, wz, (int) event.x(), (int) event.y());
-        // Cancel so GuiMap never sets leftMouseButton.isDown (which drives panning).
-        cir.setReturnValue(true);
+        if (openintel$input().press(visit, client.hasShiftDown(), XaeroIntegration.hoveredLibrarySite(),
+                GuiMapCamera.mouseBlockX(map), GuiMapCamera.mouseBlockZ(map), event.x(), event.y())) {
+            // Cancel so GuiMap never sets leftMouseButton.isDown (which drives panning).
+            cir.setReturnValue(true);
+        }
     }
 
     @Inject(method = "mouseReleased", at = @At("HEAD"), cancellable = true)
     private void openintel$lassoEnd(MouseButtonEvent event, CallbackInfoReturnable<Boolean> cir) {
         RelicLibraryVisit visit = RelicLibraryVisit.current();
-        if (visit == null || !visit.isMapVisit() || !openintel$selecting) return;
+        if (visit == null || !visit.isMapVisit() || !openintel$input().selecting()) return;
         if (event.button() != InputConstants.MOUSE_BUTTON_LEFT) return;
         GuiMap map = (GuiMap) (Object) this;
-        visit.updateLasso(GuiMapCamera.mouseBlockX(map), GuiMapCamera.mouseBlockZ(map),
-                (int) event.x(), (int) event.y());
         Minecraft client = Minecraft.getInstance();
         int free = client != null && client.player != null
                 ? RelicCarryHint.freeSlots(client.player)
                 : Integer.MAX_VALUE;
         double px = client != null && client.player != null ? client.player.getX() : 0;
         double pz = client != null && client.player != null ? client.player.getZ() : 0;
-        visit.enforceCapacity(free, px, pz);
-        boolean click = Math.hypot(event.x() - openintel$pressX, event.y() - openintel$pressY) < 4;
-        if (click) {
-            visit.clearLasso();
-            visit.clickSite(openintel$pressedSite, free);
-        } else if (visit.isLassoDragging()) {
-            visit.finishLasso(free, px, pz);
-        }
-        openintel$selecting = false;
-        openintel$pressedSite = null;
+        openintel$input().release(visit, GuiMapCamera.mouseBlockX(map), GuiMapCamera.mouseBlockZ(map),
+                event.x(), event.y(), free, px, pz);
         cir.setReturnValue(true);
     }
 
@@ -92,27 +83,13 @@ public abstract class GuiMapLibraryMixin {
     @Inject(method = "extractRenderState", at = @At("TAIL"))
     private void openintel$drawLasso(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta,
                                      CallbackInfo ci) {
-        RelicCarryHint.draw(graphics, ((GuiMap) (Object) this).width);
-        RelicLibraryVisit visit = RelicLibraryVisit.current();
-        if (visit == null || !visit.isLassoDragging()) return;
-        int[] r = visit.lassoScreenRect();
-        int left = r[0];
-        int top = r[1];
-        int right = r[2];
-        int bottom = r[3];
-        if (right - left < 1 || bottom - top < 1) return;
-        graphics.fill(left, top, right, top + 1, 0xE8E8B84A);
-        graphics.fill(left, bottom - 1, right, bottom, 0xE8E8B84A);
-        graphics.fill(left, top, left + 1, bottom, 0xE8E8B84A);
-        graphics.fill(right - 1, top, right, bottom, 0xE8E8B84A);
-        graphics.fill(left + 1, top + 1, right - 1, bottom - 1, 0x44E8B84A);
+        LibraryMapOverlay.draw(graphics, ((GuiMap) (Object) this).width);
     }
 
     @Inject(method = "removed", at = @At("HEAD"))
     private void openintel$endVisit(CallbackInfo ci) {
         RelicLibraryVisit visit = RelicLibraryVisit.current();
         if (visit != null) visit.endMapVisit();
-        openintel$selecting = false;
-        openintel$pressedSite = null;
+        openintel$input().reset();
     }
 }

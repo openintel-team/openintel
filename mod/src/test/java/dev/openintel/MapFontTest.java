@@ -111,8 +111,60 @@ public final class MapFontTest {
                 }, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
             }
             check(methods[0] && methods[1], "Installed JourneyMap owner and text-render hooks match");
+            verifyJourneyMapFullscreen(jar);
         }
         System.out.println("Installed JourneyMap text hook verified");
+    }
+
+    /**
+     * The relic library opens JourneyMap's fullscreen map through internals the API
+     * does not expose: {@code UIManager.INSTANCE.open(Class)} with {@code Fullscreen}.
+     * The lasso also relies on the PRE click/drag dispatch inside Fullscreen.
+     */
+    private static void verifyJourneyMapFullscreen(ZipFile jar) throws Exception {
+        var library = readClass("dev/openintel/jm/JmLibraryMap");
+        var names = new java.util.HashSet<String>();
+        for (var method : library.methods) {
+            for (var insn : method.instructions) {
+                if (insn instanceof org.objectweb.asm.tree.LdcInsnNode ldc && ldc.cst instanceof String s) names.add(s);
+            }
+        }
+        check(names.contains("journeymap.client.ui.UIManager") && names.contains("journeymap.client.ui.fullscreen.Fullscreen"),
+                "Library opener names the checked JourneyMap classes");
+
+        var manager = readJarClass(jar, "journeymap/client/ui/UIManager");
+        check(manager.fields.stream().anyMatch(f -> f.name.equals("INSTANCE")
+                        && f.desc.equals("Ljourneymap/client/ui/UIManager;")
+                        && (f.access & Opcodes.ACC_STATIC) != 0 && (f.access & Opcodes.ACC_PUBLIC) != 0),
+                "JourneyMap UIManager.INSTANCE is public static");
+        check(manager.methods.stream().anyMatch(m -> m.name.equals("open")
+                        && m.desc.startsWith("(Ljava/lang/Class;)")
+                        && (m.access & Opcodes.ACC_PUBLIC) != 0 && (m.access & Opcodes.ACC_STATIC) == 0),
+                "JourneyMap UIManager.open(Class) is public");
+
+        var fullscreen = readJarClass(jar, "journeymap/client/ui/fullscreen/Fullscreen");
+        check(fullscreen.interfaces.contains("journeymap/api/v2/client/fullscreen/IFullscreen"),
+                "JourneyMap Fullscreen implements the API IFullscreen");
+        check(fullscreen.methods.stream().anyMatch(m -> m.name.equals("<init>") && m.desc.equals("()V")
+                        && (m.access & Opcodes.ACC_PUBLIC) != 0),
+                "JourneyMap Fullscreen has the public no-argument constructor open(Class) uses");
+        check(jmCalls(fullscreen, "mouseClicked", "clickEventPre"), "Fullscreen click dispatches a cancellable PRE event");
+        check(jmCalls(fullscreen, "mouseDragged", "dragEventPre"), "Fullscreen drag dispatches a cancellable PRE event");
+        System.out.println("Installed JourneyMap fullscreen-open target verified");
+    }
+
+    private static boolean jmCalls(org.objectweb.asm.tree.ClassNode node, String method, String target) {
+        return node.methods.stream().filter(m -> m.name.equals(method)).anyMatch(m -> calls(m, target));
+    }
+
+    private static org.objectweb.asm.tree.ClassNode readJarClass(ZipFile jar, String name) throws Exception {
+        var entry = jar.getEntry(name + ".class");
+        check(entry != null, "Installed JourneyMap has " + name);
+        var node = new org.objectweb.asm.tree.ClassNode();
+        try (var input = jar.getInputStream(entry)) {
+            new ClassReader(input).accept(node, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+        }
+        return node;
     }
 
     private static void check(boolean condition, String reason) {

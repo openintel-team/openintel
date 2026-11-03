@@ -1,14 +1,15 @@
-package dev.openintel.xaero;
+package dev.openintel.map;
 
 import dev.openintel.wartable.Sanctuaries;
 import dev.openintel.wartable.Stroke;
+import dev.openintel.xaero.RelicMapMath;
 
 import java.util.List;
 
 /** War Table pins, place labels, and sanctuary names as transient world-map markers. */
-final class WarTableMapMarkers {
+public final class WarTableMapMarkers {
     /** Gold used for sanctuary disks on the War Table. Names on the map use the same color. */
-    static final int SANCTUARY_COLOR = 0xFFB8860B;
+    public static final int SANCTUARY_COLOR = 0xFFB8860B;
 
     private WarTableMapMarkers() { }
 
@@ -17,9 +18,9 @@ final class WarTableMapMarkers {
      * small diamond in that color with the name underneath, matching the
      * earlier world-map markers.
      */
-    static void add(List<MapMarker> result, Iterable<Stroke> strokes,
-                    Iterable<Sanctuaries.Sanctuary> sanctuaries,
-                    boolean pins, boolean labels) {
+    public static void add(List<MapMarker> result, Iterable<Stroke> strokes,
+                           Iterable<Sanctuaries.Sanctuary> sanctuaries,
+                           boolean pins, boolean labels) {
         if (strokes != null) {
             for (Stroke s : strokes) {
                 if (s == null || s.points == null || s.points.length < 2) continue;
@@ -49,7 +50,7 @@ final class WarTableMapMarkers {
     }
 
     /** Pin, place label, or sanctuary name: small diamond plus one colored line. */
-    static boolean nameMarker(MapMarker marker) {
+    public static boolean nameMarker(MapMarker marker) {
         String id = marker.id();
         return id.startsWith("wartable:") || id.startsWith("wartable-label:")
                 || id.startsWith("sanctuary:");

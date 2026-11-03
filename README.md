@@ -50,12 +50,12 @@ Artifacts expire after **30 days**. These are development builds; CI does not ve
 |---|---|
 | Minecraft | **26.3**, Fabric Loader 0.19.5, Java 25 |
 | Xaero's World Map | Direct compile against Xaero's World Map and XaeroLib. No bridge jar |
-| World-map markers | Outlined player circles, outlined diamonds for snitches, pings, and pins, Civ relic icons, two-line labels. Minimap and saved waypoints are left alone |
+| World-map markers | The same markers on JourneyMap and Xaero's World Map: outlined player circles, outlined diamonds for snitches and pings, Civ relic icons, two-line labels. Minimap and saved waypoints are left alone |
 | War Table on the map | Separate toggles for HUD pins, world-map pins, place labels, and sanctuary names. Labels and sanctuary names are a small colored diamond plus one line |
 | Relic maps | Inventory scan only. Treasure Maps named for a relic are drawn. Filled maps named "World Map" are locators and are skipped |
 | Nearby relic pins | Horizontal range, default **300** blocks (50–2000). Label is name, enchantment, and distance |
 | Chests | Optional closest-to-furthest sort of located relic maps in chests, barrels, ender chests, and shulkers |
-| Relic library | Chest Tracker list of stored treasure maps, searchable by name or enchantment. Where Is It highlights the chests for a selection. Those pins show on the fullscreen world map only while that map was opened from the library |
+| Relic library | Chest Tracker list of stored treasure maps, searchable by name or enchantment. Where Is It highlights the chests for a selection. Those pins show on the fullscreen world map (JourneyMap or Xaero) only while that map was opened from the library |
 | Coverage | Block-aligned snitch shells (radius default **8**), the Civ+ bastion field (19 blocks across), and sanctuary rings. Manual shapes persist in `config/openintel-ranges.json`. Live-map sanctuaries reuse the War Table feed |
 | Investigate | Paste Discord or in-game snitch logs and step through break, place, and enter highlights. Playback does not write live snitch hits |
 | Snitch alerts without a world | HUD and world-map markers still appear. Dimension comes from the snitch name, then the tripper, then the reporter, then the local player. The feed includes Y when the alert has it |
@@ -75,12 +75,12 @@ See the [map integration reference](docs/MAP_INTEGRATION.md) for architecture an
 | Loader | Fabric Loader `>= 0.19.5` |
 | Required mod | Fabric API |
 
-Optional. The client starts without them. A mismatched Xaero build disables that overlay and leaves the rest of OpenIntel running.
+Optional. The client starts without them. A mismatched Xaero or JourneyMap build disables that overlay and leaves the rest of OpenIntel running.
 
 | Mod | Used for |
 |---|---|
-| [Xaero's World Map](https://chocolateminecraft.com/) | Fullscreen world map (`M`). Built against World Map 1.46.4 and XaeroLib 1.7.17 |
-| JourneyMap | Fullscreen map (`J`) |
+| [Xaero's World Map](https://chocolateminecraft.com/) | Fullscreen world map (`M`). Built against World Map 1.47.0 and XaeroLib 1.7.17 |
+| JourneyMap | Fullscreen map (`J`). Built against JourneyMap API 26.3-2.0.0 |
 | Mod Menu | Config button opens the same screen as `/oi settings` |
 | Chest Tracker | Relic library of maps remembered from opened chests |
 | Where Is It | Chest highlights for a library selection |
@@ -151,12 +151,12 @@ The optional Discord bot is separate from the webhooks. Setup is under [Discord 
 | Visualizations | Snitch, bastion, and sanctuary shells, radii, live-map sanctuaries, see-through wireframes, shape editor |
 | Investigate | Paste logs, or clear the playback session |
 | Pings | Ping wheel and how long a ping stays up (default 45s) |
-| Integrations | JourneyMap markers, Xaero markers, relic maps, relic pin range (default 300), chest sort |
+| Integrations | World map: JourneyMap and Xaero's World Map switches, intel markers, relic maps, relic pin range (default 300), chest sort |
 | Macros | Attack interval, use interval, ice-road snap, auto-eat, low-hunger park |
 | Keybinds | Every OpenIntel bind, plus reset |
 | Inventory | Auto-drop junk, and the item list |
 
-**Relay rendering** is the master switch for in-world markers, including local snitches and relic pins. Map integrations have their own toggles, so the world map can stay on while the HUD markers are off.
+**Relay rendering** is the master switch for in-world markers, including local snitches and relic pins. Map integrations have their own toggles, so the world map can stay on while the HUD markers are off. Under **Integrations → World map**, the JourneyMap and Xaero's World Map switches turn each map on or off. **Intel markers**, **Relic maps**, and the three War Table world-map toggles apply to both maps.
 
 **Forward snitch alerts** controls sending only. Local detection, the feed, and markers keep working when forwarding is off or the relay is down.
 
@@ -172,7 +172,7 @@ Allegiance colors are the same on markers, nameplates, radar, and the roster: gr
 
 Live player markers project in world space and hand off to the real entity when that player is loaded. Off-screen targets sit on four edges. Each edge has its own draggable anchor in the HUD editor.
 
-The radar is local. It draws loaded players inside its range (default 64 blocks), plus boats, minecarts, and optional dropped items. Distant relay-only players stay on world markers and the fullscreen maps. Shared pings can still sit on the radar rim. Contact names avoid each other; a crowded cluster shows `+N more`.
+The radar is local. It draws loaded players inside its range (default 64 blocks), plus boats, minecarts, and optional dropped items. Distant relay-only players stay on world markers and the fullscreen maps. Xaero's map draws every relay player, at the live position once that player is loaded. JourneyMap leaves loaded players to its own radar and draws only the rest. Shared pings can still sit on the radar rim. Contact names avoid each other; a crowded cluster shows `+N more`.
 
 Hold the ping key (`G`) for the radial wheel, or run `/oi ping`. The marker is created locally. Other clients see it when the relay accepts it.
 
@@ -192,7 +192,7 @@ With no relay login, strokes stay in a private local layer. An authoritative syn
 
 Sanctuary circles on the War Table come from the live-map URL. Bastions do not have matching live-map entries.
 
-On Xaero's fullscreen map, when the matching toggle is on:
+On the fullscreen world map (JourneyMap or Xaero), when the matching toggle is on:
 
 - Pins use the stroke color.
 - Place labels are a small diamond and one line in the stroke color.
@@ -206,18 +206,17 @@ Civ+ relic maps are inventory items named "Treasure Map" whose lore names the re
 
 While a located map is in your inventory, including inside a bundle or container in that inventory:
 
-- Xaero's World Map (Overworld) draws the relic icon, name, and enchantment, or block coordinates when there is no enchantment.
-- JourneyMap draws the same scan as a marker.
+- The fullscreen world map (JourneyMap or Xaero, Overworld) draws the relic icon, name, and enchantment, or block coordinates when there is no enchantment.
 - Within **Relic pin range** (default 300 blocks, Overworld), the HUD pins that column with name, enchantment, and distance, including an edge marker when it is off screen.
 - **Sort chest maps**, on by default, orders those maps from closest to furthest when you open a chest, barrel, ender chest, or shulker. Other items stay put.
 
-Nothing here is written as a Xaero waypoint, and nothing is drawn on the minimap.
+Nothing here is written as a JourneyMap or Xaero waypoint, and nothing is drawn on either minimap.
 
 ### Relic library
 
 With Chest Tracker installed, its screen grows a **Relic maps** button beside the dimension switches. The library lists treasure maps Chest Tracker has seen: relic name, enchantment, and coordinates. Search matches either the name or the enchantment. You can deselect one map or every map.
 
-**Show on map** opens Xaero's World Map with that selection. Those pins exist only for that visit. **Show chests** asks Where Is It to highlight the chests that hold the selection. Those highlights are Overworld coordinates, and they are drawn only during the library visit.
+**Show on map** opens the fullscreen world map with that selection: Xaero's World Map when it is installed and its switch is on, otherwise JourneyMap. Click a pin to select or deselect it, Shift-drag to lasso several, and right-click a pin for **Show chests**. Closing the map returns to the library. Those pins exist only for that visit. **Show chests** asks Where Is It to highlight the chests that hold the selection. Those highlights are Overworld coordinates, and they are drawn only during the library visit.
 
 ### Coverage
 

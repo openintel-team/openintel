@@ -1,5 +1,6 @@
 package dev.openintel.xaero;
 
+import dev.openintel.map.MapMarker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
@@ -26,7 +27,7 @@ import java.util.Set;
 
 /**
  * Reads relic-map targets out of the local inventory. Markers last only while
- * the map item is carried; nothing is written into Xaero.
+ * the map item is carried; nothing is written into either world-map mod.
  */
 public final class RelicMapScanner {
     private static final Map<Integer, RelicMapMath.CenterLock> centers = new HashMap<>();
