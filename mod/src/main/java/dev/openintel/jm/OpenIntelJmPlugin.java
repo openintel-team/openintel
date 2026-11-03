@@ -18,6 +18,12 @@ public class OpenIntelJmPlugin implements IClientPlugin {
     @Override
     public void initialize(IClientAPI api) {
         OpenIntelClient.jmTick = new JmBridge(api);
+        try {
+            JmLibraryMap.initialize();
+        } catch (Throwable error) {
+            org.slf4j.LoggerFactory.getLogger("openintel")
+                    .warn("JourneyMap relic library events unavailable", error);
+        }
         // Legacy cleanup: relics used to be persistent waypoints — sweep
         // any left in JM's store; they're MarkerOverlays now.
         try {

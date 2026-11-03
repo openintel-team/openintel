@@ -86,16 +86,16 @@ Artifacts expire after **30 days**. These are development builds; CI does not ve
 
 - Civ+ treasure maps ("Treasure Map") in your inventory are scanned locally;
   no relay or world/loot scanning is involved.
-- On Xaero's World Map (Overworld), each located mark uses the relic's icon and
-  is labeled with the relic name and enchantment (or block coordinates when
-  there is no enchantment). JourneyMap gets the same inventory scan as gold
-  markers. Within 100 horizontal blocks, the HUD also pins a label on that
+- On the fullscreen world map (JourneyMap or Xaero's World Map, Overworld),
+  each located mark uses the relic's icon and is labeled with the relic name
+  and enchantment (or block coordinates when there is no enchantment). Within
+  100 horizontal blocks, the HUD also pins a label on that
   column (name, enchantment, distance), including an edge marker when off screen.
 - Opening a chest, barrel, ender chest, or shulker can arrange located relic
   maps from closest to furthest through normal container clicks; other items
   stay put (toggle under Integrations).
-- Markers last only while the map item is carried. They are not saved waypoints
-  and do not appear on Xaero's Minimap.
+- Markers last only while the map item is carried. They are not written as
+  JourneyMap or Xaero waypoints and do not appear on either minimap.
 
 ### Radar and shared pings
 
@@ -109,7 +109,9 @@ Artifacts expire after **30 days**. These are development builds; CI does not ve
   their real item sprites.
 - Player contacts are limited to locally loaded Minecraft entities within the
   configured radar range. Distant relay-only players remain available on world
-  markers and map integrations, but do not crowd the radar rim.
+  markers and map integrations, but do not crowd the radar rim. Xaero's map
+  draws every relay player, at the live position once that player is loaded.
+  JourneyMap leaves loaded players to its own radar and draws only the rest.
 - Nearby contact names have transparent backgrounds and bounded, blip-relative
   collision placement. Crowded extras use a `+N more` indicator while blips remain visible.
 - Shared pings can still pin to the radar rim, preserving their bearing.
@@ -118,15 +120,17 @@ Artifacts expire after **30 days**. These are development builds; CI does not ve
 
 ### JourneyMap integration (optional)
 
-- When JourneyMap is installed, relay player positions, snitch hits, shared
-  pings, and compatible relic-map targets appear on its fullscreen map
-  (the `J` key). Relics are gold; other markers use their allegiance/ping colors.
-- Labels show player names, snitch/tripper details, ping labels/senders, or
-  relic names. OpenIntel-owned labels follow the font choice without changing
-  JourneyMap's own labels. Moving markers and lifecycle removals reconcile automatically.
+- When JourneyMap is installed, its fullscreen map (the `J` key) draws the
+  same markers as Xaero's World Map: allegiance-colored player circles,
+  outlined diamonds for snitches and pings, CivWiki relic icons, War Table
+  pins, place labels, and sanctuary names, with two-line labels. Built against
+  JourneyMap API 2.0.0-26.1.
+- OpenIntel-owned labels follow the font choice without changing JourneyMap's
+  own labels. Moving markers and lifecycle removals reconcile automatically.
 - Strictly optional: JourneyMap is never required and nothing changes for
-  clients without it. Toggle under `/oi settings` → Integrations →
-  *JourneyMap fullscreen markers*. OpenIntel's own rendering is untouched.
+  clients without it. A mismatched build disables the overlay. Toggle under
+  `/oi settings` → Integrations → World map → *JourneyMap*. OpenIntel's own
+  rendering is untouched.
 
 ### Xaero's World Map integration (optional)
 
@@ -140,9 +144,20 @@ Artifacts expire after **30 days**. These are development builds; CI does not ve
   dimension switcher filters them correctly. Nothing is written as Xaero
   waypoints, and the Minimap is untouched.
 - Strictly optional: OpenIntel does not require Xaero's World Map, and a
-  version mismatch simply disables the overlay. Toggles under `/oi settings`
-  → Integrations (*Xaero World Map markers*, *Relic maps*) and War Table
-  (*War Table pins on the world map*).
+  version mismatch simply disables the overlay. Toggle under `/oi settings`
+  → Integrations → World map → *Xaero's World Map*.
+
+### Shared world-map settings
+
+- Under `/oi settings` → Integrations → World map, the JourneyMap and Xaero's
+  World Map switches turn each map on or off. *Intel markers*, *Relic maps*,
+  and the three War Table world-map toggles (pins, place labels, sanctuary
+  names) apply to both maps.
+- The relic library's **Show on map** opens Xaero's World Map when it is
+  installed and its switch is on, otherwise JourneyMap. Click a pin to select
+  or deselect it, Shift-drag to lasso several, and right-click a pin for
+  **Show chests**. Closing the map returns to the library. Those pins exist
+  only for that visit.
 
 ### Movable HUD
 

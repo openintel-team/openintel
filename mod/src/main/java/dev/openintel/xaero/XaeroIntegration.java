@@ -1,5 +1,6 @@
 package dev.openintel.xaero;
 
+import dev.openintel.map.MapMarker;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.LoggerFactory;

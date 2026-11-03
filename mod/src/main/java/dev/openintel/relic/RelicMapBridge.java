@@ -1,41 +1,56 @@
 package dev.openintel.relic;
 
+import dev.openintel.OpenIntelClient;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.world.entity.Entity;
-import xaero.map.MapProcessor;
-import xaero.map.WorldMapSession;
-import xaero.map.gui.GuiMap;
+import org.slf4j.LoggerFactory;
 
 /**
- * Opens Xaero's fullscreen world map for a library visit. Soft-fails when Xaero
- * is not present.
+ * Picks the fullscreen map for a library visit: Xaero's World Map when it is
+ * installed and its switch is on, otherwise JourneyMap. A map whose OpenIntel
+ * switch is off is skipped, because it would not draw the library pins. This
+ * class names neither mod's types; each adapter loads only after its mod is
+ * confirmed present.
  */
 public final class RelicMapBridge {
+    private static boolean warned;
+
     private RelicMapBridge() { }
 
-    public static boolean available() {
+    public static boolean xaeroLoaded() {
         return FabricLoader.getInstance().isModLoaded("xaeroworldmap");
     }
 
-    public static boolean openMap(Screen parent, double focusX, double focusZ, double userScale) {
-        if (!available()) return false;
-        Minecraft client = Minecraft.getInstance();
-        if (client == null || client.player == null) return false;
-        WorldMapSession session = WorldMapSession.getCurrentSession();
-        if (session == null || !session.isUsable()) return false;
-        MapProcessor processor = session.getMapProcessor();
-        if (processor == null) return false;
-        Entity camera = client.getCameraEntity();
-        if (camera == null) camera = client.player;
+    public static boolean journeyMapLoaded() {
+        return FabricLoader.getInstance().isModLoaded("journeymap");
+    }
 
-        GuiMap map = new GuiMap(parent, parent, processor, camera);
-        client.setScreen(map);
-        // Mark the visit after setScreen so a prior GuiMap.removed() cannot clear it.
-        RelicLibraryVisit visit = RelicLibraryVisit.current();
-        if (visit != null) visit.beginMapVisit();
-        GuiMapCamera.apply(map, focusX, focusZ, userScale);
-        return true;
+    private static boolean xaeroUsable() {
+        var cfg = OpenIntelClient.config();
+        return xaeroLoaded() && (cfg == null || cfg.xaeroWorldMap);
+    }
+
+    private static boolean journeyMapUsable() {
+        var cfg = OpenIntelClient.config();
+        return journeyMapLoaded() && (cfg == null || cfg.jmMarkers);
+    }
+
+    public static boolean available() {
+        return xaeroUsable() || journeyMapUsable();
+    }
+
+    public static boolean openMap(Screen parent, double focusX, double focusZ, double userScale) {
+        try {
+            if (xaeroUsable() && dev.openintel.xaero.XaeroLibraryMap.open(parent, focusX, focusZ, userScale)) {
+                return true;
+            }
+            if (journeyMapUsable()) return dev.openintel.jm.JmLibraryMap.open(parent, focusX, focusZ);
+        } catch (LinkageError | RuntimeException error) {
+            if (!warned) {
+                warned = true;
+                LoggerFactory.getLogger("openintel").warn("Relic library could not open the world map", error);
+            }
+        }
+        return false;
     }
 }

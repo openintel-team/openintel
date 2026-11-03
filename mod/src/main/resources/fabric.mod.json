@@ -4,7 +4,7 @@
   "version": "${version}",
   "name": "OpenIntel",
   "icon": "assets/openintel/icon.png",
-  "description": "OpenIntel provides direct fullscreen Xaero World Map integration, relic maps and library, block-aligned coverage, log investigation, and shared relay intelligence.",
+  "description": "OpenIntel shares relay intelligence and draws it, relic maps and the relic library, and War Table names on the fullscreen map of JourneyMap or Xaero's World Map. It also provides block-aligned coverage and log investigation.",
   "authors": ["OpenIntel contributors"],
   "license": "MIT",
   "environment": "client",
@@ -28,6 +28,7 @@
     "modmenu": "*",
     "chesttracker": "*",
     "whereisit": "*",
+    "journeymap": "*",
     "xaeroworldmap": "*"
   }
 }

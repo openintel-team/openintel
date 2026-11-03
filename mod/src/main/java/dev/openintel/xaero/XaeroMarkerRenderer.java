@@ -1,21 +1,16 @@
 package dev.openintel.xaero;
 
 import dev.openintel.OpenIntelClient;
-import dev.openintel.ping.PingManager;
-import dev.openintel.relic.RelicLibraryEntry;
-import dev.openintel.relic.RelicLibraryModel;
+import dev.openintel.map.MapMarker;
+import dev.openintel.map.MapMarkerSource;
+import dev.openintel.map.MapMarkerStyle;
+import dev.openintel.map.WarTableMapMarkers;
+import dev.openintel.relic.LibraryMapInput;
 import dev.openintel.relic.RelicLibraryVisit;
-import dev.openintel.relic.RelicWhereIsIt;
 import dev.openintel.render.UiFont;
-import dev.openintel.tracker.Tracker;
-import dev.openintel.wartable.Sanctuaries;
-import dev.openintel.wartable.WarTable;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.resources.Identifier;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.phys.Vec3;
 import net.minecraft.client.renderer.MultiBufferSource;
 import xaero.lib.client.graphics.XaeroRenderType;
 import xaero.map.WorldMap;
@@ -26,18 +21,19 @@ import xaero.map.gui.IRightClickableElement;
 import xaero.map.gui.dropdown.rightclick.RightClickOption;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
-/** Uses Xaero's map element API; independent of Xaero's Minimap and saved waypoints. */
+/**
+ * Uses Xaero's map element API; independent of Xaero's Minimap and saved waypoints.
+ * Markers and their look come from {@link MapMarkerSource} and {@link MapMarkerStyle}.
+ */
 final class XaeroMarkerRenderer extends ElementRenderer<MapMarker, XaeroMarkerRenderer.Context, XaeroMarkerRenderer> {
     static final class Context {
         List<MapMarker> markers = List.of();
         Iterator<MapMarker> iterator = markers.iterator();
+        Set<String> selectedSites = Set.of();
         final List<MapMarker> drawn = new ArrayList<>();
     }
 
@@ -61,141 +57,24 @@ final class XaeroMarkerRenderer extends ElementRenderer<MapMarker, XaeroMarkerRe
     @Override public void preRender(ElementRenderInfo info, MultiBufferSource.BufferSource buffers,
                                     MultiTextureRenderTypeRendererProvider textures, boolean shadow) {
         context.markers = snapshot(info.mapDimension == null ? null : info.mapDimension.identifier().toString());
+        context.selectedSites = MapMarkerSource.selectedLibrarySites(RelicLibraryVisit.current());
         XaeroIntegration.lastRendered = List.of();
         XaeroIntegration.hoveredLibrarySite = null;
         context.drawn.clear();
         XaeroIntegration.frames++;
     }
 
+    /** Shared marker list, narrowed to the dimension Xaero is showing. */
     private static List<MapMarker> snapshot(String dimension) {
-        var client = Minecraft.getInstance();
         var cfg = OpenIntelClient.config();
-        if (client.level == null || cfg == null) {
-            RelicMapScanner.clear();
-            return List.of();
-        }
+        if (cfg != null && !cfg.xaeroWorldMap) return List.of();
         long now = System.currentTimeMillis();
         List<MapMarker> result = new ArrayList<>();
-        var tracker = OpenIntelClient.tracker();
-        if (cfg.xaeroMarkers && tracker != null) {
-            addSharedPlayers(result, tracker, client, dimension, now, cfg.staleAfterMs);
-            for (var h : tracker.snitchHits()) {
-                MapMarker marker = new MapMarker("snitch:" + h.player + "@" + h.snitch,
-                        h.x, h.y, h.z, h.dimension,
-                        OpenIntelClient.allegiances().of(h.player).argb | 0xFF000000,
-                        "Snitch: " + h.snitch, h.player + " (via " + h.reporter + ")",
-                        h.t + cfg.snitchMarkerSeconds * 1000L);
-                if (marker.visibleIn(dimension, now)) result.add(marker);
-            }
-            for (var p : PingManager.active()) {
-                MapMarker marker = new MapMarker("ping:" + p.id, p.x, p.y, p.z, p.dimension,
-                        p.color | 0xFF000000, "Ping: " + p.label, p.sender, p.expiresAt);
-                if (marker.visibleIn(dimension, now)) result.add(marker);
-            }
-        }
-        if (cfg.xaeroRelicMaps) {
-            for (var marker : RelicMapScanner.markers(client)) {
-                if (marker.visibleIn(dimension, now)) result.add(marker);
-            }
-        }
-        addLibraryRelics(result, dimension, now);
-        if (RelicMapMath.OVERWORLD.equals(dimension)
-                && (cfg.warTablePinWorldMap || cfg.warTableLabelWorldMap || cfg.warTableSanctuaryWorldMap)) {
-            if (cfg.warTableSanctuaryWorldMap) Sanctuaries.ensureLoaded();
-            WarTableMapMarkers.add(result, WarTable.waypointStrokes(),
-                    cfg.warTableSanctuaryWorldMap ? Sanctuaries.all() : List.of(),
-                    cfg.warTablePinWorldMap, cfg.warTableLabelWorldMap);
+        for (MapMarker marker : MapMarkerSource.all(Minecraft.getInstance(), cfg, now,
+                MapMarkerSource.PlayerMode.LIVE_POSITIONS)) {
+            if (marker.visibleIn(dimension, now)) result.add(marker);
         }
         return List.copyOf(result);
-    }
-
-    /**
-     * Located Chest Tracker relics only while the map was opened from the relic
-     * library (mapVisit). Normal world-map opens stay clear of the library.
-     * Sites are Overworld coords regardless of which memory key held the map.
-     */
-    private static void addLibraryRelics(List<MapMarker> result, String dimension, long now) {
-        RelicLibraryVisit visit = RelicLibraryVisit.current();
-        if (visit == null || !visit.isMapVisit() || visit.entries().isEmpty()) return;
-        if (dimension != null && !RelicMapMath.OVERWORLD.equals(dimension)) return;
-
-        Set<String> selectedSites = new HashSet<>();
-        for (RelicLibraryEntry entry : visit.selectedEntries()) {
-            if (entry.located()) selectedSites.add(entry.siteKey());
-        }
-        for (RelicLibraryEntry pin : RelicLibraryModel.sitePins(visit.entries())) {
-            if (!pin.located()) continue;
-            boolean selected = selectedSites.contains(pin.siteKey());
-            int color = selected ? 0xFF7CFF4A : RelicMapMath.COLOR;
-            String subtitle = pin.enchantment().isEmpty()
-                    ? pin.siteX() + ", " + pin.siteZ()
-                    : pin.enchantment();
-            MapMarker marker = new MapMarker(
-                    "relic:library:" + pin.siteKey(),
-                    pin.siteX() + 0.5, RelicMapMath.MARKER_Y, pin.siteZ() + 0.5,
-                    RelicMapMath.OVERWORLD,
-                    color, pin.title(), subtitle, Long.MAX_VALUE);
-            if (marker.visibleIn(dimension, now)) result.add(marker);
-        }
-    }
-
-    private static void showChestsForMarker(MapMarker marker) {
-        RelicLibraryVisit visit = RelicLibraryVisit.current();
-        if (visit == null) return;
-        List<ItemStack> stacks = new ArrayList<>();
-        List<Object> selected = visit.selectedStacks();
-        if (!selected.isEmpty()) {
-            for (Object raw : selected) {
-                if (raw instanceof ItemStack stack) stacks.add(stack);
-            }
-        } else if (marker.id().startsWith("relic:library:")) {
-            String site = marker.id().substring("relic:library:".length());
-            for (RelicLibraryEntry entry : visit.entries()) {
-                if (!site.equals(entry.siteKey())) continue;
-                Object raw = visit.stackById().get(entry.id());
-                if (raw instanceof ItemStack stack) stacks.add(stack);
-            }
-        }
-        RelicWhereIsIt.showChests(stacks);
-    }
-
-    /** Relay positions for the dimension the map is showing. Live entities win over the last report. */
-    private static void addSharedPlayers(List<MapMarker> result, Tracker tracker, Minecraft client,
-                                         String dimension, long now, int staleAfterMs) {
-        boolean viewingHere = dimension != null
-                && dimension.equals(client.level.dimension().identifier().toString());
-        Map<String, AbstractClientPlayer> loaded = new HashMap<>();
-        if (viewingHere) {
-            for (AbstractClientPlayer entity : client.level.players()) {
-                loaded.put(entity.getGameProfile().name(), entity);
-            }
-        }
-        String self = client.player == null ? null : client.player.getGameProfile().name();
-        Vec3 selfPos = viewingHere && client.player != null ? client.player.position() : null;
-        float tickDelta = client.getDeltaTracker().getGameTimeDeltaPartialTick(false);
-        for (Tracker.RemotePlayer player : tracker.all()) {
-            if (player.name.equalsIgnoreCase(self)) continue;
-            double x = player.x;
-            double y = player.y;
-            double z = player.z;
-            AbstractClientPlayer entity = loaded.get(player.name);
-            if (entity != null) {
-                Vec3 live = entity.getPosition(tickDelta);
-                x = live.x;
-                y = live.y;
-                z = live.z;
-            }
-            String via = player.reporter == null || player.reporter.isBlank() ? "" : "via " + player.reporter;
-            String label = via;
-            if (selfPos != null && dimension.equals(player.dimension)) {
-                long meters = Math.round(Math.hypot(selfPos.x - x, selfPos.z - z));
-                label = via.isEmpty() ? meters + "m" : meters + "m " + via;
-            }
-            int color = OpenIntelClient.allegiances().of(player.name).argb | 0xFF000000;
-            MapMarker marker = new MapMarker("player:" + player.name, x, y, z, player.dimension,
-                    color, player.name, label, player.lastSeen + staleAfterMs);
-            if (marker.visibleIn(dimension, now)) result.add(marker);
-        }
     }
 
     @Override public void postRender(ElementRenderInfo info, MultiBufferSource.BufferSource buffers,
@@ -210,43 +89,47 @@ final class XaeroMarkerRenderer extends ElementRenderer<MapMarker, XaeroMarkerRe
     @Override public boolean renderElement(MapMarker marker, boolean hovered, double depth, float scale,
             double offsetX, double offsetZ, ElementRenderInfo info, MapElementGraphics graphics,
             MultiBufferSource.BufferSource buffers, MultiTextureRenderTypeRendererProvider textures) {
-        if (hovered && marker.id().startsWith("relic:library:") && RelicLibraryVisit.mapVisitActive()) {
-            XaeroIntegration.hoveredLibrarySite = marker.id().substring("relic:library:".length());
+        String site = MapMarkerStyle.librarySite(marker);
+        if (hovered && site != null && RelicLibraryVisit.mapVisitActive()) {
+            XaeroIntegration.hoveredLibrarySite = site;
         }
+        MapMarkerStyle.Style style = MapMarkerStyle.of(marker, site != null && context.selectedSites.contains(site));
         var pose = graphics.pose();
         pose.pushPose();
         try {
             pose.translate(offsetX, offsetZ, depth);
             pose.scale(scale, scale, 1);
-            if (WarTableMapMarkers.nameMarker(marker)) {
-                drawNameMarker(graphics, marker.argb(), marker.title());
+            if (style.shape() == MapMarkerStyle.Shape.NAME_DIAMOND) {
+                drawNameMarker(graphics, style.argb(), style.title());
             } else {
                 final int textTop;
-                if (marker.id().startsWith("relic:")) {
-                    boolean selected = marker.id().startsWith("relic:library:")
-                            && RelicLibraryVisit.current() != null
-                            && RelicLibraryVisit.current().selectedEntries().stream()
-                            .anyMatch(e -> e.located()
-                                    && marker.id().equals("relic:library:" + e.siteKey()));
-                    if (selected) {
-                        graphics.fill(-11, -11, 11, 11, 0xA07CFF4A);
+                switch (style.shape()) {
+                    case RELIC, CROSS -> {
+                        if (style.selected()) {
+                            graphics.fill(-11, -11, 11, 11, MapMarkerStyle.SELECTED_FILL);
+                        }
+                        if (style.shape() == MapMarkerStyle.Shape.RELIC) {
+                            drawRelicIcon(graphics, style.relicTexture(), style.relicSize());
+                        } else {
+                            drawCross(graphics, style.argb());
+                        }
+                        textTop = 10;
                     }
-                    drawRelicIcon(graphics, marker.title(), marker.argb());
-                    textTop = 10;
-                } else if (marker.id().startsWith("player:")) {
-                    drawCircle(graphics, marker.argb());
-                    textTop = 8;
-                } else {
-                    drawDiamond(graphics, marker.argb());
-                    textTop = 8;
+                    case CIRCLE -> {
+                        drawCircle(graphics, style.argb());
+                        textTop = 8;
+                    }
+                    default -> {
+                        drawDiamond(graphics, style.argb());
+                        textTop = 8;
+                    }
                 }
                 label(() -> {
                     var font = Minecraft.getInstance().font;
-                    String caption = marker.label() == null ? "" : marker.label();
-                    int width = Math.max(font.width(marker.title()), font.width(caption));
+                    int width = Math.max(font.width(style.title()), font.width(style.caption()));
                     graphics.fill(-width / 2 - 3, textTop, (width + 1) / 2 + 3, textTop + 22, 0xB0101014);
-                    graphics.drawCenteredString(font, marker.title(), 0, textTop + 2, marker.argb());
-                    graphics.drawCenteredString(font, caption, 0, textTop + 12, 0xFFFFFFFF);
+                    graphics.drawCenteredString(font, style.title(), 0, textTop + 2, style.argb());
+                    graphics.drawCenteredString(font, style.caption(), 0, textTop + 12, 0xFFFFFFFF);
                 });
             }
             graphics.flush();
@@ -309,18 +192,13 @@ final class XaeroMarkerRenderer extends ElementRenderer<MapMarker, XaeroMarkerRe
         }
     }
 
-    private static void drawRelicIcon(MapElementGraphics graphics, String title, int argb) {
-        RelicCatalog.Relic relic = RelicCatalog.find(title);
-        if (relic == null) {
-            drawCross(graphics, argb);
-            return;
-        }
-        var texture = Identifier.fromNamespaceAndPath("openintel", "textures/relic/" + relic.texture());
+    private static void drawRelicIcon(MapElementGraphics graphics, String texture, int size) {
+        var id = Identifier.fromNamespaceAndPath("openintel", "textures/relic/" + texture);
         graphics.fill(-9, -9, 9, 9, 0xC0101014);
         // RP_POSITION_TEX_ALPHA needs a discard-alpha uniform that is unset during
         // world-map extract and crashes. The translucent color+texture pipeline is
         // the one Xaero uses for its own map icons.
-        graphics.blit(texture, -8, -8, 0, relic.size(), 16, 16, relic.size(), 0, relic.size(),
+        graphics.blit(id, -8, -8, 0, size, 16, 16, size, 0, size,
                 XaeroRenderType.RP_POSITION_COLOR_TEX_TRANSLUCENT);
     }
 
@@ -384,7 +262,7 @@ final class XaeroMarkerRenderer extends ElementRenderer<MapMarker, XaeroMarkerRe
             options.add(new RightClickOption("openintel.relic.library.show_chests", 0, target) {
                 @Override
                 public void onAction(Screen screen) {
-                    showChestsForMarker(marker);
+                    LibraryMapInput.showChests(RelicLibraryVisit.current(), MapMarkerStyle.librarySite(marker));
                 }
             });
             return options;
