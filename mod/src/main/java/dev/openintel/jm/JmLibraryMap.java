@@ -19,6 +19,7 @@ import net.minecraft.core.BlockPos;
 import org.slf4j.LoggerFactory;
 
 import java.awt.geom.Point2D;
+import java.util.function.BooleanSupplier;
 
 /**
  * Relic-library map visit on JourneyMap's fullscreen map, with the same
@@ -31,9 +32,9 @@ import java.awt.geom.Point2D;
  * reports that the map could not open and logs one warning.
  *
  * <p>JourneyMap fires a PRE drag event only while it is not panning, and
- * fires no release event for a drag it never started. A cancelled shift-press
- * therefore keeps receiving drag events, and the release is seen in the render
- * event as the left button going up.
+ * fires no release event for a drag it never started. A cancelled left press
+ * (a pin click or a shift lasso) therefore keeps receiving drag events, and
+ * the release is seen in the render event as the left button going up.
  */
 public final class JmLibraryMap {
     static final String UI_MANAGER = "journeymap.client.ui.UIManager";
@@ -140,35 +141,34 @@ public final class JmLibraryMap {
         return was;
     }
 
-    /** Hover, click, and "Show chests" for one library pin. */
-    static IOverlayListener pinListener(String site) {
+    /**
+     * Hover and "Show chests" for one library pin; left clicks are taken in
+     * {@link #onClick} from {@link #hoveredSite}. JourneyMap 6.0.0 keeps
+     * sending events to a removed overlay's listener, ahead of the overlay now
+     * under the mouse; once {@code live} is false this listener ignores them.
+     */
+    static IOverlayListener pinListener(String site, BooleanSupplier live) {
         return new IOverlayListener() {
             @Override
             public void onMouseMove(UIState state, Point2D.Double mouse, BlockPos block) {
-                if (active()) hoveredSite = site;
+                if (active() && live.getAsBoolean()) hoveredSite = site;
             }
 
             @Override
             public void onMouseOut(UIState state, Point2D.Double mouse, BlockPos block) {
-                if (site.equals(hoveredSite)) hoveredSite = null;
+                if (live.getAsBoolean() && site.equals(hoveredSite)) hoveredSite = null;
             }
 
             @Override
             public boolean onMouseClick(UIState state, Point2D.Double mouse, BlockPos block, int button, boolean doubleClick) {
-                if (!active() || button != InputConstants.MOUSE_BUTTON_LEFT) return true;
-                Minecraft client = Minecraft.getInstance();
-                if (client.hasShiftDown()) return true;
-                if (client.player != null) {
-                    LibraryMapInput.click(RelicLibraryVisit.current(), site,
-                            RelicCarryHint.freeSlots(client.player), client.player.getX(), client.player.getZ());
-                }
-                dirty = true;
-                return false;
+                // Left clicks on a pin are taken in onClick from hoveredSite. One that
+                // reaches here missed every pin, so it must not toggle this one.
+                return true;
             }
 
             @Override
             public void onOverlayMenuPopup(UIState state, Point2D.Double mouse, BlockPos block, ModPopupMenu menu) {
-                if (!active()) return;
+                if (!active() || !live.getAsBoolean() || !site.equals(hoveredSite)) return;
                 menu.addMenuItem(I18n.get("openintel.relic.library.show_chests"), pos -> {
                     // Where Is It closes the map to show the highlights; stay in the world.
                     returnTo = null;
@@ -182,18 +182,19 @@ public final class JmLibraryMap {
         return visitOpen && RelicLibraryVisit.mapVisitActive();
     }
 
-    /** Shift + left press starts a lasso, or a shift-click on the hovered pin. */
+    /** Left press on a pin (plain or shift), or a shift lasso, from the hovered pin OpenIntel tracks. */
     private static void onClick(FullscreenMapEvent.ClickEvent event) {
         try {
             if (!active() || event.getStage() != FullscreenMapEvent.Stage.PRE) return;
             if (event.getButton() != InputConstants.MOUSE_BUTTON_LEFT) return;
             Minecraft client = Minecraft.getInstance();
-            if (!client.hasShiftDown()) return;   // plain pin clicks arrive through the overlay listener
             BlockPos at = event.getLocation();
             if (at == null) return;
             lastWorldX = at.getX();
             lastWorldZ = at.getZ();
-            if (input.press(RelicLibraryVisit.current(), true, hoveredSite, lastWorldX, lastWorldZ,
+            // JourneyMap 6.0.0 hands overlay clicks to stale hover entries, so plain
+            // pin clicks use hoveredSite too and never reach its overlay layer.
+            if (input.press(RelicLibraryVisit.current(), client.hasShiftDown(), hoveredSite, lastWorldX, lastWorldZ,
                     guiMouseX(client), guiMouseY(client))) {
                 event.cancel();   // keeps JourneyMap from starting a pan
             }

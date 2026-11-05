@@ -1,7 +1,6 @@
 package dev.openintel.jm;
 
 import dev.openintel.OpenIntelClient;
-import dev.openintel.map.MapMarker;
 import dev.openintel.map.MapMarkerSource;
 import dev.openintel.map.MapMarkerStyle;
 import dev.openintel.relic.RelicLibraryVisit;
@@ -32,9 +31,6 @@ import java.util.Set;
  * written as a waypoint.
  */
 final class JmBridge implements Runnable {
-
-    /** Wanted overlay: the marker, its look, and the key that triggers a rebuild. */
-    private record Desired(MapMarker marker, MapMarkerStyle.Style style, String sig) { }
 
     private final IClientAPI api;
     private final JmIcons icons = new JmIcons();
@@ -74,15 +70,13 @@ final class JmBridge implements Runnable {
 
     private void sync() throws Exception {
         var cfg = OpenIntelClient.config();
-        Map<String, Desired> want = new LinkedHashMap<>();
+        Map<String, JmOverlayPlan.Entry> want = new LinkedHashMap<>();
         if (cfg != null && cfg.jmMarkers) {
             long now = System.currentTimeMillis();
             Set<String> selected = MapMarkerSource.selectedLibrarySites(RelicLibraryVisit.current());
-            for (MapMarker marker : MapMarkerSource.all(Minecraft.getInstance(), cfg, now,
-                    MapMarkerSource.PlayerMode.SKIP_LOADED)) {
-                String site = MapMarkerStyle.librarySite(marker);
-                MapMarkerStyle.Style style = MapMarkerStyle.of(marker, site != null && selected.contains(site));
-                want.put(marker.id(), new Desired(marker, style, MapMarkerStyle.signature(marker, style)));
+            for (JmOverlayPlan.Entry entry : JmOverlayPlan.plan(MapMarkerSource.all(Minecraft.getInstance(), cfg, now,
+                    MapMarkerSource.PlayerMode.SKIP_LOADED), selected)) {
+                want.put(entry.key(), entry);
             }
         }
 
@@ -97,30 +91,34 @@ final class JmBridge implements Runnable {
             }
         }
 
-        // Add new markers; recreate any whose position or look changed.
-        for (Map.Entry<String, Desired> e : want.entrySet()) {
-            Desired d = e.getValue();
-            if (d.sig.equals(sigs.get(e.getKey()))) continue;
-            MarkerOverlay old = shown.remove(e.getKey());
-            sigs.remove(e.getKey());
-            if (old != null) removeQuietly(old);
-            MarkerOverlay overlay = show(d);
-            if (overlay != null) {
+        // Add new markers; recreate any whose position or look changed. A
+        // selection change only flips which of a library pin's two overlays is visible.
+        for (Map.Entry<String, JmOverlayPlan.Entry> e : want.entrySet()) {
+            JmOverlayPlan.Entry d = e.getValue();
+            MarkerOverlay overlay = shown.get(e.getKey());
+            if (overlay == null || !d.sig().equals(sigs.get(e.getKey()))) {
+                shown.remove(e.getKey());
+                sigs.remove(e.getKey());
+                if (overlay != null) removeQuietly(overlay);
+                overlay = show(e.getKey(), d);
+                if (overlay == null) continue;
                 shown.put(e.getKey(), overlay);
-                sigs.put(e.getKey(), d.sig);
+                sigs.put(e.getKey(), d.sig());
+            } else {
+                setVisible(overlay, d.visible());
             }
         }
     }
 
-    private MarkerOverlay show(Desired d) throws Exception {
+    private MarkerOverlay show(String key, JmOverlayPlan.Entry d) throws Exception {
         ResourceKey<Level> dim;
         try {
-            dim = ResourceKey.create(Registries.DIMENSION, Identifier.parse(d.marker.dimension()));
+            dim = ResourceKey.create(Registries.DIMENSION, Identifier.parse(d.marker().dimension()));
         } catch (Exception e) {
             return null;   // a custom world id that is not a resource location — skip
         }
-        MapMarkerStyle.Style style = d.style;
-        BlockPos pos = BlockPos.containing(d.marker.x(), d.marker.y(), d.marker.z());
+        MapMarkerStyle.Style style = d.style();
+        BlockPos pos = BlockPos.containing(d.marker().x(), d.marker().y(), d.marker().z());
         MarkerOverlay overlay = new MarkerOverlay("openintel", pos, icons.image(style));
         // JourneyMap splits overlay text on newlines: title, then caption.
         String text = style.text("\n");
@@ -137,10 +135,31 @@ final class JmBridge implements Runnable {
                 .setBackgroundOpacity(0.6f)
                 .setScale(1.0f)
                 .setOffsetY(JmIcons.textOffset(style.shape())));
-        String site = MapMarkerStyle.librarySite(d.marker);
-        if (site != null) overlay.setOverlayListener(JmLibraryMap.pinListener(site));
+        if (d.site() != null) {
+            // JourneyMap 6.0.0 keeps calling a removed overlay's listener; only the shown one may act.
+            overlay.setOverlayListener(JmLibraryMap.pinListener(d.site(), () -> shown.get(key) == overlay));
+        }
+        setVisible(overlay, d.visible());
         api.show(overlay);
         return overlay;
+    }
+
+    /**
+     * Shows or hides an overlay without replacing it. A hidden overlay has an
+     * empty zoom range, so JourneyMap still lists it, stops drawing it, and
+     * clears its hover on the next mouse move.
+     */
+    private static void setVisible(MarkerOverlay overlay, boolean visible) {
+        if (visible == (overlay.getMinZoom() <= overlay.getMaxZoom())) return;
+        if (visible) {
+            overlay.setMinZoom(UIState.FULLSCREEN_ZOOM_MIN);
+            overlay.setMaxZoom(UIState.ZOOM_IN_MAX);
+        } else {
+            overlay.setMinZoom(UIState.ZOOM_IN_MAX);
+            overlay.setMaxZoom(UIState.FULLSCREEN_ZOOM_MIN);
+        }
+        // Positions are refreshed only on a rerender, and a hidden overlay skipped them.
+        overlay.flagForRerender();
     }
 
     private void removeQuietly(MarkerOverlay overlay) {

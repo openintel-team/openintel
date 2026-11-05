@@ -49,6 +49,7 @@ public final class MapParityTest {
         migration();
         migrationFromFile();
         libraryInput();
+        journeyMapPinOverlays();
         adapterWiring();
         System.out.println("MapParityTest passed");
     }
@@ -445,6 +446,115 @@ public final class MapParityTest {
         RelicLibraryVisit.clear();
     }
 
+    // ------------------------------------------------- JourneyMap overlays
+
+    /** One overlay JourneyMap was given: its key and the signature it was built from. */
+    private record Shown(String key, String sig, String site) { }
+
+    /**
+     * JourneyMap 6.0.0 (1.21.11) never drops a removed overlay from its hovered
+     * list. Selection changes must keep every pin overlay in place, even though
+     * the source recolors a selected pin.
+     */
+    private static void journeyMapPinOverlays() {
+        List<MapMarker> markers = pinMarkers(Set.of());
+        MapMarker a = markers.get(0);
+        MapMarker b = markers.get(1);
+        List<MapMarker> markersWithA = pinMarkers(Set.of("0,0"));
+        check(markersWithA.get(0).argb() != a.argb(), "the source recolors a selected pin");
+
+        List<dev.openintel.jm.JmOverlayPlan.Entry> none = dev.openintel.jm.JmOverlayPlan.plan(markers, Set.of());
+        List<dev.openintel.jm.JmOverlayPlan.Entry> withA = dev.openintel.jm.JmOverlayPlan.plan(markersWithA, Set.of("0,0"));
+        check(none.size() == 5, "two overlays per pin, one per other marker: " + none.size());
+        for (int i = 0; i < none.size(); i++) {
+            check(none.get(i).key().equals(withA.get(i).key()) && none.get(i).sig().equals(withA.get(i).sig()),
+                    "selection keeps overlay keys and signatures: " + none.get(i).key());
+        }
+        for (var plan : List.of(none, withA)) {
+            for (MapMarker pin : List.of(a, b)) {
+                String site = MapMarkerStyle.librarySite(pin);
+                List<dev.openintel.jm.JmOverlayPlan.Entry> variants = plan.stream()
+                        .filter(e -> site.equals(e.site())).toList();
+                check(variants.size() == 2 && variants.stream().filter(e -> e.visible()).count() == 1,
+                        "one visible variant for " + site);
+                var visible = variants.stream().filter(e -> e.visible()).findFirst().orElseThrow();
+                check(visible.style().selected() == (plan == withA && pin == a), "visible variant matches selection");
+            }
+        }
+        var playerEntry = none.stream().filter(e -> e.key().equals("player:Bob")).findFirst().orElseThrow();
+        check(playerEntry.visible() && playerEntry.site() == null, "plain markers are one visible overlay");
+
+        // Select A, select B, then deselect A, the way a player clicks them.
+        Set<String> selected = new HashSet<>();
+        Map<String, Shown> live = new TreeMap<>();
+        List<Shown> hovered = new ArrayList<>();
+        reconcile(live, selected);
+        hover(hovered, live, selected, "0,0");
+        click(hovered, live, selected);
+        reconcile(live, selected);
+        check(selected.equals(Set.of("0,0")), "first click selects A: " + selected);
+        hover(hovered, live, selected, "50,50");
+        click(hovered, live, selected);
+        reconcile(live, selected);
+        check(selected.equals(Set.of("0,0", "50,50")), "second pin selects B: " + selected);
+        hover(hovered, live, selected, "0,0");
+        click(hovered, live, selected);
+        reconcile(live, selected);
+        check(selected.equals(Set.of("50,50")), "clicking A deselects A only: " + selected);
+        // A second click without moving reaches the same pin.
+        click(hovered, live, selected);
+        reconcile(live, selected);
+        check(selected.equals(Set.of("0,0", "50,50")), "clicking A again reselects it: " + selected);
+    }
+
+    /** Two library pins and a player, with pins colored by selection like {@link MapMarkerSource}. */
+    private static List<MapMarker> pinMarkers(Set<String> selected) {
+        int colorA = selected.contains("0,0") ? MapMarkerStyle.SELECTED_COLOR : RelicMapMath.COLOR;
+        int colorB = selected.contains("50,50") ? MapMarkerStyle.SELECTED_COLOR : RelicMapMath.COLOR;
+        return List.of(
+                new MapMarker(MapMarkerStyle.LIBRARY_PREFIX + "0,0", 0.5, 64, 0.5, OVERWORLD,
+                        colorA, "Wish Bone", "Fortune", Long.MAX_VALUE),
+                new MapMarker(MapMarkerStyle.LIBRARY_PREFIX + "50,50", 50.5, 64, 50.5, OVERWORLD,
+                        colorB, "Pixie Dust", "Efficiency", Long.MAX_VALUE),
+                new MapMarker("player:Bob", 10, 64, 10, OVERWORLD, 0xFF00AA00, "Bob", "5m", 1));
+    }
+
+    /** JmBridge's rule: replace an overlay only when its signature changed. */
+    private static void reconcile(Map<String, Shown> live, Set<String> selected) {
+        Map<String, Shown> next = new TreeMap<>();
+        for (var entry : dev.openintel.jm.JmOverlayPlan.plan(pinMarkers(selected), selected)) {
+            Shown old = live.get(entry.key());
+            next.put(entry.key(), old != null && old.sig().equals(entry.sig())
+                    ? old : new Shown(entry.key(), entry.sig(), entry.site()));
+        }
+        live.clear();
+        live.putAll(next);
+    }
+
+    /** JourneyMap 6.0.0's refresh: only overlays it still lists can leave the hovered list. */
+    private static void hover(List<Shown> hovered, Map<String, Shown> live, Set<String> selected, String site) {
+        Map<String, Boolean> visible = new TreeMap<>();
+        for (var entry : dev.openintel.jm.JmOverlayPlan.plan(pinMarkers(selected), selected)) visible.put(entry.key(), entry.visible());
+        for (Shown shown : live.values()) {
+            boolean over = visible.get(shown.key()) && site.equals(shown.site());
+            boolean listed = hovered.stream().anyMatch(h -> h == shown);
+            if (over && !listed) hovered.add(shown);
+            if (!over) hovered.removeIf(h -> h == shown);
+        }
+    }
+
+    /**
+     * A left press toggles OpenIntel's hovered site: JourneyMap fires onMouseMove
+     * on every hovered listener in order, and the last one still shown wins.
+     */
+    private static void click(List<Shown> hovered, Map<String, Shown> live, Set<String> selected) {
+        for (Shown shown : hovered.reversed()) {
+            if (shown.site() == null || live.get(shown.key()) != shown) continue;
+            if (!selected.remove(shown.site())) selected.add(shown.site());
+            return;
+        }
+    }
+
     // ---------------------------------------------------------- adapters
 
     private static void adapterWiring() throws Exception {
@@ -452,12 +562,16 @@ public final class MapParityTest {
                 "JourneyMap reads MapMarkerSource with SKIP_LOADED");
         check(callsSource(readClass("dev/openintel/xaero/XaeroMarkerRenderer"), "LIVE_POSITIONS"),
                 "Xaero reads MapMarkerSource with LIVE_POSITIONS");
-        check(calls(readClass("dev/openintel/jm/JmBridge"), "dev/openintel/map/MapMarkerStyle", "of")
+        check(calls(readClass("dev/openintel/jm/JmOverlayPlan"), "dev/openintel/map/MapMarkerStyle", "of")
+                        && calls(readClass("dev/openintel/jm/JmBridge"), "dev/openintel/jm/JmOverlayPlan", "plan")
                         && calls(readClass("dev/openintel/xaero/XaeroMarkerRenderer"), "dev/openintel/map/MapMarkerStyle", "of"),
                 "both maps style markers through MapMarkerStyle");
         check(calls(readClass("dev/openintel/mixin/GuiMapLibraryMixin"), "dev/openintel/relic/LibraryMapInput", "press")
                         && calls(readClass("dev/openintel/jm/JmLibraryMap"), "dev/openintel/relic/LibraryMapInput", "press"),
                 "both maps share LibraryMapInput");
+        // JourneyMap 6.0.0 hands overlay clicks to stale hover entries; pin clicks use hoveredSite instead.
+        check(!calls(readClass("dev/openintel/jm/JmLibraryMap$1"), "dev/openintel/relic/LibraryMapInput", "click"),
+                "JourneyMap pin listener does not toggle selection");
 
         List<String> neutral = new ArrayList<>(classesIn("dev/openintel/map"));
         check(neutral.contains("dev/openintel/map/MapMarkerSource"), "map package classes found: " + neutral);
