@@ -229,7 +229,8 @@ public final class JmLibraryMap {
             if (input.selecting() && !client.mouseHandler.isLeftPressed()) {
                 finish(client, event.getMouseX(), event.getMouseY());
             }
-            LibraryMapOverlay.draw(event.getGraphics(), event.getFullscreen().getScreen().width);
+            LibraryMapOverlay.draw(event.getGraphics(), event.getFullscreen().getScreen().width,
+                    JmToolbarClearance.hintTop(event.getFullscreen()));
         } catch (Throwable error) {
             fail(error);
         }
