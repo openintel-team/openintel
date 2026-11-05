@@ -152,6 +152,28 @@ public final class RelicLibraryModelTest {
         assert clicks.clickRow("a", false, 0);
         assert clicks.selectedIds().isEmpty();
 
+        // Carry hint clears a map mod's top toolbar at every GUI scale.
+        assert RelicLibraryModel.carryHintTop(0, 2, 240) == RelicLibraryModel.CARRY_HINT_TOP;
+        assert RelicLibraryModel.carryHintTop(Double.NaN, 2, 240) == RelicLibraryModel.CARRY_HINT_TOP;
+        for (int scale = 1; scale <= 6; scale++) {
+            int screenHeight = 1440 / scale;
+            // JourneyMap vault theme: 10 margin, 24-unit toolbar, status line one margin below.
+            double toolbarBottomPx = (10 + 24) * scale;
+            double covered = toolbarBottomPx + 10 * scale + 15 * 1.0;
+            int top = RelicLibraryModel.carryHintTop(covered, scale, screenHeight);
+            int backingTop = top - RelicLibraryModel.CARRY_HINT_PAD_ABOVE;
+            assert backingTop * scale >= covered : "scale " + scale + " backing overlaps toolbar";
+            assert backingTop * scale - covered <= (RelicLibraryModel.CARRY_HINT_GAP + 1) * scale
+                    : "scale " + scale + " hint sits far below the toolbar";
+            assert top + RelicLibraryModel.CARRY_HINT_PAD_BELOW <= screenHeight;
+        }
+        // Fractional physical bounds round down to the next whole GUI unit, never into the toolbar.
+        int fractional = RelicLibraryModel.carryHintTop(101, 3, 300);
+        assert (fractional - RelicLibraryModel.CARRY_HINT_PAD_ABOVE) * 3 >= 101;
+        // A window too short for the toolbar keeps the hint on screen.
+        int tiny = RelicLibraryModel.carryHintTop(400, 1, 60);
+        assert tiny + RelicLibraryModel.CARRY_HINT_PAD_BELOW <= 60;
+
         System.out.println("RelicLibraryModelTest OK");
     }
 
