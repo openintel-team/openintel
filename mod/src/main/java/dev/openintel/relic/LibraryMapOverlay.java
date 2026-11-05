@@ -10,7 +10,12 @@ public final class LibraryMapOverlay {
     private LibraryMapOverlay() { }
 
     public static void draw(GuiGraphics graphics, int screenWidth) {
-        RelicCarryHint.draw(graphics, screenWidth);
+        draw(graphics, screenWidth, RelicLibraryModel.CARRY_HINT_TOP);
+    }
+
+    /** @param hintTop GUI y of the carry hint text, below any map-mod toolbar. */
+    public static void draw(GuiGraphics graphics, int screenWidth, int hintTop) {
+        RelicCarryHint.draw(graphics, screenWidth, hintTop);
         RelicLibraryVisit visit = RelicLibraryVisit.current();
         if (visit == null || !visit.isLassoDragging()) return;
         int[] r = visit.lassoScreenRect();

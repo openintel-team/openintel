@@ -15,6 +15,11 @@ public final class RelicCarryHint {
     private RelicCarryHint() { }
 
     public static void draw(GuiGraphics graphics, int screenWidth) {
+        draw(graphics, screenWidth, RelicLibraryModel.CARRY_HINT_TOP);
+    }
+
+    /** @param y GUI y of the text; see {@link RelicLibraryModel#carryHintTop}. */
+    public static void draw(GuiGraphics graphics, int screenWidth, int y) {
         RelicLibraryVisit visit = RelicLibraryVisit.current();
         if (visit == null || !visit.isMapVisit()) return;
         Minecraft client = Minecraft.getInstance();
@@ -45,9 +50,9 @@ public final class RelicCarryHint {
         String text = line.getString();
         int width = client.font.width(text);
         int x = (screenWidth - width) / 2;
-        int y = 8;
-        graphics.fill(x - 6, y - 3, x + width + 6, y + 12, 0xC0101014);
-        graphics.fill(x - 6, y - 3, x + width + 6, y - 2, color);
+        int top = y - RelicLibraryModel.CARRY_HINT_PAD_ABOVE;
+        graphics.fill(x - 6, top, x + width + 6, y + RelicLibraryModel.CARRY_HINT_PAD_BELOW, 0xC0101014);
+        graphics.fill(x - 6, top, x + width + 6, top + 1, color);
         graphics.drawString(client.font, text, x, y, color);
     }
 

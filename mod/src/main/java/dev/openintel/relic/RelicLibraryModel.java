@@ -132,6 +132,32 @@ public final class RelicLibraryModel {
         return new CarryStatus(shown, carry(shown, freeSlots));
     }
 
+    /** GUI y of the carry hint's text when nothing on the map covers the top edge. */
+    public static final int CARRY_HINT_TOP = 8;
+    /** The hint's backing starts this far above its text and ends this far below it. */
+    public static final int CARRY_HINT_PAD_ABOVE = 3;
+    public static final int CARRY_HINT_PAD_BELOW = 12;
+    /** Space left between a map mod's top-edge UI and the hint's backing. */
+    public static final int CARRY_HINT_GAP = 4;
+
+    /**
+     * GUI y for the carry hint text so its backing starts below a map mod's top UI.
+     *
+     * @param coveredBottomPx lowest physical-pixel row the map mod draws at the top
+     *                        (toolbar plus any status line under it); 0 or less when nothing is there
+     * @param guiScale        Minecraft's GUI scale (physical pixels per GUI unit)
+     * @param screenHeight    screen height in GUI units; the hint stays on screen
+     */
+    public static int carryHintTop(double coveredBottomPx, double guiScale, int screenHeight) {
+        int top = CARRY_HINT_TOP;
+        if (coveredBottomPx > 0 && Double.isFinite(coveredBottomPx) && guiScale > 0 && Double.isFinite(guiScale)) {
+            int coveredGui = (int) Math.ceil(coveredBottomPx / guiScale);
+            top = Math.max(top, coveredGui + CARRY_HINT_GAP + CARRY_HINT_PAD_ABOVE);
+        }
+        int lowest = screenHeight - CARRY_HINT_PAD_BELOW - 2;
+        return Math.max(CARRY_HINT_PAD_ABOVE, Math.min(top, lowest));
+    }
+
     private static String normalize(String raw) {
         if (raw == null) return "";
         return raw.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");

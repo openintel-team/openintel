@@ -152,7 +152,53 @@ public final class MapFontTest {
         // are Screen's method_25402 and method_25403.
         check(jmCalls(fullscreen, "method_25402", "clickEventPre"), "Fullscreen click dispatches a cancellable PRE event");
         check(jmCalls(fullscreen, "method_25403", "dragEventPre"), "Fullscreen drag dispatches a cancellable PRE event");
+        verifyJourneyMapToolbarClearance(jar, fullscreen);
         System.out.println("Installed JourneyMap fullscreen-open target verified");
+    }
+
+    /** Internals the relic carry hint reads to sit below JourneyMap's top toolbar and status line. */
+    private static void verifyJourneyMapToolbarClearance(ZipFile jar, org.objectweb.asm.tree.ClassNode fullscreen)
+            throws Exception {
+        var clearance = readClass("dev/openintel/jm/JmToolbarClearance");
+        var names = new java.util.HashSet<String>();
+        for (var method : clearance.methods) {
+            for (var insn : method.instructions) {
+                if (insn instanceof org.objectweb.asm.tree.LdcInsnNode ldc && ldc.cst instanceof String s) names.add(s);
+            }
+        }
+        check(names.containsAll(java.util.List.of("journeymap.client.ui.fullscreen.Fullscreen",
+                        "journeymap.client.JourneymapClient", "getOptionsToolbarBounds", "isButtonsVisable",
+                        "getInstance", "getFullMapProperties", "showPlayerLoc", "getFontScale")),
+                "Carry hint names the checked JourneyMap toolbar targets");
+        check(publicMethod(fullscreen, "getOptionsToolbarBounds", "()Ljava/awt/geom/Rectangle2D$Double;"),
+                "JourneyMap Fullscreen.getOptionsToolbarBounds() is public");
+        check(publicMethod(fullscreen, "isButtonsVisable", "()Z"), "JourneyMap Fullscreen.isButtonsVisable() is public");
+        var client = readJarClass(jar, "journeymap/client/JourneymapClient");
+        check(client.methods.stream().anyMatch(m -> m.name.equals("getInstance")
+                        && m.desc.equals("()Ljourneymap/client/JourneymapClient;")
+                        && (m.access & Opcodes.ACC_STATIC) != 0 && (m.access & Opcodes.ACC_PUBLIC) != 0),
+                "JourneyMap JourneymapClient.getInstance() is public static");
+        check(publicMethod(client, "getFullMapProperties", "()Ljourneymap/client/properties/FullMapProperties;"),
+                "JourneyMap getFullMapProperties() is public");
+        var properties = readJarClass(jar, "journeymap/client/properties/FullMapProperties");
+        check(properties.fields.stream().anyMatch(f -> f.name.equals("showPlayerLoc")
+                        && (f.access & Opcodes.ACC_PUBLIC) != 0),
+                "JourneyMap FullMapProperties.showPlayerLoc is public");
+        boolean fontScale = false;
+        for (String owner = properties.name; owner != null && owner.startsWith("journeymap/"); ) {
+            var node = readJarClass(jar, owner);
+            if (publicMethod(node, "getFontScale", "()F")) {
+                fontScale = true;
+                break;
+            }
+            owner = node.superName;
+        }
+        check(fontScale, "JourneyMap fullscreen properties expose public getFontScale()");
+    }
+
+    private static boolean publicMethod(org.objectweb.asm.tree.ClassNode node, String name, String desc) {
+        return node.methods.stream().anyMatch(m -> m.name.equals(name) && m.desc.equals(desc)
+                && (m.access & Opcodes.ACC_PUBLIC) != 0 && (m.access & Opcodes.ACC_STATIC) == 0);
     }
 
     private static boolean jmCalls(org.objectweb.asm.tree.ClassNode node, String method, String target) {
