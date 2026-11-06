@@ -1,0 +1,17 @@
+name: Canary push event
+run-name: Canary push / ${{ github.ref_name }} / ${{ github.sha }}
+
+on:
+  push:
+    branches: [main, '26.2', '26.1.2', '1.21.11']
+
+permissions: {}
+
+jobs:
+  record:
+    if: ${{ !github.event.deleted }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Record push for the default-branch coordinator
+        run: echo 'Push recorded. The Canary coordinator collects related version updates.'
