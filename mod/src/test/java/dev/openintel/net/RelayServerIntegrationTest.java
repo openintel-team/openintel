@@ -137,7 +137,7 @@ public final class RelayServerIntegrationTest {
             check(memberA.trySend(ping("rally-a", "rally", 12, 64, -8)), "Member A sends a ping");
             await("member B receives A's ping", () -> seen.stream().anyMatch(message ->
                     pingFrom(message, "rally-a", "MemberA", -1)), primary);
-            check(pingKept("rally-a", "MemberA"), "PingManager keeps the relay ping");
+            await("PingManager keeps the relay ping", () -> pingKept("rally-a", "MemberA"), primary);
 
             admin = new RelayClient(message -> { }, status -> { });
             admin.identity = ADMIN.user();
@@ -167,7 +167,7 @@ public final class RelayServerIntegrationTest {
                     "Ping enters the first relay");
             await("second relay delivers the forwarded ping", () -> seen.stream().anyMatch(message ->
                     pingFrom(message, "pingfwd1", "MemberA", 1)), other);
-            check(pingKept("pingfwd1", "MemberA"), "PingManager keeps the forwarded ping");
+            await("PingManager keeps the forwarded ping", () -> pingKept("pingfwd1", "MemberA"), other);
             check(before.equals(fingerprint(relayDir)), "Tracked relay JSON was not modified");
             System.out.println("RelayServerIntegrationTest passed: welcome roster, deny, ping, war table, and multi-relay forward");
         } finally {
