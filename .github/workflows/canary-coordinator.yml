@@ -1,0 +1,54 @@
+name: Canary coordinator
+
+on:
+  workflow_run:
+    workflows: [Canary push event]
+    types: [completed]
+    branches: [main, '26.2', '26.1.2', '1.21.11']
+  schedule:
+    - cron: '7,17,27,37,47,57 * * * *'
+  workflow_dispatch:
+
+# GitHub may replace a pending coordinator during a burst. The next coordinator
+# scans every push event, so replacement does not discard a pushed commit.
+concurrency:
+  group: canary-coordinator
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+  checks: write
+
+jobs:
+  collect:
+    if: ${{ github.repository == 'openintel-team/openintel' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out trusted coordinator code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Collect closely spaced version pushes
+        if: ${{ github.event_name == 'workflow_run' }}
+        run: sleep 90
+
+      - name: Verify coordinator logic
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+
+      - name: Group and schedule exact branch commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANARY_STATE_FILE: ${{ runner.temp }}/state.json
+        run: python3 .github/scripts/canary.py coordinate
+
+      - name: Save incremental scheduling checkpoint
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: canary-coordinator-state
+          path: ${{ runner.temp }}/state.json
+          if-no-files-found: error
+          retention-days: 30

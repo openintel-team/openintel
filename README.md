@@ -19,16 +19,22 @@ Releases use `3.3.0+mc<version>` to identify the Minecraft target. The mod ID is
 
 ## Canary builds
 
-[Canary mod build](https://github.com/openintel-team/openintel/actions/workflows/build-mod.yml) builds all maintained versions together, or one selected branch, including relay tests and headless mod checks. Maintainers launch it once after pushing a coordinated update; pushes alone do not launch Canary builds.
+[Canary mod build](https://github.com/openintel-team/openintel/actions/workflows/build-mod.yml) builds all maintained versions together, or one selected branch, including relay tests and headless mod checks. Every push to a maintained branch automatically records its exact branch tip for building. A free coordinator collects closely spaced pushes for 90 seconds, then groups related version adaptations under one update title and artifact page. No Copilot, AI service, or AI credential is used.
+
+Grouping requires matching stable patch IDs, or the same normalized commit title, at least 80% overlap in changed files, and at least 90% patch similarity. Version suffixes and a leading “Backport” are ignored in titles. Group members must be from different branches, no more than ten minutes apart, and match every other member. Ambiguous changes build separately; late backports get a follow-up run. Each pushed tip is considered even if another push supersedes it before scheduling. Commits inside a single push are covered by its final tree.
+
+Small **Canary push event** and **Canary coordinator** runs appear alongside the grouped **Canary mod build** runs. The **Canary scheduling / &lt;branch&gt;** check links to the actual build; its success means scheduling succeeded, not that the mod passed. A scheduled sweep reconciles interrupted dispatches approximately every ten minutes (GitHub may delay scheduled runs). Duplicate automatic dispatches are suppressed using a fingerprint of the exact branch commits. Failed builds can be rerun normally.
+
+To build current branch tips manually:
 
 1. Open the workflow and choose **Run workflow**, using **main** for the workflow definition.
 2. Set **target** to **all** for all four branches, or select **main** (Minecraft 26.3), **26.2**, **26.1.2**, or **1.21.11**. Optionally enter a short **title** describing the change or batch.
 3. Open the successful run. Under **Artifacts**, download the `openintel-mc<version>-<branch>-<commit>` ZIP for your Minecraft version. GitHub requires you to sign in to download it.
 4. Extract the ZIP and put the jar in `.minecraft/mods` with Fabric API, replacing your previous OpenIntel jar.
 
-An all-version run resolves the current commit of each selected branch before building. Branches do not need new pushes: a version-specific fix can build only its branch, or rebuild all versions with the other branches unchanged. Each job records its exact source commit in its summary and artifact name. For example, `gh workflow run build-mod.yml --ref main -f target=all -f title="Fix relay reconnect handling"` launches one run containing four independent build jobs.
+A manual all-version run resolves the current commit of each selected branch before building. Branches do not need new pushes: a version-specific fix can build only its branch, or rebuild all versions with the other branches unchanged. Each job records its exact source commit in its summary and artifact name. For example, `gh workflow run build-mod.yml --ref main -f target=all -f title="Fix relay reconnect handling"` launches one run containing four independent build jobs.
 
-Pull requests into maintained branches, including Dependabot PRs, run checks automatically against the proposed merge. Their run names use the PR number and title. Manual run names use the selected target and supplied title (or **Current branch tips**). A failed version does not cancel the other version builds.
+Pull requests into maintained branches, including Dependabot PRs, run checks automatically against the proposed merge. Their run names use the PR number and title. Manual run names use the selected target and supplied title (or **Current branch tips**). Automatic run names use the shared change title and batch fingerprint. A failed version does not cancel the other version builds. Leave the internal **commits** and **batch** inputs blank for manual builds.
 
 Artifacts expire after **30 days**. These are development builds; CI does not verify in-game behavior. The jar keeps the branch's mod version. Stable versions are on the [Releases page](https://github.com/openintel-team/openintel/releases).
 
