@@ -310,8 +310,16 @@ tasks.register('pingWheelLayoutTest', JavaExec) {
     enableAssertions = true
 }
 
+tasks.register('mouseButtonConstantsTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.gui.MouseButtonConstantsTest'
+    workingDir = projectDir
+    enableAssertions = true
+}
+
 check.dependsOn relayProfilesTest, relayBridgeTest, investigatePresentationTest, worldOverlayTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, mapParityTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest, chatChannelFilterTest, releaseUpdateTest, crosshairTest
-check.dependsOn allegianceTest, snitchLogParserTest, oiConfigMigrationTest, trackerSnitchIntelTest, pingManagerTest, snitchRelayTest, junkRejectorTest, pingWheelLayoutTest
+check.dependsOn allegianceTest, snitchLogParserTest, oiConfigMigrationTest, trackerSnitchIntelTest, pingManagerTest, snitchRelayTest, junkRejectorTest, pingWheelLayoutTest, mouseButtonConstantsTest
 
 publishing {
     publications {
