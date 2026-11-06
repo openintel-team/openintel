@@ -112,6 +112,8 @@ class ApiTests(unittest.TestCase):
         c.schedule(api,group,[run],new=False,receipts=[{'id':7}])
         self.assertFalse(any(p.endswith('/dispatches') for p,d in api.calls))
         self.assertEqual(api.calls[-1][1]['status'],'completed')
+        self.assertIn('[Open grouped Canary build](https://example.invalid/run)',
+                      api.calls[-1][1]['output']['summary'])
 
 class PlanTests(unittest.TestCase):
     def plan(self, env, api):

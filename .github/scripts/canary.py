@@ -214,7 +214,7 @@ def schedule(api, group, runs, *, new, receipts=None):
         api.request(f'check-runs/{receipt["id"]}', {
             'status': 'completed', 'conclusion': 'success', 'details_url': run['html_url'],
             'output': {'title': 'Canary build scheduled',
-                       'summary': 'Scheduling succeeded. Follow Details for the actual build result.',
+                       'summary': f'Scheduling succeeded. [Open grouped Canary build]({run["html_url"]}) for the actual build result.',
                        'text': json.dumps(group, separators=(',', ':'))}}, method='PATCH')
 
 
