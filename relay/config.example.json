@@ -7,6 +7,9 @@
   "staleMs": 10000,
   "alertCooldownMs": 300000,
   "authRejectionLogCooldownMs": 300000,
+  "logRejectedIps": false,
+  "maxMessageBytes": 262144,
+  "maxPendingPerAddress": 16,
   "discord": {
     "botToken": "",
     "terminalChannelIds": [],
