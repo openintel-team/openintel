@@ -167,7 +167,7 @@ class GitHub:
 
 
 def run_title(group):
-    return f'Canary: {safe_title(group["title"])} [batch:{group["batch"]}]'
+    return f'{safe_title(group["title"])} [batch:{group["batch"]}]'
 
 
 def find_run(runs, batch):
