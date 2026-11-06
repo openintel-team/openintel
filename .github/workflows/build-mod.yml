@@ -57,6 +57,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify Canary workflow logic
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+
       - name: Resolve exact commits
         id: plan
         env:
@@ -80,11 +83,45 @@ jobs:
       run:
         shell: bash
     steps:
-      - name: Check out source
+      - name: Check out pull request merge
+        if: github.event_name == 'pull_request'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ matrix.sha }}
           persist-credentials: false
+
+      - name: Check out maintained branch history
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # A literal branch avoids checkout rewinding origin/main to an older
+          # dispatch SHA after fetching newer branch tips. Never use a matrix ref.
+          ref: refs/heads/main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select verified build commit
+        env:
+          BUILD_EVENT: ${{ github.event_name }}
+          BUILD_BRANCH: ${{ matrix.branch }}
+          BUILD_SHA: ${{ matrix.sha }}
+        run: |
+          case "$BUILD_EVENT" in
+            pull_request) exit 0 ;; # Keep GitHub's isolated PR merge checkout/cache scope.
+            workflow_dispatch) ;;
+            *) echo 'Unsupported build event' >&2; exit 1 ;;
+          esac
+          case "$BUILD_BRANCH" in
+            main|26.2|26.1.2|1.21.11) ;;
+            *) echo 'Unsupported build branch' >&2; exit 1 ;;
+          esac
+          if [[ ! "$BUILD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo 'Expected a full commit ID' >&2
+            exit 1
+          fi
+          # Check the fetched remote branch explicitly: tags and local refs cannot
+          # impersonate it. Reject foreign objects before any build code executes.
+          git merge-base --is-ancestor "$BUILD_SHA" "refs/remotes/origin/$BUILD_BRANCH"
+          git checkout --detach "$BUILD_SHA"
 
       - name: Read branch build settings
         id: settings
