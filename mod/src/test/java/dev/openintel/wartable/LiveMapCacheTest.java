@@ -46,6 +46,18 @@ public final class LiveMapCacheTest {
             throw new AssertionError("a cooled-down failure must retry");
         if (!LiveMapCache.needsFetch(LiveMapCache.Freshness.EMPTY, 0, 0, now, refresh, retry))
             throw new AssertionError("a missing pyramid must download");
+        long check = 15 * 60 * 1000L;
+        if (LiveMapCache.startsFetch(LiveMapCache.Freshness.READY, false, now - 2 * check,
+                now - 2 * check, now, check, retry))
+            throw new AssertionError("drawing a shown map must never start a check");
+        if (!LiveMapCache.startsFetch(LiveMapCache.Freshness.READY, true, now - check,
+                now - check, now, check, retry))
+            throw new AssertionError("opening with a due map must check in the background");
+        if (LiveMapCache.startsFetch(LiveMapCache.Freshness.READY, true, now - 60_000,
+                now - 60_000, now, check, retry))
+            throw new AssertionError("reopening soon after a check must not ask again");
+        if (!LiveMapCache.startsFetch(LiveMapCache.Freshness.EMPTY, false, 0, 0, now, check, retry))
+            throw new AssertionError("drawing with nothing shown must fetch");
         if (!LiveMapCache.confirmedCurrent(304, true, "abc", null))
             throw new AssertionError("an unchanged server file must stay the current image");
         if (!LiveMapCache.confirmedCurrent(200, true, "abc", "abc"))

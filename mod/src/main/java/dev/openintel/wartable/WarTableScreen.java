@@ -101,8 +101,8 @@ public class WarTableScreen extends Screen {
     // tile texture LRU (access-ordered: eldest entry evicts first)
     private final LinkedHashMap<String, Identifier> tileTextures =
             new LinkedHashMap<>(64, 0.75f, true);
-    /** fetchedAt of the tiles currently on the GPU. A new render drops them. */
-    private long tileGeneration = Long.MIN_VALUE;
+    /** Render version of the tiles currently on the GPU. A new render drops them. */
+    private String tileGeneration;
     private MapProjection shownProjection;
 
     // Stroke overlay: rasterized to a screen-size texture, uploaded on
@@ -135,7 +135,9 @@ public class WarTableScreen extends Screen {
     protected void init() {
         admin = WarTable.canDraw();
         toolbarAdmin = admin;
-        LiveMap.ensureLoaded();
+        // Opening checks for a newer render in the background when the shown
+        // one is due; the current image stays up until a new one is built.
+        LiveMap.refresh();
         Sanctuaries.ensureLoaded();
         MapProjection p = LiveMap.projection();
         if (!viewInitialized && p != null) {
@@ -265,10 +267,10 @@ public class WarTableScreen extends Screen {
         rebuildToolbar();
     }
 
-    /** Drop GPU tiles when the confirmed render changes, so an older image cannot linger. */
+    /** Drop GPU tiles when a different render is built, so an older image cannot linger. */
     private void discardStaleTiles() {
-        long generation = LiveMap.fetchedAt();
-        if (generation == tileGeneration) return;
+        String generation = LiveMap.version();
+        if (java.util.Objects.equals(generation, tileGeneration)) return;
         clearTileTextures();
         tileGeneration = generation;
     }

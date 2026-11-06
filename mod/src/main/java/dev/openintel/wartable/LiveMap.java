@@ -37,17 +37,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * Each renderer gets its own persistent pyramid, so switching between the
  * site's renderers does not poison another layer's tiles or require a fresh
- * download when switching back. Joining a world asks for the current render.
- * A saved pyramid is drawn only after the server confirms that file is still
- * current; a newer render is built before it replaces the one on screen.
- * The live map re-renders roughly hourly, and the previous image is hidden
- * until that check finishes.
+ * download when switching back. Joining a world fetches the current render in
+ * the background so the War Table is ready when it opens. A saved pyramid from
+ * an earlier session is drawn only after the server confirms that file is
+ * still current. Once confirmed, the image stays on screen: opening the War
+ * Table after {@link #CHECK_INTERVAL_MS} asks the server again in the
+ * background, and a newer render is built beside the shown one and swapped in
+ * when complete.
  */
 public final class LiveMap {
     private LiveMap() { }
 
     public static final int TILE = LiveMapCache.TILE;
-    private static final long REFRESH_MS = 55 * 60 * 1000;
+    /** How long a confirmed image is trusted before opening the War Table checks again. */
+    static final long CHECK_INTERVAL_MS = 15 * 60 * 1000;
     private static final long FAILURE_RETRY_MS = 30 * 1000;
     private static final long RENDERER_REFRESH_MS = 5 * 60 * 1000;
     private static final List<String> FALLBACK_RENDERERS =
@@ -56,15 +59,14 @@ public final class LiveMap {
     public enum State { EMPTY, LOADING, READY, FAILED }
 
     private record Entry(State state, MapProjection projection, int maxLevel,
-                         long fetchedAt, long attemptAt, String error) {
-        static Entry empty() { return new Entry(State.EMPTY, null, 0, 0, 0, null); }
-        static Entry loading(Entry previous) {
-            return new Entry(State.LOADING,
-                    previous != null ? previous.projection : null,
-                    previous != null ? previous.maxLevel : 0,
-                    previous != null ? previous.fetchedAt : 0,
-                    System.currentTimeMillis(),
-                    null);
+                         long fetchedAt, long attemptAt, String error, String version) {
+        static Entry empty() { return new Entry(State.EMPTY, null, 0, 0, 0, null, null); }
+        static Entry loading() {
+            return new Entry(State.LOADING, null, 0, 0, System.currentTimeMillis(), null, null);
+        }
+        /** The shown image stays while a background check runs. */
+        Entry checking(long now) {
+            return new Entry(state, projection, maxLevel, fetchedAt, now, error, version);
         }
         LiveMapCache.Freshness freshness() {
             return switch (state) {
@@ -100,6 +102,8 @@ public final class LiveMap {
     public static int maxLevel() { return entry().maxLevel(); }
     public static String error() { return entry().error(); }
     public static long fetchedAt() { return entry().fetchedAt(); }
+    /** Identity of the pyramid on disk; changes only when a different render is built. */
+    public static String version() { return entry().version(); }
     public static String renderer() {
         String current = renderer;
         if (current != null) return current;
@@ -120,7 +124,7 @@ public final class LiveMap {
             cfg.warTableRenderer = next;
             cfg.save();
         }
-        ensureLoaded(next);
+        start(next, true);
     }
 
     /** Cycle through the API's renderer list. */
@@ -158,22 +162,36 @@ public final class LiveMap {
         return Files.isRegularFile(tileFile(level, tx, ty));
     }
 
-    /** Ask for the current render when the confirmed copy is missing or due. */
+    /**
+     * Fetch the selected render when nothing is shown yet (or a failure has
+     * cooled down). Cheap to call every frame; never touches a shown image.
+     */
     public static void ensureLoaded() {
         refreshRenderers();
-        ensureLoaded(renderer());
+        start(renderer(), false);
     }
 
-    public static void ensureLoaded(String name) {
+    /**
+     * On join and when the War Table opens: fetch the render if nothing is
+     * shown, or, once the shown image is {@link #CHECK_INTERVAL_MS} old, ask
+     * the server for a newer one in the background without hiding it.
+     */
+    public static void refresh() {
+        refreshRenderers();
+        start(renderer(), true);
+    }
+
+    private static void start(String name, boolean checkShown) {
         String target = safeRenderer(name);
         Entry current = entry(target);
         long now = System.currentTimeMillis();
-        if (!LiveMapCache.needsFetch(current.freshness(), current.fetchedAt(),
-                current.attemptAt(), now, REFRESH_MS, FAILURE_RETRY_MS)) return;
+        if (!LiveMapCache.startsFetch(current.freshness(), checkShown, current.fetchedAt(),
+                current.attemptAt(), now, CHECK_INTERVAL_MS, FAILURE_RETRY_MS)) return;
         if (!loading.add(target)) return;
-        // Hide whatever was on screen. A saved pyramid is not drawn until this
-        // fetch confirms it is still the server's file.
-        entries.put(target, Entry.loading(null));
+        // A confirmed image stays on screen during the check. Without one, a
+        // saved pyramid is not drawn until this fetch confirms it is current.
+        entries.put(target, current.state() == State.READY
+                ? current.checking(now) : Entry.loading());
         Thread t = new Thread(() -> load(target), "openintel-livemap-" + target);
         t.setDaemon(true);
         t.start();
@@ -265,7 +283,7 @@ public final class LiveMap {
                 LiveMapCache.writeStamp(root, proj.width(), proj.height(), cached.maxLevel(),
                         fetchedAt, png.etag(), png.lastModified(), hash);
                 entries.put(target, new Entry(State.READY, proj, cached.maxLevel(),
-                        fetchedAt, fetchedAt, null));
+                        fetchedAt, fetchedAt, null, versionOf(hash, cached.fetchedAt())));
                 dbg(target, "READY unchanged");
                 return;
             }
@@ -282,7 +300,8 @@ public final class LiveMap {
             long fetchedAt = System.currentTimeMillis();
             LiveMapCache.writeStamp(root, proj.width(), proj.height(), maxLevel, fetchedAt,
                     png.etag(), png.lastModified(), hash);
-            entries.put(target, new Entry(State.READY, proj, maxLevel, fetchedAt, fetchedAt, null));
+            entries.put(target, new Entry(State.READY, proj, maxLevel, fetchedAt, fetchedAt, null,
+                    versionOf(hash, fetchedAt)));
             dbg(target, "READY maxLevel=" + maxLevel);
         } catch (Throwable e) {
             dbg(target, "FAILED " + e);
@@ -293,10 +312,23 @@ public final class LiveMap {
         }
     }
 
-    /** A failed check does not put an older pyramid back on screen. */
+    /**
+     * Without a confirmed image the failure is shown. A failed background
+     * check keeps the image already confirmed this session and retries after
+     * the backoff.
+     */
     private static void rememberFailure(String target, String message) {
         long now = System.currentTimeMillis();
-        entries.put(target, new Entry(State.FAILED, null, 0, now, now, message));
+        Entry current = entry(target);
+        if (current.state() == State.READY) {
+            entries.put(target, current.checking(now));
+            return;
+        }
+        entries.put(target, new Entry(State.FAILED, null, 0, now, now, message, null));
+    }
+
+    private static String versionOf(String hash, long builtAt) {
+        return hash != null && !hash.isEmpty() ? hash : "t" + builtAt;
     }
 
     private static void dbg(String target, String msg) {
