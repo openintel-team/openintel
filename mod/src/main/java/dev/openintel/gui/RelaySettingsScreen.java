@@ -1,5 +1,6 @@
 package dev.openintel.gui;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.config.OIConfig;
 import dev.openintel.config.RelayProfile;
@@ -141,7 +142,7 @@ public final class RelaySettingsScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
-        if (click.button() == 0 && click.x() >= 8 && click.x() < 8 + listWidth
+        if (click.button() == InputConstants.MOUSE_BUTTON_LEFT && click.x() >= 8 && click.x() < 8 + listWidth
                 && click.y() >= LIST_TOP && click.y() < LIST_TOP + listHeight) {
             int row = (int) ((click.y() - LIST_TOP + scroll) / ROW_HEIGHT);
             if (row < profiles().size()) {

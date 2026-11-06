@@ -1,5 +1,6 @@
 package dev.openintel.gui;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import dev.openintel.OpenIntelClient;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -134,7 +135,7 @@ public class JunkItemPickerScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
-        if (click.button() == 0) {
+        if (click.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             double mx = click.x(), my = click.y();
             if (mx >= gridX && mx < gridX + gridW && my >= gridY && my < gridY + gridH) {
                 int c = (int) (mx - gridX) / CELL;

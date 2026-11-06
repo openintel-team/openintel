@@ -884,7 +884,8 @@ public class WarTableScreen extends Screen {
         double wx = worldX(proj, mx), wz = worldZ(proj, my);
 
         boolean canEdit = admin && !labeling;
-        if (!canEdit || tool == UiTool.PAN || click.button() == 2 || click.button() == 1) {
+        if (!canEdit || tool == UiTool.PAN || click.button() == InputConstants.MOUSE_BUTTON_MIDDLE
+                || click.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
             panning = true;
             panLastX = mx;
             panLastY = my;
