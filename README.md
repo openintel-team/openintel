@@ -283,9 +283,18 @@ each change is announced in both the alerts and admin Discord channels.
 
 Set the listen port, admin token, and webhook URLs in `config.json`. Approved players and their tokens live in `users.json`, not in the mod jar. Invitations must use the player's current Java Edition Minecraft account name.
 
+`users.json` stores only SHA-256 digests of relay tokens (`tokenHash`). You can still write a new entry with a plaintext `token`: on startup the relay replaces it with `tokenHash` and saves the file. A plaintext `token` replaces an older `tokenHash` on the same entry. The relay cannot show or resend a token after that, so keep the copy you hand out, or issue a new one with `!user rotate-token`. An older relay build cannot read hashed entries.
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `adminToken` | none | Admin HTTP API secret. The API stays disabled unless this is at least 32 characters and not the example value |
+| `logRejectedIps` | `false` | Also print the remote address of rejected logins to the relay console. Discord never gets addresses |
+| `maxMessageBytes` | `262144` | Largest WebSocket frame accepted from any client |
+| `maxPendingPerAddress` | `16` | Connections from one address that may be mid-login at once. Behind a reverse proxy every client shares the proxy's address, so raise this or set `0` to turn it off |
+
 Relay authentication requires both the personal relay token and ownership of the invited Minecraft account. For each connection the relay issues a fresh, short-lived challenge. The mod registers it directly with Mojang using the active Minecraft session; the relay verifies Mojang's response for the invited name before sending any intel. Copying an OpenIntel config or instance to a different Minecraft account does not grant access. Minecraft access tokens are never sent to the relay or stored by OpenIntel.
 
-Update both the mod and relay together: older clients that only send a token are rejected. Online Minecraft authentication and outbound HTTPS to `sessionserver.mojang.com` are required on both sides; failures deny access. Existing relay tokens remain valid for their invited accounts. Invite names are matched case-insensitively. On first successful verification the relay also pins the account UUID in `users.json`, preventing a different account from taking over a recycled name. Preserve `minecraftUuid` when updating invitations, including through REST; update the invitation name if the account changes its name. This verifies account ownership, not presence on the configured game server. Sharing a launcher login/session still shares the Minecraft account itself; this protocol cannot protect against sharing those credentials.
+Update both the mod and relay together: older clients that only send a token are rejected. Online Minecraft authentication and outbound HTTPS to `sessionserver.mojang.com` are required on both sides; failures deny access. Existing relay tokens remain valid for their invited accounts. Invite names are matched case-insensitively. On first successful verification the relay also pins the account UUID in `users.json`, preventing a different account from taking over a recycled name. Preserve `minecraftUuid` and `tokenHash` when updating invitations, including through REST; update the invitation name if the account changes its name. This verifies account ownership, not presence on the configured game server. Sharing a launcher login/session still shares the Minecraft account itself; this protocol cannot protect against sharing those credentials.
 
 For encrypted connections, put the relay behind a TLS reverse proxy and set `secureWebSocketUrl` to its public `wss://` URL on the same hostname as the original relay. Updated clients that have a saved `ws://` URL request a secure redirect before sending their token. The relay advertises its configured WSS endpoint only to those clients, so the transport redirect remains opt-in. Relay authentication still requires an updated mod. The client saves the WSS destination as soon as it is advertised; certificate failures and later reconnects never silently fall back to WS. Cross-host and plaintext redirects are rejected. Without a configured secure endpoint, legacy WS connections still work. This first upgrade is opportunistic: an attacker controlling the initial plaintext connection could hide the redirect. Enter a WSS URL directly when you need encryption from the first connection.
 
@@ -338,8 +347,8 @@ marker. The bot runs inside the relay process and is disabled until
 3. **Invite it:** **OAuth2 → URL Generator** → scope `bot` → bot permissions
    *View Channels*, *Send Messages*, *Embed Links*, *Read Message History* →
    open the generated URL and add it to every Discord server you want bridged.
-   Admins who create or rotate users must allow DMs from the bot; failed DMs
-   never cause tokens to be posted publicly.
+   Admins who create or rotate users must allow DMs from the bot; a failed DM
+   never posts a token in the channel, including `!gentoken`.
 4. **Pick terminal channels:** enable Discord Developer Mode, right-click each
    private command channel, copy its ID, and add it to `terminalChannelIds`.
 5. **Pick snitch channels:** copy every channel ID that receives JukeAlert
@@ -390,7 +399,7 @@ Type these in the terminal channel:
 | `!user add <name> [role]` | create a user and DM the token to the invoking admin | admin |
 | `!user remove\|disable\|enable <name>` | manage user access and revoke affected sessions | admin |
 | `!user role <name> <trial\|member\|operator\|captain\|admin>` | change relay role | admin |
-| `!user rotate-token <name>` | rotate token, revoke sessions, and DM the new token | admin |
+| `!user rotate-token <name>` | rotate token, revoke sessions, and DM the new token; stored tokens are hashed, so this is how to reissue one | admin |
 | `!user info <name>` | safe status, token fingerprint, and session count | admin |
 
 Positions still travel over the relay's own WebSocket — Discord rate limits
@@ -399,7 +408,7 @@ bot is command/control only.
 
 ## Admin panel
 
-The relay exposes a small authenticated REST API (header `x-admin-token`):
+The relay exposes a small authenticated REST API (header `x-admin-token`). The API answers 403 to everything until `adminToken` is set to a random string of at least 32 characters; the relay prints a startup line while it is disabled. `PUT /users` accepts a plaintext `token` for a new entry and hashes it before saving.
 
 | Endpoint | Method | Purpose |
 |---|---|---|
@@ -413,6 +422,11 @@ Audit entries include actor/tier, action/target, guild/channel source,
 before/after state, and success/reason. Tokens and other secrets are never
 recorded; tokens appear only as short SHA-256 fingerprints. The audit file and
 all live relay JSON configuration files are gitignored.
+
+Rejected logins appear in the admin webhook with a short client tag instead of
+the remote address. The tag stays the same for one address until the relay
+restarts, so repeated attempts from one source are still visible. Successful
+connects name only the account and role.
 
 ## Client commands and controls
 

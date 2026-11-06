@@ -16,11 +16,42 @@ const validName = (name) => MINECRAFT_NAME.test(String(name ?? ""));
 const validRole = (role) => USER_ROLES.includes(lower(role));
 const roleRank = (role) => Math.max(0, USER_ROLES.indexOf(lower(role ?? "member")));
 const hasTier = (role, required) => roleRank(role) >= roleRank(required);
-const tokenFingerprint = (token) => token
-  ? crypto.createHash("sha256").update(String(token)).digest("hex").slice(0, 12)
-  : null;
+// users.json keeps only SHA-256 digests of relay tokens. A digest fingerprint
+// matches the fingerprint of the token it came from, so audit entries written
+// before and after hashing still line up.
+function hashToken(token) {
+  return crypto.createHash("sha256").update(String(token)).digest("hex");
+}
+const TOKEN_HASH = /^[a-f0-9]{64}$/;
+const hashFingerprint = (digest) => typeof digest === "string" && TOKEN_HASH.test(digest.toLowerCase())
+  ? digest.toLowerCase().slice(0, 12) : null;
+const tokenFingerprint = (token) => token ? hashToken(token).slice(0, 12) : null;
+// Replaces each plaintext `token` with `tokenHash` and drops malformed entries.
+// A plaintext token wins over an older digest, so editing the file by hand to
+// issue a new token works.
+function sealUsers(data) {
+  let changed = false;
+  const users = (Array.isArray(data?.users) ? data.users : []).filter((user) => {
+    const keep = user && typeof user === "object" && !Array.isArray(user);
+    if (!keep) changed = true;
+    return keep;
+  }).map((user) => {
+    if (!Object.hasOwn(user, "token")) return user;
+    changed = true;
+    const plain = typeof user.token === "string" && user.token.length > 0 ? user.token : null;
+    const sealed = {};
+    for (const [key, value] of Object.entries(user)) {
+      if (key === "tokenHash" && plain) continue;
+      if (key === "token") { if (plain) sealed.tokenHash = hashToken(plain); continue; }
+      sealed[key] = value;
+    }
+    return sealed;
+  });
+  return { data: { ...(data && typeof data === "object" ? data : {}), users }, changed };
+}
 function safeAuditValue(value, key = "") {
   if (value == null || typeof value !== "object") {
+    if (key === "tokenHash" && value != null) return `sha256:${hashFingerprint(value)}`;
     return /token|secret/i.test(key) && value != null ? `sha256:${tokenFingerprint(value)}` : value;
   }
   if (Array.isArray(value)) return value.map((item) => safeAuditValue(item));
@@ -41,6 +72,21 @@ function consumeRateLimit(entries, key, now, cooldown) {
   const suppressed = previous?.suppressed ?? 0;
   entries.set(key, { last: now, suppressed: 0 });
   return { allowed: true, suppressed };
+}
+// The admin HTTP API stays off unless adminToken is a real secret: a missing
+// value, the example placeholder, or a short string would otherwise let any
+// caller replace users and allegiances.
+const ADMIN_TOKEN_PLACEHOLDERS = new Set(["CHANGE_ME", "CHANGE_ME_LONG_RANDOM_STRING"]);
+const ADMIN_TOKEN_MIN_LENGTH = 32;
+function adminTokenDigest(token) {
+  if (typeof token !== "string" || token.length < ADMIN_TOKEN_MIN_LENGTH
+      || ADMIN_TOKEN_PLACEHOLDERS.has(token)) return null;
+  return crypto.createHash("sha256").update(token).digest();
+}
+// Compares digests so neither the length nor the contents leak through timing.
+function adminTokenMatches(expectedDigest, supplied) {
+  if (!expectedDigest || typeof supplied !== "string" || !supplied) return false;
+  return crypto.timingSafeEqual(expectedDigest, crypto.createHash("sha256").update(supplied).digest());
 }
 function runSelfTest() {
   const assert = require("assert");
@@ -64,6 +110,31 @@ function runSelfTest() {
   const safe = safeAuditValue({ token: "test-token", nested: { botToken: "bot" } });
   assert.equal(safe.token, `sha256:${tokenFingerprint("test-token")}`);
   assert(!JSON.stringify(safe).includes("test-token"));
+  const digest = hashToken("test-token");
+  assert.equal(safeAuditValue({ tokenHash: digest }).tokenHash, `sha256:${tokenFingerprint("test-token")}`);
+  const sealed = sealUsers({ users: [
+    { name: "Plain", token: "plain-token", role: "member" },
+    { name: "Replaced", tokenHash: "0".repeat(64), token: "new-token" },
+    { name: "Hashed", tokenHash: digest },
+    { name: "Empty", token: "" },
+    null, ["bad"],
+  ] });
+  assert(sealed.changed);
+  assert.deepEqual(sealed.data.users.map((u) => u.name), ["Plain", "Replaced", "Hashed", "Empty"]);
+  assert.deepEqual(Object.keys(sealed.data.users[0]), ["name", "tokenHash", "role"]);
+  assert.equal(sealed.data.users[0].tokenHash, hashToken("plain-token"));
+  assert.equal(sealed.data.users[1].tokenHash, hashToken("new-token"));
+  assert.equal(sealed.data.users[2].tokenHash, digest);
+  assert.equal(Object.hasOwn(sealed.data.users[3], "tokenHash"), false);
+  assert(!JSON.stringify(sealed.data).includes("plain-token"));
+  assert.equal(sealUsers({ users: [{ name: "Hashed", tokenHash: digest }] }).changed, false);
+  for (const weak of [undefined, null, "", "short", "CHANGE_ME", "CHANGE_ME_LONG_RANDOM_STRING", 42])
+    assert.equal(adminTokenDigest(weak), null);
+  const strong = "s".repeat(ADMIN_TOKEN_MIN_LENGTH);
+  assert(adminTokenMatches(adminTokenDigest(strong), strong));
+  for (const supplied of [undefined, "", "s", strong + "s", ["x"]])
+    assert(!adminTokenMatches(adminTokenDigest(strong), supplied));
+  assert(!adminTokenMatches(null, strong));
   console.log("relay self-test passed");
 }
 if (process.argv.includes("--self-test")) {
@@ -80,7 +151,8 @@ if (process.argv.includes("--self-test")) {
  * - Fires the ALERT webhook (with role ping) when an enemy enters anyone's
  *   render — deduplicated + cooldown, so one enemy = one ping
  * - Fires the ADMIN webhook for connects, auth failures, and admin changes
- *   (your admin Discord channel becomes the audit log / "admin panel" feed)
+ *   (your admin Discord channel becomes the audit log / "admin panel" feed).
+ *   Rejections name a per-run client tag, never the remote address.
  *
  * Run:  npm install && node server.js
  */
@@ -97,6 +169,14 @@ const CONFIG = JSON.parse(fs.readFileSync(filePath("config.json"), "utf8"));
 const MINECRAFT_SERVER = normalizeMinecraftServer(CONFIG.minecraftServer);
 if (!MINECRAFT_SERVER) throw new Error("config.minecraftServer is required");
 let USERS = loadJson("users.json", { users: [] });
+{
+  const sealed = sealUsers(USERS);
+  USERS = sealed.data;
+  if (sealed.changed) {
+    saveJson("users.json", USERS);
+    console.log("users.json: replaced plaintext relay tokens with SHA-256 digests");
+  }
+}
 let ALLEGIANCES = loadJson("allegiances.json", { allies: [], enemies: [] });
 // War Table: persistent admin-drawn map annotations shared with all clients.
 let WARTABLE = loadJson("wartable.json", { strokes: [] });
@@ -136,7 +216,12 @@ function saveJson(name, data) {
   fs.renameSync(temporary, destination);
 }
 
-const userByToken = (token) => USERS.users.find((u) => !u.disabled && u.token === token);
+const userByToken = (token) => {
+  if (typeof token !== "string" || !token) return undefined;
+  const digest = hashToken(token);
+  return USERS.users.find((u) => !u.disabled && typeof u.tokenHash === "string"
+    && u.tokenHash.toLowerCase() === digest);
+};
 const userByName = (name) => USERS.users.find((u) => lower(u.name) === lower(name));
 const userNames = () => USERS.users.filter((u) => !u.disabled).map((u) => u.name);
 const isEnemy = (name) =>
@@ -178,12 +263,22 @@ function audit({ actor, tier, action, target = null, source = {}, before = null,
 }
 
 const authRejectionLogs = new Map();
-function logAuthRejection(key, message) {
+// Rejections name a short per-run tag instead of the address, so admins can
+// spot one source retrying without IPs landing in Discord. The key is random
+// per process: a bare hash of an IPv4 address is trivially reversible.
+const CLIENT_TAG_KEY = crypto.randomBytes(32);
+const clientTag = (address) => crypto.createHmac("sha256", CLIENT_TAG_KEY)
+  .update(String(address ?? "unknown")).digest("hex").slice(0, 8);
+function logAuthRejection(key, message, address = null) {
   const decision = consumeRateLimit(authRejectionLogs, key, Date.now(),
     CONFIG.authRejectionLogCooldownMs ?? 300_000);
   if (!decision.allowed) return;
   const suffix = decision.suppressed ? ` (${decision.suppressed} repeat(s) suppressed)` : "";
   adminLog(message + suffix);
+  // Opt-in, console only: raw addresses never go to the webhook.
+  if (CONFIG.logRejectedIps === true && address != null) {
+    console.log(`relay rejection from ${address} (client ${clientTag(address)})${suffix}`);
+  }
   if (authRejectionLogs.size > 500) {
     const cutoff = Date.now() - (CONFIG.authRejectionLogCooldownMs ?? 300_000) * 2;
     for (const [entryKey, value] of authRejectionLogs) {
@@ -268,7 +363,18 @@ function noteSeen(name, x, y, z, dim, reporter, kind, t = Date.now()) {
 const app = express();
 app.use(express.json());
 const server = http.createServer(app);
-const wss = new WebSocketServer({ noServer: true });
+// ws defaults to 100 MiB frames, which anyone can send before logging in. The
+// largest legitimate client message (a 1024-point stroke or 100 position
+// reports) is well under this.
+const MAX_MESSAGE_BYTES = Number.isInteger(CONFIG.maxMessageBytes) && CONFIG.maxMessageBytes > 0
+  ? CONFIG.maxMessageBytes : 256 * 1024;
+// Connections that have not finished logging in, per remote address. Behind a
+// reverse proxy every client shares the proxy's address: raise this, or set 0
+// to turn the cap off.
+const MAX_PENDING_PER_ADDRESS = Number.isInteger(CONFIG.maxPendingPerAddress) && CONFIG.maxPendingPerAddress >= 0
+  ? CONFIG.maxPendingPerAddress : 16;
+const pendingByAddress = new Map();
+const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
 attachRelayTransport(server, wss, CONFIG.secureWebSocketUrl);
 
 function allegiancePayload(recipient = null) {
@@ -339,6 +445,45 @@ function bridgeOrigin(e) {
   }
   return origin;
 }
+const INTEL_TEXT_FIELDS = ["player", "name", "message", "label", "snitch", "action", "eventKind", "kind", "id"];
+const pingTtl = (ttl) => Math.min(Number.isFinite(ttl) ? Math.max(0, ttl) : 60000, 300000);
+// Shared by direct client submissions and relay bridges. Returns only known
+// fields with checked coordinates, names, dimensions, and bounded text, or null
+// when the event is malformed. Nothing else a client sends is forwarded.
+function intelFields(type, event) {
+  if (type === "snitch") {
+    const coordinateCount = ["x", "y", "z"].filter(key => Object.hasOwn(event, key)).length;
+    if (coordinateCount !== 0 && (coordinateCount !== 3 || !validCoordinates(event))) return null;
+    if (coordinateCount === 0 && (typeof event.message !== "string" || !event.message.trim()
+        || event.message.length > 1500 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(event.message))) return null;
+    for (const key of ["dim", "world"]) {
+      if (event[key] != null && snitchDimension(event[key]) == null) return null;
+    }
+  } else if (!validCoordinates(event) || !validDimension(event.dim ?? event.world)) return null;
+  const intelName = value => typeof value === "string" && validName(value);
+  if ((type === "position" && !intelName(event.name))
+      || (type === "where" && !intelName(event.player))
+      || (event.player != null && !intelName(event.player))
+      || (event.name != null && !intelName(event.name))) return null;
+  for (const key of INTEL_TEXT_FIELDS) {
+    if (event[key] != null && (typeof event[key] !== "string" || event[key].length > 1500)) return null;
+  }
+  const clean = {};
+  if (type === "snitch") {
+    if (validCoordinates(event)) Object.assign(clean, { x: event.x, y: event.y, z: event.z });
+    for (const key of ["dim", "world"]) {
+      if (event[key] != null) clean[key] = snitchDimension(event[key]);
+    }
+    const dimension = clean.dim ?? clean.world;
+    if (validDimension(dimension) && dimension !== "openintel:unknown") clean.dim = dimension;
+  } else Object.assign(clean, { x: event.x, y: event.y, z: event.z, dim: event.dim ?? event.world });
+  for (const key of INTEL_TEXT_FIELDS) if (event[key] != null) clean[key] = event[key];
+  if (type === "ping") {
+    clean.ttl = pingTtl(event.ttl);
+    if (Number.isInteger(event.color)) clean.color = event.color;
+  }
+  return clean;
+}
 function handleBridge(ws, user, event) {
   if (user.quarantined || !event || typeof event !== "object" || !validBridge(event.bridge, 7)) return;
   const type = event.type;
@@ -346,28 +491,19 @@ function handleBridge(ws, user, event) {
   if (type === "wartable" && (!isAdmin(user) || !["add", "delete"].includes(event.action))) return;
   const now = Date.now();
   const maxAge = type === "position" ? STALE_MS
-    : type === "ping" ? Math.min(Number.isFinite(event.ttl) ? Math.max(0, event.ttl) : 60000, 300000)
+    : type === "ping" ? pingTtl(event.ttl)
     : type === "snitch" ? 600000 : LAST_SEEN_MS;
   if (!Number.isFinite(event.t) || event.t > now + 5000 || now - event.t > maxAge) return;
+  let fields = null;
   if (type !== "wartable") {
-    if (type === "snitch") {
-      const coordinateCount = ["x", "y", "z"].filter(key => Object.hasOwn(event, key)).length;
-      if (coordinateCount !== 0 && (coordinateCount !== 3 || !validCoordinates(event))) return;
-      if (coordinateCount === 0 && (typeof event.message !== "string" || !event.message.trim()
-          || event.message.length > 1500 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(event.message))) return;
-      for (const key of ["dim", "world"]) {
-        if (event[key] != null && snitchDimension(event[key]) == null) return;
-      }
-    } else if (!validCoordinates(event) || !validDimension(event.dim ?? event.world)) return;
-    const bridgeName = value => typeof value === "string" && validName(value);
-    if ((type === "position" && !bridgeName(event.name))
-        || (type === "where" && !bridgeName(event.player))
-        || (event.player != null && !bridgeName(event.player))
-        || (event.name != null && !bridgeName(event.name))) return;
-  } else if (event.action === "add" ? !validStroke(event.stroke)
-      : typeof event.id !== "string" || !/^[A-Za-z0-9_-]{4,64}$/.test(event.id)) return;
-  for (const key of ["message", "label", "snitch", "action", "eventKind", "kind", "id"]) {
-    if (event[key] != null && (typeof event[key] !== "string" || event[key].length > 1500)) return;
+    fields = intelFields(type, event);
+    if (!fields) return;
+  } else {
+    if (event.action === "add" ? !validStroke(event.stroke)
+        : typeof event.id !== "string" || !/^[A-Za-z0-9_-]{4,64}$/.test(event.id)) return;
+    for (const key of ["message", "label", "snitch", "action", "eventKind", "kind", "id"]) {
+      if (event[key] != null && (typeof event[key] !== "string" || event[key].length > 1500)) return;
+    }
   }
   if (!claimBridge(event.bridge)) return;
   const bridge = { id: event.bridge.id, hops: event.bridge.hops + 1 };
@@ -391,20 +527,7 @@ function handleBridge(ws, user, event) {
     }
     saveJson("wartable.json", WARTABLE);
   } else {
-    if (type === "snitch") {
-      if (validCoordinates(event)) Object.assign(clean, { x: event.x, y: event.y, z: event.z });
-      for (const key of ["dim", "world"]) {
-        if (event[key] != null) clean[key] = snitchDimension(event[key]);
-      }
-      const dimension = clean.dim ?? clean.world;
-      if (validDimension(dimension) && dimension !== "openintel:unknown") clean.dim = dimension;
-    } else Object.assign(clean, { x: event.x, y: event.y, z: event.z, dim: event.dim ?? event.world });
-    for (const key of ["player", "name", "message", "label", "snitch", "action", "eventKind", "kind", "id"])
-      if (event[key] != null) clean[key] = event[key];
-    if (type === "ping") {
-      clean.ttl = Math.min(Number.isFinite(event.ttl) ? Math.max(0, event.ttl) : 60000, 300000);
-      if (Number.isInteger(event.color)) clean.color = event.color;
-    }
+    Object.assign(clean, fields);
     if (type === "position") {
       const key = `${lower(event.name)}@${lower(user.name)}`;
       if ((positions.get(key)?.t ?? -Infinity) > event.t) return;
@@ -544,19 +667,37 @@ function applyAllegiance(kind, action, name, actorLabel, context = {}) {
 
 wss.on("connection", (ws, req) => {
   ws.authedAs = null;
-  const ip = req.socket.remoteAddress;
+  const address = String(req.socket.remoteAddress ?? "unknown");
+  const tag = clientTag(address);
+  if (MAX_PENDING_PER_ADDRESS > 0 && (pendingByAddress.get(address) ?? 0) >= MAX_PENDING_PER_ADDRESS) {
+    logAuthRejection(`pending:${tag}`, `⚠️ Too many pending logins from client \`${tag}\``, address);
+    ws.close(1013, "too many pending connections");
+    return;
+  }
+  pendingByAddress.set(address, (pendingByAddress.get(address) ?? 0) + 1);
+  let pending = true;
+  const settlePending = () => {
+    if (!pending) return;
+    pending = false;
+    const left = (pendingByAddress.get(address) ?? 1) - 1;
+    if (left > 0) pendingByAddress.set(address, left);
+    else pendingByAddress.delete(address);
+  };
+  ws.on("close", settlePending);
   const identity = createIdentityVerification(ws, { userByToken,
     onRejected(reason) {
-      logAuthRejection(`identity:${ip}`, `❌ Minecraft account verification failed from \`${ip}\` (${reason})`);
+      logAuthRejection(`identity:${tag}`, `❌ Minecraft account verification failed from client \`${tag}\` (${reason})`, address);
     },
     onVerified(user, minecraftUuid) {
+      settlePending();
       // Pin the first verified account so a recycled Minecraft name cannot take
       // over an invitation after its owner changes names.
       if (user.minecraftUuid == null) {
-        const updated = { ...USERS, users: USERS.users.map(u => u === user ? { ...u, minecraftUuid } : u) };
+        const pinned = { ...user, minecraftUuid };
+        const updated = { ...USERS, users: USERS.users.map(u => u === user ? pinned : u) };
         saveJson("users.json", updated);
         USERS = updated;
-        user = userByToken(user.token);
+        user = pinned;
       }
       ws.authedAs = user.name;
       ws.role = validRole(user.role) ? lower(user.role) : "member";
@@ -581,7 +722,7 @@ wss.on("connection", (ws, req) => {
       const user = typeof msg.token === "string" && msg.token.length > 0 ? userByToken(msg.token) : null;
       if (!user) {
         ws.send(JSON.stringify({ type: "deny", reason: "bad_token" }));
-        logAuthRejection(`token:${ip}`, `❌ Auth failure from \`${ip}\``);
+        logAuthRejection(`token:${tag}`, `❌ Auth failure from client \`${tag}\``, address);
         ws.close(4001, "bad token");
         return;
       }
@@ -600,7 +741,7 @@ wss.on("connection", (ws, req) => {
 
     if (!ws.authedAs) return;
     const user = currentSocketUser(ws);
-    if (!user || user.disabled || user.token == null) {
+    if (!user || user.disabled || !user.tokenHash) {
       ws.close(4001, "session revoked");
       return;
     }
@@ -717,18 +858,19 @@ wss.on("connection", (ws, req) => {
     }
 
     // Shared pings + forwarded snitch alerts: stamp the sender and fan out.
+    // Only checked fields go out; anything else the client attached is dropped.
     if (msg.type === "ping" || msg.type === "snitch") {
       if (user.quarantined) return;
+      const fields = intelFields(msg.type, msg);
+      if (!fields) return;
       // Several clients can see the same snitch line — don't multiply it.
       const bridge = localBridge(msg.bridge);
       if (!bridge) return;
-      msg.bridge = bridge;
-      msg.from = ws.authedAs;
-      msg.reporter = ws.authedAs;
-      msg.t = Date.now();
-      broadcast(msg);
-      if (msg.type === "snitch" && msg.player)
-        noteSeen(msg.player, msg.x, msg.y, msg.z, msg.dim ?? msg.world, ws.authedAs, "snitch");
+      const clean = { type: msg.type, ...fields, bridge,
+        from: ws.authedAs, reporter: ws.authedAs, t: Date.now() };
+      broadcast(clean);
+      if (clean.type === "snitch" && clean.player)
+        noteSeen(clean.player, clean.x, clean.y, clean.z, clean.dim ?? clean.world, ws.authedAs, "snitch");
       return;
     }
 
@@ -736,8 +878,8 @@ wss.on("connection", (ws, req) => {
       if (user.quarantined) return;
       const now = Date.now();
       for (const r of msg.reports.slice(0, 100)) {
-        if (typeof r.subject !== "string" || !validName(r.subject)) continue;
-        if (![r.x, r.y, r.z].every(Number.isFinite) || typeof r.dim !== "string") continue;
+        if (!r || typeof r !== "object" || typeof r.subject !== "string" || !validName(r.subject)) continue;
+        if (!validCoordinates(r) || !validDimension(r.dim)) continue;
         const bridge = localBridge(r.bridge);
         if (!bridge) continue;
         positions.set(`${lower(r.subject)}@${lower(ws.authedAs)}`, {
@@ -765,8 +907,13 @@ setInterval(() => {
 }, CONFIG.broadcastIntervalMs ?? 250);
 
 // ---------------------------------------------------------------- admin REST
+const ADMIN_TOKEN_DIGEST = adminTokenDigest(CONFIG.adminToken);
+if (!ADMIN_TOKEN_DIGEST) {
+  console.log(`Admin HTTP API disabled: set adminToken to a random string of at least ${ADMIN_TOKEN_MIN_LENGTH} characters`);
+}
 function requireAdmin(req, res, next) {
-  if (req.headers["x-admin-token"] !== CONFIG.adminToken) {
+  if (!ADMIN_TOKEN_DIGEST) return res.status(403).json({ error: "admin API disabled" });
+  if (!adminTokenMatches(ADMIN_TOKEN_DIGEST, req.headers["x-admin-token"])) {
     return res.status(403).json({ error: "bad admin token" });
   }
   next();
@@ -790,7 +937,8 @@ app.get("/users", requireAdmin, (req, res) =>
   res.json({ users: USERS.users.map((u) => u.name) })); // never expose tokens
 app.put("/users", requireAdmin, (req, res) => {
   const before = USERS;
-  USERS = { users: req.body.users ?? [] };
+  // Accepts a plaintext `token` (hashed here) or an existing `tokenHash`.
+  USERS = sealUsers({ users: req.body?.users ?? [] }).data;
   saveJson("users.json", USERS);
   broadcast(allegiancePayload());
   for (const client of wss.clients) {
@@ -927,8 +1075,7 @@ if (DISCORD.botToken) {
       "!user add <name> [role]              create user + DM token (admin)",
       "!user remove|disable|enable <name>   user lifecycle (admin)",
       "!user role <name> <role>             set user role (admin)",
-      "!user rotate-token|info <name>       token/user details (admin)",
-      "!user token <name>                   DM the raw token (admin)",
+      "!user rotate-token|info <name>       new token by DM / user details (admin)",
       "!help                                this message",
     ].join("\n")
   );
@@ -1048,7 +1195,8 @@ if (DISCORD.botToken) {
           await msg.author.send("Random token:\n`" + token + "`");
           return void msg.reply("token sent to your DMs");
         } catch {
-          return void msg.reply(fence("token: " + token + "\n(could not DM you - save it, then delete this message)"));
+          // Never fall back to the channel: anyone reading it could reuse the token.
+          return void msg.reply("could not DM you the token. Enable DMs from this server and retry.");
         }
       }
       // Everything below mutates state.
@@ -1191,7 +1339,7 @@ if (DISCORD.botToken) {
             return void msg.reply("user already exists");
           }
           const token = crypto.randomBytes(32).toString("base64url");
-          const user = { name, token, role };
+          const user = { name, tokenHash: hashToken(token), role };
           try {
             await msg.author.send(`OpenIntel token for **${name}** (${role}):\n\`${token}\`\nStore it securely; it will not be shown in the command channel.`);
           } catch {
@@ -1217,19 +1365,14 @@ if (DISCORD.botToken) {
             `role: ${user.role ?? "member"}`,
             `disabled: ${Boolean(user.disabled)}`,
             `quarantined: ${Boolean(user.quarantined)}`,
-            `token fingerprint: sha256:${tokenFingerprint(user.token)}`,
+            `token fingerprint: sha256:${hashFingerprint(user.tokenHash) ?? "none"}`,
             `active sessions: ${socketsFor(user.name).length}`,
           ].join("\n")));
         }
         if (action === "token") {
-          try {
-            await msg.author.send(`OpenIntel token for **${user.name}** (${user.role ?? "member"}):\n\`${user.token}\`\nRequires the Minecraft account ${user.name} to authenticate. Keep it private and never share Minecraft account credentials.`);
-          } catch {
-            commandAudit(msg, tier, "user.token", user.name, { before: null, after: null, success: false, reason: "DM delivery failed" });
-            return void msg.reply("could not DM you the token. Enable DMs and retry.");
-          }
-          commandAudit(msg, tier, "user.token", user.name, { before: null, after: null });
-          return void msg.reply(`token for ${user.name} sent to your DMs`);
+          // users.json keeps only digests, so the original token cannot be resent.
+          commandAudit(msg, tier, "user.token", user.name, { success: false, reason: "tokens are stored hashed" });
+          return void msg.reply(`tokens are stored only as hashes and cannot be resent. Use \`!user rotate-token ${user.name}\` to DM a new one.`);
         }
         if (action === "remove") USERS.users = USERS.users.filter((u) => lower(u.name) !== lower(user.name));
         if (action === "disable") user.disabled = true;
@@ -1251,7 +1394,7 @@ if (DISCORD.botToken) {
             commandAudit(msg, tier, `user.${action}`, user.name, { before, after: before, success: false, reason: "DM delivery failed; token unchanged" });
             return void msg.reply(`token was not rotated because DM delivery failed. Enable DMs and retry.`);
           }
-          user.token = newToken;
+          user.tokenHash = hashToken(newToken);
         }
         saveJson("users.json", USERS);
         broadcast(allegiancePayload());
