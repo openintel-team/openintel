@@ -2,7 +2,9 @@ name: Canary mod build
 run-name: >-
   ${{ github.event_name == 'pull_request'
       && format('PR #{0}: {1}', github.event.pull_request.number, github.event.pull_request.title)
-      || format('Canary ({0}): {1}', inputs.target, inputs.title || 'Current branch tips') }}
+      || (inputs.batch != ''
+          && format('Canary: {0} [batch:{1}]', inputs.title, inputs.batch)
+          || format('Canary ({0}): {1}', inputs.target, inputs.title || 'Current branch tips')) }}
 
 on:
   pull_request:
@@ -24,13 +26,22 @@ on:
         description: Short description of the change or batch
         type: string
         required: false
+      commits:
+        description: Internal exact branch/commit manifest (leave blank for branch tips)
+        type: string
+        required: false
+      batch:
+        description: Internal manifest fingerprint (leave blank for manual builds)
+        type: string
+        required: false
 
 concurrency:
-  group: canary-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  group: canary-${{ github.event_name }}-${{ inputs.batch || github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   plan:
@@ -39,6 +50,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
+      skip: ${{ steps.plan.outputs.skip }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -48,40 +60,17 @@ jobs:
       - name: Resolve exact commits
         id: plan
         env:
-          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
           TARGET: ${{ inputs.target }}
           PR_BRANCH: ${{ github.base_ref }}
-        run: |
-          python3 - <<'PYTHON'
-          import json
-          import os
-          import subprocess
-
-          branches = ['main', '26.2', '26.1.2', '1.21.11']
-          if os.environ['EVENT_NAME'] == 'pull_request':
-              # Check the proposed merge, including PRs from forks.
-              entries = [{'branch': os.environ['PR_BRANCH'], 'sha': os.environ['GITHUB_SHA']}]
-          else:
-              target = os.environ['TARGET']
-              if target != 'all' and target not in branches:
-                  raise SystemExit('Unsupported build target')
-              selected = branches if target == 'all' else [target]
-              refs = [f'refs/heads/{branch}' for branch in selected]
-              result = subprocess.run(
-                  ['git', 'ls-remote', '--exit-code', 'origin', *refs],
-                  check=True, capture_output=True, text=True,
-              )
-              commits = {ref: sha for sha, ref in (line.split() for line in result.stdout.splitlines())}
-              if any(ref not in commits for ref in refs):
-                  raise SystemExit('A selected branch could not be resolved')
-              entries = [{'branch': branch, 'sha': commits[f'refs/heads/{branch}']} for branch in selected]
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              print('matrix=' + json.dumps({'include': entries}), file=output)
-          PYTHON
+          COMMITS: ${{ inputs.commits }}
+          BATCH: ${{ inputs.batch }}
+        run: python3 .github/scripts/canary.py plan
 
   build:
     name: Build ${{ matrix.branch }}
     needs: plan
+    if: ${{ needs.plan.outputs.skip != 'true' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
