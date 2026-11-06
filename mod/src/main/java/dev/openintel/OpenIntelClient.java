@@ -213,9 +213,9 @@ public class OpenIntelClient implements ClientModInitializer {
             SnitchRelay.reset();
             reconnectRelay();
             if (client.getCurrentServer() != null) dev.openintel.update.UpdateChecker.onMultiplayerJoin();
-            // Ask the live map for the current image. A saved copy is drawn only
-            // after the server confirms that file is still current.
-            if (config.liveMapBase != null && !config.liveMapBase.isBlank()) LiveMap.ensureLoaded();
+            // Fetch the live map now so the War Table is ready when opened. A saved
+            // copy is drawn only after the server confirms that file is still current.
+            if (config.liveMapBase != null && !config.liveMapBase.isBlank()) LiveMap.refresh();
         });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             relay.disconnect();

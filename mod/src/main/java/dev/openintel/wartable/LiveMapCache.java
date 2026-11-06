@@ -82,6 +82,17 @@ final class LiveMapCache {
         return true;
     }
 
+    /**
+     * The per-frame call ({@code checkShown} false) only fetches when nothing
+     * is shown. Join and opening the War Table also re-check a shown image
+     * once it is due, keeping it on screen while they do.
+     */
+    static boolean startsFetch(Freshness state, boolean checkShown, long fetchedAt, long attemptAt,
+                               long now, long checkIntervalMs, long failureRetryMs) {
+        if (state == Freshness.READY && !checkShown) return false;
+        return needsFetch(state, fetchedAt, attemptAt, now, checkIntervalMs, failureRetryMs);
+    }
+
     static Cached read(Path root) {
         try {
             Path json = root.resolve("source.json");
