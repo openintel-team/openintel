@@ -510,7 +510,8 @@ public class WarTableScreen extends Screen {
 
     private void drawCentered(GuiGraphics ctx, String text, float cx, float y, int color) {
         if (cleanText(text)) CleanFont.drawCentered(ctx, text, cx, y, color);
-        else ctx.drawCenteredString(font, text, Math.round(cx), Math.round(y), color);
+        // No drop shadow: on map labels it doubles the glyphs (worst with dark text and scaling).
+        else ctx.drawString(font, text, Math.round(cx) - font.width(text) / 2, Math.round(y), color, false);
     }
 
     /** Filled diamond at a map point — same marker language as JourneyMap waypoints. */
