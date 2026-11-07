@@ -251,6 +251,8 @@ public final class ClickGui {
                         bool("options.openintel.presence.enabled", cfg.presenceEnabled, v -> cfg.presenceEnabled = v)),
                 new Option(tr("options.openintel.presence.all_dims"), "Show players in other dimensions too.",
                         bool("options.openintel.presence.all_dims", cfg.presenceShowAllDims, v -> cfg.presenceShowAllDims = v)),
+                new Option(tr("options.openintel.presence.tab_only"), "Show the panel only while the player list (Tab) is open.",
+                        bool("options.openintel.presence.tab_only", cfg.presenceOnlyOnTab, v -> cfg.presenceOnlyOnTab = v)),
                 new Option(tr("options.openintel.presence.rows"), "Maximum rows before the list truncates.",
                         slider("options.openintel.presence.rows", 4, 24, cfg.presenceMaxRows,
                                 "", v -> cfg.presenceMaxRows = v)),
