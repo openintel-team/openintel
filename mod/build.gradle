@@ -286,6 +286,13 @@ tasks.register('relayBridgeTest', JavaExec) {
     enableAssertions = true
 }
 
+tasks.register('positionPipelineTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.net.PositionPipelineTest'
+    enableAssertions = true
+}
+
 tasks.register('allegianceTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
@@ -350,7 +357,7 @@ tasks.register('mouseButtonConstantsTest', JavaExec) {
     enableAssertions = true
 }
 
-check.dependsOn relayProfilesTest, relayBridgeTest, investigatePresentationTest, worldOverlayTest, versionPinTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, mapParityTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest, chatChannelFilterTest, chatVersionParityTest, releaseUpdateTest, crosshairTest
+check.dependsOn relayProfilesTest, relayBridgeTest, positionPipelineTest, investigatePresentationTest, worldOverlayTest, versionPinTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, mapParityTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest, chatChannelFilterTest, chatVersionParityTest, releaseUpdateTest, crosshairTest
 check.dependsOn allegianceTest, snitchLogParserTest, oiConfigMigrationTest, trackerSnitchIntelTest, pingManagerTest, snitchRelayTest, junkRejectorTest, pingWheelLayoutTest, mouseButtonConstantsTest
 
 publishing {

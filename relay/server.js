@@ -329,6 +329,27 @@ function enemyAlert(enemy, x, z, dim, reporter) {
 // subject(lower) -> { name, x, y, z, dim, t, reporter }
 const positions = new Map();
 const STALE_MS = CONFIG.staleMs ?? 10000;
+// Every position rate is a relay setting, clamped to a sane range.
+const configMs = (value, fallback, min, max) =>
+  Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+// Full player list to clients without position deltas (older mods): the legacy cadence.
+const BROADCAST_MS = configMs(CONFIG.broadcastIntervalMs, 250, 50, 10000);
+// Clients that announce positionVersion 2 get changed players as they arrive,
+// at most once per POSITION_FLUSH_MS (the max push rate, 50 ms = 20 Hz), plus a
+// full list every FULL_SYNC_MS so removals and idle players stay current.
+const POSITION_PROTOCOL = 2;
+const POSITION_FLUSH_MS = configMs(CONFIG.positionFlushMs, 50, 10, 1000);
+const FULL_SYNC_MS = configMs(CONFIG.fullSyncMs, 1000, 250, 5000);
+// Players farther than NEAR_POSITION_RANGE blocks from the recipient, or in
+// another dimension, are pushed at most once per FAR_POSITION_MS. 0 turns this off.
+const FAR_POSITION_MS = configMs(CONFIG.farPositionMs, 500, 0, 5000);
+const NEAR_POSITION_RANGE = configMs(CONFIG.nearPositionRange, 1000, 0, 30000000);
+// Sustained position uploads from one connection are capped at one per this
+// many ms (bursts of a few are allowed).
+const MIN_REPORT_INTERVAL_MS = configMs(CONFIG.minReportIntervalMs, 25, 0, 1000);
+// Reporters may say how old an observation already was when sent (ms).
+const MAX_REPORT_AGE_MS = 1000;
+const MAX_REPORT_SPEED = 100;   // blocks per second, horizontal velocity bound
 
 // Latest intel of any kind per player — feeds !where and war-table marks.
 // name(lower) -> { name, x, y, z, dim, t, kind, reporter }
@@ -402,16 +423,28 @@ function validBridge(b, maxHops = 8) {
     && !/[\u0000-\u001f\u007f]/.test(b.id)
     && Number.isInteger(b.hops) && b.hops >= 0 && b.hops <= maxHops;
 }
-function claimBridge(b) {
+// Position observations arrive many times a second, so they get their own
+// short-lived cache. Sharing bridgeSeen would push snitch, ping, and War Table
+// IDs out long before their six-hour window and break multi-relay dedupe.
+// A position older than STALE_MS is refused by age anyway, so that TTL suffices.
+const POSITION_BRIDGE_MAX_IDS = 100000;
+const positionBridgeSeen = new Map();
+function claimIn(cache, b, ttl, max) {
   const now = Date.now();
-  for (const [id, expiry] of bridgeSeen) {
+  for (const [id, expiry] of cache) {
     if (expiry > now) break;
-    bridgeSeen.delete(id);
+    cache.delete(id);
   }
-  if (bridgeSeen.has(b.id)) return false;
-  if (bridgeSeen.size >= BRIDGE_MAX_IDS) bridgeSeen.delete(bridgeSeen.keys().next().value);
-  bridgeSeen.set(b.id, now + BRIDGE_TTL_MS);
+  if (cache.has(b.id)) return false;
+  if (cache.size >= max) cache.delete(cache.keys().next().value);
+  cache.set(b.id, now + ttl);
   return true;
+}
+function claimBridge(b) {
+  return claimIn(bridgeSeen, b, BRIDGE_TTL_MS, BRIDGE_MAX_IDS);
+}
+function claimPositionBridge(b) {
+  return claimIn(positionBridgeSeen, b, STALE_MS, POSITION_BRIDGE_MAX_IDS);
 }
 function newBridge(candidate) {
   return validBridge(candidate) ? { id: candidate.id, hops: candidate.hops }
@@ -420,6 +453,11 @@ function newBridge(candidate) {
 function localBridge(candidate) {
   const bridge = newBridge(candidate);
   return claimBridge(bridge) ? bridge : null;
+}
+function localPositionBridge(candidate) {
+  const bridge = validBridge(candidate) ? { id: candidate.id, hops: candidate.hops }
+    : { id: crypto.randomBytes(9).toString("base64url"), hops: 0 };
+  return claimPositionBridge(bridge) ? bridge : null;
 }
 function validDimension(dim) {
   return typeof dim === "string" && /^[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(dim) && dim.length <= 128;
@@ -505,7 +543,7 @@ function handleBridge(ws, user, event) {
       if (event[key] != null && (typeof event[key] !== "string" || event[key].length > 1500)) return;
     }
   }
-  if (!claimBridge(event.bridge)) return;
+  if (!(type === "position" ? claimPositionBridge : claimBridge)(event.bridge)) return;
   const bridge = { id: event.bridge.id, hops: event.bridge.hops + 1 };
   const clean = { type, t: event.t, bridge, origin: bridgeOrigin(event), from: user.name, reporter: user.name };
   if (type === "wartable") {
@@ -531,8 +569,11 @@ function handleBridge(ws, user, event) {
     if (type === "position") {
       const key = `${lower(event.name)}@${lower(user.name)}`;
       if ((positions.get(key)?.t ?? -Infinity) > event.t) return;
-      positions.set(key, clean);
+      Object.assign(clean, positionVelocity(event));
+      clean.x = roundCoordinate(clean.x); clean.y = roundCoordinate(clean.y); clean.z = roundCoordinate(clean.z);
+      storePosition(key, clean);
       noteSeen(event.name, clean.x, clean.y, clean.z, clean.dim, user.name, "position", event.t);
+      flushPositions(now);
       return;
     }
     if (type === "where" || (type === "snitch" && validCoordinates(clean)
@@ -555,12 +596,16 @@ function broadcast(obj) {
   }
   const delivered = new Set();
   const snitchDecisions = new Map();
+  // One filtered, encoded player list per visibility lane, not per recipient.
+  const stateByLane = new Map();
+  const now = Date.now();
   for (const client of wss.clients) {
     const identity = client.authedAs ? lower(client.authedAs) : null;
     const recipient = identity ? userByName(identity) : null;
     if (client.readyState !== 1 || !recipient || recipient.disabled || delivered.has(identity)) continue;
     const key = visibilityKey(recipient, USERS.users);
-    if (client.visibilityKey !== key) {
+    const reset = client.visibilityKey !== key;
+    if (reset) {
       client.send(JSON.stringify({ type: "intel_reset" }));
       client.send(JSON.stringify(allegiancePayload(recipient)));
       client.send(JSON.stringify(wartableSync(recipient)));
@@ -568,7 +613,17 @@ function broadcast(obj) {
     }
     let payload = obj;
     if (obj.type === "state") {
-      payload = { ...obj, replace: true, players: visiblePositions(obj.players, recipient, userByName) };
+      // Delta clients only need the full list on their own slower cadence.
+      if (obj.deltaClients === false && client.positionVersion === POSITION_PROTOCOL && !reset) continue;
+      if (!stateByLane.has(key)) {
+        const players = visiblePositions(obj.players, recipient, userByName)
+          .map(p => ({ ...p, age: Math.max(0, now - p.t) }));
+        stateByLane.set(key, JSON.stringify({ type: "state", replace: true, players }));
+      }
+      client.send(stateByLane.get(key));
+      client.farPending?.clear();
+      delivered.add(identity);
+      continue;
     } else if (obj.type === "allegiances") {
       payload = allegiancePayload(recipient);
     } else if (obj.type === "snitch" || obj.type === "ping" || obj.type === "where") {
@@ -590,8 +645,121 @@ function broadcast(obj) {
   return delivered.size > 0;
 }
 
-function sendVisibleState() {
-  broadcast({ type: "state", players: [...positions.values()] });
+function sendVisibleState(deltaClients = true) {
+  broadcast({ type: "state", players: [...positions.values()], deltaClients });
+}
+
+// ------------------------------------------------------ position deltas
+// Players whose chosen report changed since the last push (lowercase names).
+const dirtyPositions = new Set();
+let lastPositionFlush = -Infinity;
+const roundCoordinate = (v) => Math.round(v * 100) / 100;
+function positionVelocity(r) {
+  const ok = (v) => Number.isFinite(v) && Math.abs(v) <= MAX_REPORT_SPEED;
+  return ok(r?.vx) && ok(r?.vz) ? { vx: roundCoordinate(r.vx), vz: roundCoordinate(r.vz) } : {};
+}
+function reportAge(age) {
+  return Number.isFinite(age) && age > 0 ? Math.min(age, MAX_REPORT_AGE_MS) : 0;
+}
+function positionChanged(a, b) {
+  return a.dim !== b.dim || a.reporter !== b.reporter
+    || Math.abs(a.x - b.x) > 0.01 || Math.abs(a.y - b.y) > 0.01 || Math.abs(a.z - b.z) > 0.01
+    || (a.vx ?? 0) !== (b.vx ?? 0) || (a.vz ?? 0) !== (b.vz ?? 0);
+}
+function storePosition(key, entry) {
+  const previous = positions.get(key);
+  positions.set(key, entry);
+  if (!previous || positionChanged(previous, entry)) dirtyPositions.add(lower(entry.name));
+}
+// Sustained position uploads from one connection are capped at one per
+// MIN_REPORT_INTERVAL_MS; a short burst (a client catching up after a stall)
+// still goes through.
+const POSITION_BURST = 8;
+function takePositionToken(ws, now) {
+  if (MIN_REPORT_INTERVAL_MS <= 0) return true;
+  const refill = Number.isFinite(ws.positionTokensAt) ? (now - ws.positionTokensAt) / MIN_REPORT_INTERVAL_MS : POSITION_BURST;
+  ws.positionTokens = Math.min(POSITION_BURST, (ws.positionTokens ?? 0) + Math.max(0, refill));
+  ws.positionTokensAt = now;
+  if (ws.positionTokens < 1) return false;
+  ws.positionTokens -= 1;
+  return true;
+}
+// Compact delta row: [name, x, y, z, dim#, ageMs, reporter#, bridgeId, hops, vx?, vz?]
+// where # indexes the message's string table `s`.
+function encodePositions(reports, now) {
+  const strings = [], index = new Map();
+  const ref = (s) => {
+    if (!index.has(s)) { index.set(s, strings.length); strings.push(s); }
+    return index.get(s);
+  };
+  const p = reports.map((r) => {
+    const row = [r.name, r.x, r.y, r.z, ref(r.dim), Math.max(0, now - r.t), ref(r.reporter ?? "?"),
+      r.bridge?.id ?? "", r.bridge?.hops ?? 0];
+    if (r.vx != null && r.vz != null) row.push(r.vx, r.vz);
+    return row;
+  });
+  return { type: "pos", s: strings, p };
+}
+function isFar(recipientName, report) {
+  if (FAR_POSITION_MS <= 0 || NEAR_POSITION_RANGE <= 0) return false;
+  const self = positions.get(`${lower(recipientName)}@${lower(recipientName)}`);
+  if (!self) return false;
+  return self.dim !== report.dim || Math.hypot(self.x - report.x, self.z - report.z) > NEAR_POSITION_RANGE;
+}
+// Push changed players to delta clients. Runs as reports arrive and on a
+// POSITION_FLUSH_MS timer, but never more often than POSITION_FLUSH_MS.
+function flushPositions(now = Date.now()) {
+  if (now - lastPositionFlush < POSITION_FLUSH_MS) return;
+  const recipients = [];
+  const wanted = new Set(dirtyPositions);
+  for (const client of wss.clients) {
+    if (client.readyState !== 1 || !client.authedAs || client.positionVersion !== POSITION_PROTOCOL) continue;
+    const user = userByName(client.authedAs);
+    if (!user || user.disabled || client.visibilityKey !== visibilityKey(user, USERS.users)) continue;
+    recipients.push({ client, user });
+    for (const subject of client.farPending?.keys() ?? []) wanted.add(subject);
+  }
+  if (!wanted.size) return;
+  const dirty = new Set(dirtyPositions);
+  dirtyPositions.clear();
+  if (!recipients.length) return;
+  const bySubject = new Map([...wanted].map((subject) => [subject, []]));
+  for (const report of positions.values()) bySubject.get(lower(report.name))?.push(report);
+  const lanes = new Map();
+  const delivered = new Set();
+  for (const { client, user } of recipients) {
+    if (delivered.has(lower(client.authedAs))) continue;
+    const lane = client.visibilityKey;
+    if (!lanes.has(lane)) {
+      const chosen = new Map();
+      for (const [subject, reports] of bySubject) {
+        const [best] = visiblePositions(reports, user, userByName);
+        if (best) chosen.set(subject, best);
+      }
+      lanes.set(lane, chosen);
+    }
+    const chosen = lanes.get(lane);
+    client.farPending ??= new Map();
+    client.posSentAt ??= new Map();
+    const out = [];
+    for (const subject of new Set([...dirty, ...client.farPending.keys()])) {
+      const report = chosen.get(subject);
+      if (!report) { client.farPending.delete(subject); continue; }
+      if (lower(report.name) === lower(client.authedAs)) continue;
+      if (isFar(client.authedAs, report) && now - (client.posSentAt.get(subject) ?? -Infinity) < FAR_POSITION_MS) {
+        client.farPending.set(subject, true);
+        continue;
+      }
+      client.farPending.delete(subject);
+      client.posSentAt.set(subject, now);
+      out.push(report);
+    }
+    if (client.posSentAt.size > 4096) client.posSentAt.clear();
+    if (!out.length) continue;
+    client.send(JSON.stringify(encodePositions(out, now)));
+    delivered.add(lower(client.authedAs));
+  }
+  if (delivered.size) lastPositionFlush = now;
 }
 function socketsFor(name) {
   return [...wss.clients].filter((client) => client.authedAs && lower(client.authedAs) === lower(name));
@@ -703,7 +871,7 @@ wss.on("connection", (ws, req) => {
       ws.role = validRole(user.role) ? lower(user.role) : "member";
       ws.visibilityKey = visibilityKey(user, USERS.users);
       ws.send(JSON.stringify({ ...allegiancePayload(user), type: "welcome", minecraftServer: MINECRAFT_SERVER,
-        role: ws.role, relayCut: user.relayCut === true, bridgeVersion: 1 }));
+        role: ws.role, relayCut: user.relayCut === true, bridgeVersion: 1, positionVersion: POSITION_PROTOCOL }));
       if (!isTrial(user)) ws.send(JSON.stringify(wartableSync(user)));
       adminLog(`✅ **${user.name}** connected (${ws.role})`);
     }
@@ -735,6 +903,9 @@ wss.on("connection", (ws, req) => {
         return;
       }
       ws.minecraftServer = minecraftServer;
+      // Optional: newer clients take compact position deltas. Older clients omit it.
+      ws.positionVersion = Number.isInteger(msg.positionVersion) && msg.positionVersion >= POSITION_PROTOCOL
+        ? POSITION_PROTOCOL : 1;
       identity.begin(msg.token);
       return;
     }
@@ -877,19 +1048,22 @@ wss.on("connection", (ws, req) => {
     if (msg.type === "positions" && Array.isArray(msg.reports)) {
       if (user.quarantined) return;
       const now = Date.now();
+      if (!takePositionToken(ws, now)) return;
       for (const r of msg.reports.slice(0, 100)) {
         if (!r || typeof r !== "object" || typeof r.subject !== "string" || !validName(r.subject)) continue;
         if (!validCoordinates(r) || !validDimension(r.dim)) continue;
-        const bridge = localBridge(r.bridge);
+        const bridge = localPositionBridge(r.bridge);
         if (!bridge) continue;
-        positions.set(`${lower(r.subject)}@${lower(ws.authedAs)}`, {
-          name: r.subject, x: +r.x, y: +r.y, z: +r.z, bridge,
-          dim: String(r.dim), t: now, reporter: ws.authedAs,
+        const t = now - reportAge(r.age);
+        storePosition(`${lower(r.subject)}@${lower(ws.authedAs)}`, {
+          name: r.subject, x: roundCoordinate(+r.x), y: roundCoordinate(+r.y), z: roundCoordinate(+r.z), bridge,
+          dim: String(r.dim), t, reporter: ws.authedAs, ...positionVelocity(r),
         });
-        noteSeen(r.subject, r.x, r.y, r.z, r.dim, ws.authedAs, "position");
+        noteSeen(r.subject, r.x, r.y, r.z, r.dim, ws.authedAs, "position", t);
         if (isEnemy(r.subject) && canReceiveIntel({ role: "member" }, ws.authedAs, r.subject, userByName))
           enemyAlert(r.subject, r.x, r.z, r.dim, ws.authedAs);
       }
+      flushPositions(now);
     }
   });
 
@@ -898,13 +1072,22 @@ wss.on("connection", (ws, req) => {
   });
 });
 
-// Fan shared state out ~4x/sec.
+// Full player list: every BROADCAST_MS for older clients, every FULL_SYNC_MS
+// for delta clients (which get changes in between from flushPositions).
+let lastFullSync = -Infinity;
 setInterval(() => {
   const now = Date.now();
-  for (const [k, v] of positions) if (now - v.t > STALE_MS) positions.delete(k);
+  for (const [k, v] of positions) {
+    if (now - v.t <= STALE_MS) continue;
+    positions.delete(k);
+    dirtyPositions.add(lower(v.name));   // another reporter's view may now win
+  }
   for (const [k, v] of lastSeen) if (now - v.t > LAST_SEEN_MS) lastSeen.delete(k);
-  sendVisibleState();
-}, CONFIG.broadcastIntervalMs ?? 250);
+  const deltaClients = now - lastFullSync >= FULL_SYNC_MS;
+  if (deltaClients) lastFullSync = now;
+  sendVisibleState(deltaClients);
+}, BROADCAST_MS);
+setInterval(() => flushPositions(Date.now()), POSITION_FLUSH_MS);
 
 // ---------------------------------------------------------------- admin REST
 const ADMIN_TOKEN_DIGEST = adminTokenDigest(CONFIG.adminToken);

@@ -771,9 +771,11 @@ public class WarTableScreen extends Screen {
         }
         // Relay-tracked players in the overworld.
         String self = minecraft.player != null ? minecraft.player.getGameProfile().name() : "";
+        long playersNow = System.currentTimeMillis();
         for (Tracker.RemotePlayer p : OpenIntelClient.tracker().all()) {
             if (p.dimension == null || !p.dimension.equals("minecraft:overworld")) continue;
-            double sx = screenX(proj, p.x), sy = screenY(proj, p.z);
+            double[] at = p.estimate(playersNow);
+            double sx = screenX(proj, at[0]), sy = screenY(proj, at[2]);
             if (sx < -40 || sy < -20 || sx > width + 40 || sy > height + 20) continue;
             int c = p.allegiance.argb;
             ctx.fill((int) sx - 3, (int) sy - 3, (int) sx + 4, (int) sy + 4, 0xCC000000);

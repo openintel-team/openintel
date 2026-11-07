@@ -279,6 +279,19 @@ public final class MapParityTest {
         MapMarker pin = new MapMarker(MapMarkerStyle.LIBRARY_PREFIX + "1,1", 1.5, 64, 1.5, OVERWORLD,
                 RelicMapMath.COLOR, "Wish Bone", "Fortune", Long.MAX_VALUE);
         check(!sig(pin, false).equals(sig(pin, true)), "selection changes the signature");
+        // JourneyMap moves or retitles an overlay in place while the icon key holds.
+        String icon = iconSig(base, false);
+        check(icon.equals(iconSig(new MapMarker("player:Bob", 40, 70, 9, OVERWORLD, 0xFF00AA00, "Bob", "40m", 1), false)),
+                "moving and new caption keep the overlay");
+        check(!icon.equals(iconSig(new MapMarker("player:Bob", 10.2, 64, -3.7, NETHER, 0xFF00AA00, "Bob", "5m", 1), false)),
+                "dimension change rebuilds");
+        check(!icon.equals(iconSig(new MapMarker("player:Bob", 10.2, 64, -3.7, OVERWORLD, 0xFFAA0000, "Bob", "5m", 1), false)),
+                "color change rebuilds");
+        check(!iconSig(pin, false).equals(iconSig(pin, true)), "selection rebuilds");
+    }
+
+    private static String iconSig(MapMarker marker, boolean selected) {
+        return MapMarkerStyle.iconSignature(marker, MapMarkerStyle.of(marker, selected));
     }
 
     private static String sig(MapMarker marker, boolean selected) {

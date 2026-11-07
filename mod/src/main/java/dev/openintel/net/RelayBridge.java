@@ -17,6 +17,15 @@ public final class RelayBridge {
                 event.addProperty("type", "position");
                 events.add(event);
             }
+        } else if (type.equals("pos") && message.has("p") && message.get("p").isJsonArray()
+                && message.has("s") && message.get("s").isJsonArray()) {
+            long now = System.currentTimeMillis();
+            for (var value : message.getAsJsonArray("p")) {
+                try {
+                    PositionRow row = PositionRow.parse(value, message.getAsJsonArray("s"), now);
+                    if (row != null) events.add(row.toPositionEvent());
+                } catch (RuntimeException malformed) { /* skip the row */ }
+            }
         } else if (type.equals("wartable_sync") && message.has("strokes") && message.get("strokes").isJsonArray()) {
             for (var value : message.getAsJsonArray("strokes")) {
                 if (!value.isJsonObject() || !value.getAsJsonObject().has("bridge")) continue;

@@ -126,7 +126,8 @@ public final class MarkerHud {
                     tx = lp.x; ty = lp.y + 2.4; tz = lp.z;
                     alpha = opacity;                         // live: never stale
                 } else {
-                    tx = p.x; ty = p.y + 2.4; tz = p.z;
+                    double[] at = p.estimate(now);
+                    tx = at[0]; ty = at[1] + 2.4; tz = at[2];
                     alpha = opacity * staleFade(cfg, now, p.lastSeen);
                 }
                 if (alpha < 0.03f) continue;

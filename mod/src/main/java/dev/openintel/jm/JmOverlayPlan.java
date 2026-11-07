@@ -29,12 +29,13 @@ public final class JmOverlayPlan {
      * One overlay to keep shown.
      *
      * @param key     stable overlay key
-     * @param sig     rebuild key; the overlay is recreated only when this changes
+     * @param sig     update key; a change moves or retitles the overlay
+     * @param iconSig rebuild key; the overlay is recreated only when this changes
      * @param visible drawn now; a hidden overlay stays registered with JourneyMap
      * @param site    library site for a pin overlay, otherwise null
      */
     public record Entry(String key, MapMarker marker, MapMarkerStyle.Style style, String sig,
-                        boolean visible, String site) { }
+                        String iconSig, boolean visible, String site) { }
 
     private JmOverlayPlan() { }
 
@@ -44,7 +45,8 @@ public final class JmOverlayPlan {
             String site = MapMarkerStyle.librarySite(marker);
             if (site == null) {
                 MapMarkerStyle.Style style = MapMarkerStyle.of(marker, false);
-                entries.add(new Entry(marker.id(), marker, style, MapMarkerStyle.signature(marker, style), true, null));
+                entries.add(new Entry(marker.id(), marker, style, MapMarkerStyle.signature(marker, style),
+                        MapMarkerStyle.iconSignature(marker, style), true, null));
                 continue;
             }
             boolean selected = selectedSites.contains(site);
@@ -62,6 +64,6 @@ public final class JmOverlayPlan {
                 marker.title(), marker.label(), marker.expiresAt());
         MapMarkerStyle.Style style = MapMarkerStyle.of(colored, selected);
         return new Entry(marker.id() + (selected ? SELECTED : UNSELECTED), colored, style,
-                MapMarkerStyle.signature(colored, style), visible, site);
+                MapMarkerStyle.signature(colored, style), MapMarkerStyle.iconSignature(colored, style), visible, site);
     }
 }
