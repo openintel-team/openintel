@@ -13,12 +13,26 @@ function canReceiveIntel(recipient, reporter, subject, lookup) {
   return !isCut(reporter, lookup) && !isCut(subject, lookup);
 }
 
+// A player's own report is exact; another client's view of them lags by that
+// client's interpolation and network path. Keep the self-report unless it is
+// more than SELF_REPORT_PREFERENCE_MS older than the newest other view.
+const SELF_REPORT_PREFERENCE_MS = 1000;
+const isSelfReport = (report) => lower(report.reporter) === lower(report.name);
+function better(current, report) {
+  if (isSelfReport(current) !== isSelfReport(report)) {
+    const self = isSelfReport(current) ? current : report;
+    const other = self === current ? report : current;
+    return self.t >= other.t - SELF_REPORT_PREFERENCE_MS ? self : other;
+  }
+  return current.t <= report.t ? report : current;
+}
+
 function visiblePositions(reports, recipient, lookup) {
   const latest = new Map();
   for (const report of reports) {
     if (!canReceiveIntel(recipient, report.reporter, report.name, lookup)) continue;
     const key = lower(report.name);
-    if (!latest.has(key) || latest.get(key).t <= report.t) latest.set(key, report);
+    latest.set(key, latest.has(key) ? better(latest.get(key), report) : report);
   }
   return [...latest.values()];
 }

@@ -20,7 +20,10 @@ mod's types, so JourneyMap and Xaero draw the same content:
 - `PlayerMode.LIVE_POSITIONS` (Xaero) replaces a loaded player's relay report
   with the live position. `PlayerMode.SKIP_LOADED` (JourneyMap) leaves loaded
   players out because JourneyMap's own radar already draws them. This is the
-  only intended difference between the two maps.
+  only intended difference between the two maps. Relay players are drawn at
+  `RemotePlayer.estimate(now)`: the last report projected along its velocity
+  for up to 500 ms from when it was observed, easing over 150 ms to each new
+  report (`MotionEstimate`).
 - `MapMarkerStyle.of(marker, selected)` picks the shape (circle, diamond, name
   diamond, relic texture, or cross), the relic texture, the title and caption,
   the color, and the selected-library highlight. `signature` is the rebuild key.
@@ -52,8 +55,11 @@ JourneyMap instantiates it only when JourneyMap is loaded. Only
 `dev.openintel.jm` references the JourneyMap API.
 
 `JmBridge` reconciles `MapMarkerSource` (`SKIP_LOADED`) against JourneyMap
-`MarkerOverlay`s every 20 ticks, or every 4 ticks while the fullscreen map is
-open. An overlay is rebuilt when its `MapMarkerStyle` signature changes. Markers
+`MarkerOverlay`s every tick while the fullscreen map is open (and at once when
+it opens), every 20 ticks otherwise. When only the position or text changed
+(`MapMarkerStyle.signature` differs but `iconSignature` holds), the overlay is
+moved and retitled in place and shown again; a new icon, color, selection, or
+dimension gets a new overlay. Markers
 are fullscreen-only; nothing is written as a waypoint. `JmIcons` bakes one image
 per look, including each relic texture on its dark backing and a green-backed
 variant for selected library pins. Overlay text is the title and caption on two

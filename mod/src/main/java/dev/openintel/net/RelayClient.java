@@ -268,6 +268,8 @@ public class RelayClient implements WebSocket.Listener {
                         hello.addProperty("type", "hello");
                         hello.addProperty("token", attemptToken);
                         hello.addProperty("minecraftServer", attemptMinecraftServer);
+                        // Optional: ask for compact position deltas. Older relays ignore it.
+                        hello.addProperty("positionVersion", PositionUplink.POSITION_PROTOCOL);
                         try {
                             ws.sendText(GSON.toJson(hello), true).whenComplete((ignored, error) -> {
                                 if (error != null) dispatch(ws, attemptGeneration, () -> dropSocket(ws));

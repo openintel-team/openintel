@@ -92,8 +92,13 @@ public class OIConfig {
         return "CHANGE_ME";
     }
 
-    /** How often (ms) the client uploads what it sees. 250–500 is plenty. */
-    public int reportIntervalMs = 250;
+    /**
+     * How often (ms) the client samples what it sees for the relay. One tick
+     * (50) is the floor. Each relay then gets only what it can use: changed
+     * players at this rate for current relays, the full list every 250 ms for
+     * older ones.
+     */
+    public int reportIntervalMs = 50;
 
     /** Drop a shared marker if it hasn't been refreshed in this many ms. */
     public int staleAfterMs = 10_000;
@@ -481,6 +486,18 @@ public class OIConfig {
     // ---------------------------------------------- world map migration ----
 
     /**
+     * The upload sample rate used to default to 250 ms and was never shown in
+     * settings, so a saved 250 (or a missing key) is the old default and moves
+     * to 50. Other values are kept within 50–5000.
+     */
+    public static boolean applyReportIntervalDefault(OIConfig config, boolean saved) {
+        int before = config.reportIntervalMs;
+        if (!saved || before == 250) config.reportIntervalMs = 50;
+        else config.reportIntervalMs = Math.clamp(before, 50, 5000);
+        return config.reportIntervalMs != before;
+    }
+
+    /**
      * Shared world-map settings. {@code worldMapIntel} and {@code worldMapRelics}
      * start from the old Xaero-only switches when a config predates them, or on
      * when those were never saved either. Missing master switches start on.
@@ -820,6 +837,7 @@ public class OIConfig {
                 }
                 if (c.crosshair == null) c.crosshair = new dev.openintel.render.CrosshairStyle();
                 c.crosshair.sanitize();
+                if (applyReportIntervalDefault(c, raw.has("reportIntervalMs"))) defaults = true;
                 // Persist repaired IDs as well as one-time legacy migration.
                 String relayBefore = GSON.toJson(c.relays);
                 c.relayProfiles();
