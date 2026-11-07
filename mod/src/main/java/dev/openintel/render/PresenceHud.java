@@ -40,6 +40,7 @@ public final class PresenceHud {
         if (!cfg.presenceEnabled || !cfg.relayRendering) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null || mc.options.hideGui) return;
+        if (cfg.presenceOnlyOnTab && !mc.options.keyPlayerList.isDown()) return;
         List<Row> rows = rows(mc, cfg);
         if (rows.isEmpty()) return;
         HudSize size = measure(mc, rows);

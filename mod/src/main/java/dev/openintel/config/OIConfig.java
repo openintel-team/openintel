@@ -200,6 +200,9 @@ public class OIConfig {
     /** List players in other bounds (with a dim tag, no distance). */
     public boolean presenceShowAllDims = true;
 
+    /** Show the presence panel only while the player-list key (Tab) is held. */
+    public boolean presenceOnlyOnTab = false;
+
     // ---------------------------------------------------------- ping wheel ---
 
     /** Radial ping wheel (hold key to open, flick to a slot, release to send). */
