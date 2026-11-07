@@ -12,13 +12,15 @@ function fixture(verify = async () => validProfile, timeoutMs) {
   const socket = new Socket();
   const users = [{ name: 'Invited', token: 'secret' }];
   let verified = 0;
+  const rejections = [];
   const auth = createIdentityVerification(socket, {
     verify, timeoutMs, userByToken: token => users.find(u => !u.disabled && u.token === token),
     onVerified(user) { verified++; socket.authedAs = user.name; },
+    onRejected(reason, invitationName) { rejections.push({ reason, invitationName }); },
   });
   const complete = auth.complete;
   auth.complete = (clientNonce = 'b'.repeat(40)) => complete(clientNonce);
-  return { socket, auth, users, get verified() { return verified; },
+  return { socket, auth, users, rejections, get verified() { return verified; },
     challenge() { return socket.messages.find(m => m.type === 'auth_challenge').challenge; } };
 }
 async function main() {
@@ -31,6 +33,7 @@ async function main() {
   await wrong.auth.complete();
   assert.equal(wrong.verified, 0);
   assert.equal(wrong.socket.code, 4001);
+  assert.deepEqual(wrong.rejections, [{ reason: 'identity_verification_failed', invitationName: 'Invited' }]);
 
   const good = fixture(async (name, challenge) => {
     assert.equal(name, 'Invited');
@@ -50,12 +53,15 @@ async function main() {
   for (const token of [undefined, null, '', {}, 'wrong']) {
     const f = fixture(); f.auth.begin(token);
     assert.equal(f.socket.code, 4001); assert.equal(f.verified, 0);
+    assert.deepEqual(f.rejections, [{ reason: 'bad_token', invitationName: undefined }]);
   }
   const noHello = fixture(); await noHello.auth.complete();
   assert.equal(noHello.socket.code, 4001);
+  assert.deepEqual(noHello.rejections, [{ reason: 'identity_verification_failed', invitationName: undefined }]);
   const legacy = fixture(undefined, 5); legacy.auth.begin('secret');
   await new Promise(resolve => setTimeout(resolve, 15));
   assert.equal(legacy.socket.code, 4001); assert.equal(legacy.verified, 0);
+  assert.deepEqual(legacy.rejections, [{ reason: 'authentication_timeout', invitationName: 'Invited' }]);
 
   // Challenges are socket-specific: proof registered for A cannot authorize B.
   const joined = new Set();
@@ -100,6 +106,10 @@ async function main() {
     if (change === 'expire') await new Promise(done => setTimeout(done, 15));
     resolve(validProfile); await pending;
     assert.equal(f.verified, 0, change); assert.equal(f.socket.authedAs, null, change);
+    assert.deepEqual(f.rejections, change === 'close' ? [] : [{
+      reason: change === 'expire' ? 'authentication_timeout' : 'identity_verification_failed',
+      invitationName: 'Invited',
+    }], `${change}: retain the original invitation owner and reject only once`);
   }
 
   // Exercise the real verifier's fixed endpoint, HTTP status and failure handling.

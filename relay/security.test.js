@@ -157,6 +157,31 @@ for (const adminToken of [undefined, '', 'short', 'CHANGE_ME', 'CHANGE_ME_LONG_R
   const connected = f.webhooks.map(w => w.body.content).filter(line => line.includes('connected'));
   assert.deepEqual(connected, ['🛠️ ✅ **Member** connected (member)']);
 }
+// The invitation owner comes from the recognized token, never a claimed identity.
+{
+  const f = fixture();
+  const socket = f.connect('203.0.113.8');
+  socket.submit({ type: 'hello', token: 'failing-token', minecraftServer: 'play.example.net',
+    name: 'Forged', minecraftUuid: 'c'.repeat(32) });
+  socket.submit({ type: 'authenticate', clientNonce: 'b'.repeat(40), name: 'Forged' });
+  await settle();
+  assert.equal(socket.code, 4001);
+  assert.equal(socket.take('welcome').length, 0);
+  const [rejection] = f.webhooks.filter(w => w.url.endsWith('/admin')).map(w => w.body.content).filter(line => line.includes('❌'));
+  assert.match(rejection, /Token for \*\*Failing\*\* used from client `[0-9a-f]{8}`; Minecraft account verification failed \(identity_verification_failed\)/);
+  for (const secret of ['Forged', '203.0.113.8', 'failing-token', sha256('failing-token')]) {
+    assert(!rejection.includes(secret), secret);
+  }
+}
+{
+  const f = fixture();
+  const socket = f.connect();
+  socket.submit({ type: 'hello', token: 'unknown-token', minecraftServer: 'play.example.net', name: 'Member' });
+  const [rejection] = f.webhooks.filter(w => w.url.endsWith('/admin')).map(w => w.body.content).filter(line => line.includes('❌'));
+  assert.match(rejection, /Auth failure from client `[0-9a-f]{8}`/);
+  assert(!rejection.includes('Member') && !rejection.includes('Token for'));
+  assert(!rejection.includes('unknown-token') && !rejection.includes(sha256('unknown-token')));
+}
 {
   const f = fixture({ config: { logRejectedIps: true } });
   f.login('not-a-token', '203.0.113.7');
