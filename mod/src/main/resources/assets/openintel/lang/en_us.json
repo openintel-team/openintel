@@ -42,6 +42,7 @@
   "options.openintel.relay.marker_scale": "Marker scale",
   "options.openintel.presence.enabled": "Presence panel",
   "options.openintel.presence.all_dims": "Show all dimensions",
+  "options.openintel.presence.tab_only": "Only with player list",
   "options.openintel.presence.rows": "Panel rows",
   "options.openintel.ping.enabled": "Ping wheel",
   "options.openintel.ping.seconds": "Ping duration",
