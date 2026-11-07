@@ -24,6 +24,9 @@ public final class RelayCoordinator extends RelayClient {
         final RelayClient client;
         boolean bridge;
         boolean hadIntel;
+        /** The relay pushes compact position deltas and takes 20 Hz uploads. */
+        boolean positionDeltas;
+        final PositionUplink uplink = new PositionUplink();
         final java.util.LinkedHashMap<String, Boolean> forwarded = new java.util.LinkedHashMap<>();
         Session(RelayProfile profile) {
             this.profile = profile;
@@ -137,6 +140,9 @@ public final class RelayCoordinator extends RelayClient {
         if (type.equals("intel_reset")) source.forwarded.clear();
         if (type.equals("welcome")) {
             source.bridge = message.has("bridgeVersion") && message.get("bridgeVersion").getAsInt() == 1;
+            source.positionDeltas = message.has("positionVersion") && message.get("positionVersion").isJsonPrimitive()
+                    && message.get("positionVersion").getAsInt() >= PositionUplink.POSITION_PROTOCOL;
+            source.uplink.reset();
             source.forwarded.clear();
         }
         long expected = generation;
@@ -231,19 +237,34 @@ public final class RelayCoordinator extends RelayClient {
             for (var report : outgoing.getAsJsonArray("reports")) {
                 if (!report.isJsonObject()) continue;
                 JsonObject observation = new JsonObject();
-                observation.addProperty("id", java.util.UUID.randomUUID().toString());
+                observation.addProperty("id", shortId());
                 observation.addProperty("hops", 0);
                 report.getAsJsonObject().add("bridge", observation);
                 report.getAsJsonObject().addProperty("t", System.currentTimeMillis());
             }
         }
+        long now = System.currentTimeMillis();
         for (Session session : List.copyOf(sessions.values())) {
             if (!session.profile.share || !session.client.isAuthenticated()) continue;
             if (!allowsSend(session.profile.enabled, session.profile.share, session.client.isAuthenticated(),
                     session.client.role(), type)) continue;
-            sent |= session.client.trySend(outgoing.deepCopy());
+            JsonObject copy = outgoing.deepCopy();
+            if (type.equals("positions") && copy.has("reports") && copy.get("reports").isJsonArray()) {
+                // Per relay: changed players at 20 Hz for delta relays, the whole list at 4 Hz for older ones.
+                var chosen = session.uplink.select(copy.getAsJsonArray("reports"), session.positionDeltas, now);
+                if (chosen == null) continue;
+                copy.add("reports", chosen);
+            }
+            sent |= session.client.trySend(copy);
         }
         return sent;
+    }
+
+    /** 72 random bits, URL-safe: enough to tell observations apart, a third of a UUID's size. */
+    static String shortId() {
+        byte[] bytes = new byte[9];
+        java.util.concurrent.ThreadLocalRandom.current().nextBytes(bytes);
+        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
     static boolean allowsSend(boolean enabled, boolean sharing, boolean authenticated, String role, String type) {
         if (!enabled || !sharing || !authenticated) return false;

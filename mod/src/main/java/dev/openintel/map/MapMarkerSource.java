@@ -190,8 +190,11 @@ public final class MapMarkerSource {
                 Vec3 live = entity.getPosition(tickDelta);
                 loaded.put(entity.getGameProfile().name(), new double[]{live.x, live.y, live.z});
             }
+            long now = System.currentTimeMillis();
             for (Tracker.RemotePlayer p : tracker.all()) {
-                players.add(new PlayerReport(p.name, p.x, p.y, p.z, p.dimension, p.lastSeen, p.reporter));
+                // Smoothed and projected forward from when it was observed.
+                double[] at = p.estimate(now);
+                players.add(new PlayerReport(p.name, at[0], at[1], at[2], p.dimension, p.lastSeen, p.reporter));
             }
             for (Tracker.SnitchHit h : tracker.snitchHits()) {
                 snitches.add(new SnitchReport(h.snitch, h.player, h.reporter, h.x, h.y, h.z, h.dimension, h.t));
