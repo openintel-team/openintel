@@ -853,8 +853,11 @@ wss.on("connection", (ws, req) => {
   };
   ws.on("close", settlePending);
   const identity = createIdentityVerification(ws, { userByToken,
-    onRejected(reason) {
-      logAuthRejection(`identity:${tag}`, `❌ Minecraft account verification failed from client \`${tag}\` (${reason})`, address);
+    onRejected(reason, invitationName) {
+      const message = invitationName
+        ? `❌ Token for **${invitationName}** used from client \`${tag}\`; Minecraft account verification failed (${reason})`
+        : `❌ Minecraft account verification failed from client \`${tag}\` (${reason})`;
+      logAuthRejection(`identity:${tag}`, message, address);
     },
     onVerified(user, minecraftUuid) {
       settlePending();
