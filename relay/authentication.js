@@ -33,11 +33,13 @@ function createIdentityVerification(ws, { userByToken, onVerified, onRejected = 
   timer.unref?.();
   function deny(reason = 'identity_verification_failed') {
     if (state === 'closed') return;
+    // Snapshot the recognized invitation, not any client-supplied identity.
+    const invitationName = pending?.name;
     state = 'closed';
     pending = null;
     clearTimeout(timer);
     ws.authedAs = null;
-    onRejected(reason);
+    onRejected(reason, invitationName);
     if (ws.readyState === 1) {
       ws.send(JSON.stringify({ type: 'deny', reason }));
       ws.close(4001, reason);
