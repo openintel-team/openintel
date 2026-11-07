@@ -27,20 +27,24 @@ import java.util.Set;
 /**
  * Mirrors {@link MapMarkerSource} onto JourneyMap's fullscreen map as
  * MarkerOverlays. Runs from the client tick and reconciles the wanted list
- * against what is shown: every 20 ticks, or every 4 while the fullscreen map
- * is open. Loaded players are left to JourneyMap's own radar. Nothing is
- * written as a waypoint.
+ * against what is shown: every tick while the fullscreen map is open (and at
+ * once when it opens), every 20 ticks otherwise, since the overlays are
+ * fullscreen-only. A marker that only moved or changed text is updated in
+ * place; a new icon, color, or dimension gets a new overlay. Loaded players
+ * are left to JourneyMap's own radar. Nothing is written as a waypoint.
  */
 final class JmBridge implements Runnable {
 
-    /** Wanted overlay: the marker, its look, and the key that triggers a rebuild. */
-    private record Desired(MapMarker marker, MapMarkerStyle.Style style, String sig) { }
+    /** Wanted overlay: the marker, its look, the update key, and the rebuild key. */
+    private record Desired(MapMarker marker, MapMarkerStyle.Style style, String sig, String iconSig) { }
 
     private final IClientAPI api;
     private final JmIcons icons = new JmIcons();
     private final Map<String, MarkerOverlay> shown = new HashMap<>();
     private final Map<String, String> sigs = new HashMap<>();
+    private final Map<String, String> iconSigs = new HashMap<>();
     private int ticks;
+    private boolean wasOpen;
     private boolean failed;
 
     JmBridge(IClientAPI api) {
@@ -54,8 +58,11 @@ final class JmBridge implements Runnable {
         if (failed) return;
         try {
             ticks++;
-            int cadence = fullscreenActive() ? 4 : 20;
-            if (!JmLibraryMap.consumeDirty() && ticks % cadence != 0) return;
+            boolean open = fullscreenActive();
+            boolean opened = open && !wasOpen;
+            wasOpen = open;
+            int cadence = open ? 1 : 20;
+            if (!JmLibraryMap.consumeDirty() && !opened && ticks % cadence != 0) return;
             sync();
         } catch (Throwable t) {
             // Never let an API hiccup hurt the client: warn once and stop, like the Xaero path.
@@ -64,6 +71,7 @@ final class JmBridge implements Runnable {
             for (MarkerOverlay overlay : shown.values()) removeQuietly(overlay);
             shown.clear();
             sigs.clear();
+            iconSigs.clear();
         }
     }
 
@@ -82,7 +90,8 @@ final class JmBridge implements Runnable {
                     MapMarkerSource.PlayerMode.SKIP_LOADED)) {
                 String site = MapMarkerStyle.librarySite(marker);
                 MapMarkerStyle.Style style = MapMarkerStyle.of(marker, site != null && selected.contains(site));
-                want.put(marker.id(), new Desired(marker, style, MapMarkerStyle.signature(marker, style)));
+                want.put(marker.id(), new Desired(marker, style, MapMarkerStyle.signature(marker, style),
+                        MapMarkerStyle.iconSignature(marker, style)));
             }
         }
 
@@ -93,21 +102,35 @@ final class JmBridge implements Runnable {
             if (!want.containsKey(e.getKey())) {
                 removeQuietly(e.getValue());
                 sigs.remove(e.getKey());
+                iconSigs.remove(e.getKey());
                 it.remove();
             }
         }
 
-        // Add new markers; recreate any whose position or look changed.
+        // Add new markers; move or retitle in place when the icon holds; otherwise recreate.
         for (Map.Entry<String, Desired> e : want.entrySet()) {
             Desired d = e.getValue();
             if (d.sig.equals(sigs.get(e.getKey()))) continue;
+            MarkerOverlay current = shown.get(e.getKey());
+            if (current != null && d.iconSig.equals(iconSigs.get(e.getKey()))) {
+                current.setPoint(BlockPos.containing(d.marker.x(), d.marker.y(), d.marker.z()));
+                String text = d.style.text("\n");
+                current.setTitle(text);
+                current.setLabel(text);
+                // JourneyMap: show() again after changing a shown overlay.
+                api.show(current);
+                sigs.put(e.getKey(), d.sig);
+                continue;
+            }
             MarkerOverlay old = shown.remove(e.getKey());
             sigs.remove(e.getKey());
+            iconSigs.remove(e.getKey());
             if (old != null) removeQuietly(old);
             MarkerOverlay overlay = show(d);
             if (overlay != null) {
                 shown.put(e.getKey(), overlay);
                 sigs.put(e.getKey(), d.sig);
+                iconSigs.put(e.getKey(), d.iconSig);
             }
         }
     }

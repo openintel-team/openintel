@@ -82,4 +82,13 @@ public final class MapMarkerStyle {
                 + "," + (long) Math.floor(marker.z())
                 + "|" + marker.dimension();
     }
+
+    /**
+     * The part of {@link #signature} that needs a new overlay: icon, color, and
+     * dimension. While this holds, a moved marker or new text updates in place.
+     */
+    public static String iconSignature(MapMarker marker, Style style) {
+        return style.shape() + "|" + style.relicTexture() + "|" + style.selected()
+                + "|" + Integer.toHexString(style.argb()) + "|" + marker.dimension();
+    }
 }
