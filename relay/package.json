@@ -12,8 +12,8 @@
     "test": "node server.js --self-test && node authentication.test.js && node cut.test.js && node wartable.test.js && node transport.test.js && node bridge.test.js && node positions.test.js && node security.test.js"
   },
   "dependencies": {
-    "discord.js": "14.27.0",
+    "discord.js": "14.28.1",
     "express": "5.3.0",
-    "ws": "^8.22.0"
+    "ws": "^8.22.1"
   }
 }
