@@ -131,6 +131,18 @@ public final class WorldOverlayRenderer {
                 new LayerFrame(meshes[BASTION_HEIGHTS], playerY));
     }
 
+    /** Off-hook: drop every cached layer and free its GPU buffers; the next tick rebuilds what is still on. */
+    public static void release() {
+        Arrays.fill(keys, null);
+        Arrays.fill(meshes, EMPTY);
+        collected = List.of();
+        for (GpuLayer g : gpu) {
+            if (g == null) continue;
+            g.close();
+            g.mesh = EMPTY;
+        }
+    }
+
     private static void update(int layer, Object key, Consumer<WorldOverlayMesh.Builder> build) {
         if (Objects.equals(keys[layer], key) && (key != null || meshes[layer] == EMPTY)) return;
         keys[layer] = key;

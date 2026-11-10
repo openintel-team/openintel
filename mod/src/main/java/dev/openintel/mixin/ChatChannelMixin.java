@@ -50,6 +50,7 @@ public abstract class ChatChannelMixin {
     @Shadow public abstract boolean isChatFocused();
 
     @Unique private int openintel$cachedSize = -1;
+    @Unique private int openintel$cachedGeneration = -1;
     @Unique private GuiMessage.Line openintel$cachedHead;
     @Unique private GuiMessage.Line openintel$cachedTail;
     @Unique private boolean openintel$cachedOpen;
@@ -72,7 +73,7 @@ public abstract class ChatChannelMixin {
     private int openintel$filterLines(ChatComponent.AlphaCalculator calculator, ChatComponent.LineConsumer consumer,
                                       Operation<Integer> original) {
         OIConfig config = OpenIntelClient.config();
-        if (config == null) return original.call(calculator, consumer);
+        if (!ChatChannelFilter.active(config)) return original.call(calculator, consumer);
 
         List<GuiMessage.Line> visible = openintel$visibleLines(config);
         int linesPerPage = getLinesPerPage();
@@ -94,7 +95,7 @@ public abstract class ChatChannelMixin {
     @Inject(method = "scrollChat(I)V", at = @At("TAIL"))
     private void openintel$clampVisibleScroll(int amount, CallbackInfo ci) {
         OIConfig config = OpenIntelClient.config();
-        if (config == null) return;
+        if (!ChatChannelFilter.active(config)) return;
         int max = Math.max(0, openintel$visibleLines(config).size() - getLinesPerPage());
         if (chatScrollbarPos > max) chatScrollbarPos = max;
     }
@@ -105,6 +106,13 @@ public abstract class ChatChannelMixin {
         GuiMessage.Line head = size == 0 ? null : trimmedMessages.get(0);
         GuiMessage.Line tail = size == 0 ? null : trimmedMessages.get(size - 1);
         boolean open = isChatFocused();
+        int generation = ChatChannelFilter.generation();
+        if (generation != openintel$cachedGeneration) {
+            openintel$cachedGeneration = generation;
+            openintel$cachedSize = -1;
+            openintel$channels.clear();
+            openintel$cachedVisible = List.of();
+        }
         if (size == openintel$cachedSize
                 && head == openintel$cachedHead
                 && tail == openintel$cachedTail

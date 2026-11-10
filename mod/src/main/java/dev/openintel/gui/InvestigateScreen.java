@@ -27,7 +27,11 @@ public final class InvestigateScreen extends Screen {
     private String defaultDim = "minecraft:overworld";
     private int listX, listY, listW, listH;
     private int scroll;
+    /** Eases the drawn list offset toward {@code scroll}, which stays the target. */
+    private final SmoothScroll smooth = new SmoothScroll();
+    private int shownScroll() { return smooth.shownPx(scroll); }
     private static final int ROW_H = 14;
+    private int logsY0, logsY1;
     private String status = "Import a Discord .txt export or paste logs, then Parse.";
     private String parsedText;
     private String parsedDimension;
@@ -50,46 +54,56 @@ public final class InvestigateScreen extends Screen {
     @Override
     protected void init() {
         String draft = pasteBox == null ? "" : pasteBox.getValue();
-        int pasteH = Math.min(120, height / 3);
+        int pasteH = Math.clamp(height / 4, 40, 120);
+        int inner = width - 32;
+        logsY0 = OiStyle.TITLE_H + 2;
         pasteBox = MultiLineEditBox.builder()
-                .setX(8)
-                .setY(24)
+                .setX(16)
+                .setY(logsY0 + 18)
                 .setPlaceholder(Component.literal("Paste snitch logs here…"))
-                .build(font, width - 16, pasteH, Component.literal("logs"));
+                .build(font, inner, pasteH, Component.literal("logs"));
         pasteBox.setCharacterLimit(InvestigateLogImport.MAX_BYTES);
         pasteBox.setLineLimit(Integer.MAX_VALUE);
         pasteBox.setValue(draft);
         addRenderableWidget(pasteBox);
 
-        int by = 28 + pasteH;
-        int slot = Math.min(110, (width - 28) / 4);
+        int by = logsY0 + 22 + pasteH;
+        int cycleW = Math.min(200, inner);
+        boolean oneRow = inner >= 4 * 70 + 12 + 8 + 140;
+        int buttonsW = oneRow ? inner - Math.min(cycleW, inner - 4 * 70 - 20) - 8 : inner;
+        if (oneRow) cycleW = inner - buttonsW - 8;
+        int slot = Math.min(110, (buttonsW - 12) / 4);
         addRenderableWidget(Button.builder(Component.literal("Import .txt…"),
-                b -> importFile()).bounds(8, by, slot, 20).build());
+                b -> importFile()).bounds(16, by, slot, 20).build());
         addRenderableWidget(Button.builder(Component.literal("Paste"),
-                b -> pasteClipboard()).bounds(12 + slot, by, slot, 20).build());
+                b -> pasteClipboard()).bounds(20 + slot, by, slot, 20).build());
         addRenderableWidget(Button.builder(Component.literal("Parse"),
-                b -> parse()).bounds(16 + slot * 2, by, slot, 20).build());
+                b -> parse()).bounds(24 + slot * 2, by, slot, 20).build());
         addRenderableWidget(Button.builder(Component.literal("Clear"),
-                b -> clear()).bounds(20 + slot * 3, by, slot, 20).build());
+                b -> clear()).bounds(28 + slot * 3, by, slot, 20).build());
+        int buttonY = OiStyle.barButtonY(height);
         addRenderableWidget(Button.builder(Component.literal("Watch playback"),
-                b -> watch()).bounds(8, height - 30, 110, 20).build());
+                b -> watch()).bounds(8, buttonY, 110, 20).build());
         addRenderableWidget(Button.builder(Component.literal("Done"),
-                b -> onClose()).bounds(width - 88, height - 30, 80, 20).build());
+                b -> onClose()).bounds(width - 88, buttonY, 80, 20).build());
 
         int dimIndex = 0;
         for (int i = 0; i < DIMS.length; i++) {
             if (DIMS[i].equalsIgnoreCase(defaultDim)) dimIndex = i;
         }
         defaultDim = DIMS[dimIndex];
+        int cycleX = oneRow ? width - 16 - cycleW : 16;
+        int cycleY = oneRow ? by : by + 24;
         addRenderableWidget(CycleButton.<String>builder(s -> Component.literal(shortDim(s)), defaultDim)
                 .withValues(DIMS)
-                .create(8, by + 24, Math.min(260, width - 16), 20, Component.literal("World if missing"),
+                .create(cycleX, cycleY, cycleW, 20, Component.literal("World if missing"),
                         (btn, value) -> defaultDim = value));
+        logsY1 = cycleY + 28;
 
-        listX = 8;
-        listY = by + 64;
-        listW = width - 16;
-        listH = Math.max(0, height - listY - 58);
+        listX = 16;
+        listY = logsY1 + 4 + 20;
+        listW = width - 32;
+        listH = Math.max(0, height - OiStyle.BAR_H - 8 - 16 - listY);
     }
 
     private void importFile() {
@@ -145,6 +159,7 @@ public final class InvestigateScreen extends Screen {
                 : "")
                 + ".";
         scroll = 0;
+        smooth.snap(0);
     }
 
     private void watch() {
@@ -173,6 +188,7 @@ public final class InvestigateScreen extends Screen {
         pasteBox.setValue("");
         status = "Cleared.";
         scroll = 0;
+        smooth.snap(0);
     }
 
     @Override
@@ -181,7 +197,7 @@ public final class InvestigateScreen extends Screen {
             double mx = click.x(), my = click.y();
             if (mx >= listX && mx < listX + listW && my >= listY && my < listY + listH) {
                 List<InvestigateSession.Event> events = InvestigateSession.get().events();
-                int row = (int) ((my - listY + scroll) / ROW_H);
+                int row = (int) ((my - listY + shownScroll()) / ROW_H);
                 if (row >= 0 && row < events.size()) {
                     InvestigateSession.get().select(row);
                     return true;
@@ -205,24 +221,36 @@ public final class InvestigateScreen extends Screen {
 
     @Override
     public void render(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
-        ctx.fill(0, 0, width, height, 0xC0101015);
+        smooth.update(scroll);
+        // In-world screens must not call renderBackground: its blur pass runs once per frame.
+        renderTransparentBackground(ctx);
+        OiStyle.bottomBar(ctx, width, height);
+        OiStyle.sectionTitle(ctx, font, Component.literal("Investigate — import and review logs"), width / 2, 0);
+        OiStyle.tile(ctx, 8, logsY0, width - 8, logsY1, false, false);
+        int eventsY0 = logsY1 + 4;
+        int eventsY1 = height - OiStyle.BAR_H - 6;
+        OiStyle.tile(ctx, 8, eventsY0, width - 8, eventsY1, false, true);
+        ctx.drawString(font, "Logs", 16, logsY0 + 6, OiStyle.TEXT_DIM);
         super.render(ctx, mouseX, mouseY, delta);
-        ctx.drawString(font, "Investigate — import and review logs", 8, 8, 0xFFE8EAF0);
 
         List<InvestigateSession.Event> events = InvestigateSession.get().events();
-        ctx.drawString(font, "Events — " + events.size() + " loaded", listX, listY - 12, 0xFFE8EAF0);
+        ctx.drawString(font, "Events — " + events.size() + " loaded", listX, eventsY0 + 7, OiStyle.TEXT_DIM);
+        ctx.fill(listX, listY - 3, listX + listW, listY - 2, OiStyle.DIVIDER);
         int selected = InvestigateSession.get().index();
         ctx.enableScissor(listX, listY, listX + listW, listY + listH);
         if (events.isEmpty()) {
             ctx.drawString(font, "Import or paste logs, then Parse to review events.",
-                    listX + 4, listY + 6, 0xFF8E93A6);
+                    listX + 4, listY + 6, OiStyle.TEXT_DIM);
         }
-        int y = listY - scroll;
+        int y = listY - shownScroll();
         for (int i = 0; i < events.size(); i++) {
             InvestigateSession.Event ev = events.get(i);
             if (y + ROW_H >= listY && y <= listY + listH) {
-                int bg = i == selected ? 0x2E7C8CF8 : (i % 2 == 0 ? 0x18000000 : 0x10000000);
+                boolean hov = mouseX >= listX && mouseX < listX + listW && mouseY >= Math.max(y, listY)
+                        && mouseY < Math.min(y + ROW_H, listY + listH);
+                int bg = i == selected ? OiStyle.SELECTED_BG : (hov ? OiStyle.ROW_HOVER : (i % 2 == 0 ? 0x18000000 : 0));
                 ctx.fill(listX, y, listX + listW, y + ROW_H, bg);
+                if (i == selected) ctx.fill(listX, y + 2, listX + 2, y + ROW_H - 2, OiStyle.TEXT);
                 int color = switch (ev.kind()) {
                     case BREAK -> 0xFFFF8A80;
                     case PLACE -> 0xFF80FFB0;
@@ -230,12 +258,23 @@ public final class InvestigateScreen extends Screen {
                 };
                 String line = (i + 1) + ". " + ev.detail();
                 if (line.length() > 120) line = line.substring(0, 117) + "...";
-                ctx.drawString(font, line, listX + 4, y + 3, color);
+                ctx.drawString(font, font.plainSubstrByWidth(line, listW - 14), listX + 6, y + 3, color);
             }
             y += ROW_H;
         }
         ctx.disableScissor();
-        ctx.drawString(font, font.plainSubstrByWidth(status, width - 16), 8, height - 46, 0xFF8E93A6);
+        int max = Math.max(0, events.size() * ROW_H - listH);
+        OiStyle.scrollbar(ctx, listX + listW, listY, listY + listH, events.size() * ROW_H, smooth.shown(scroll), max);
+        ctx.fill(listX, listY + listH + 2, listX + listW, listY + listH + 3, OiStyle.DIVIDER);
+        ctx.drawString(font, font.plainSubstrByWidth(status, listW), listX, listY + listH + 6, statusColor());
+    }
+
+    /** Red for failures, green once events are loaded, grey otherwise. */
+    private int statusColor() {
+        String s = status.toLowerCase(Locale.ROOT);
+        if (s.startsWith("could not") || s.startsWith("no events")) return OiStyle.BAD;
+        if (!importing && InvestigateSession.get().size() > 0 && !s.startsWith("cleared")) return OiStyle.GOOD;
+        return OiStyle.TEXT_DIM;
     }
 
     private static String shortDim(String dim) {

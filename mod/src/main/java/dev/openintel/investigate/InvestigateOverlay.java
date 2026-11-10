@@ -1,5 +1,7 @@
 package dev.openintel.investigate;
 
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.snitch.SnitchLogParser;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -32,6 +34,7 @@ public final class InvestigateOverlay {
 
     /** Null when playback is not being watched. */
     public static Key key(Minecraft client) {
+        if (!Features.isOn(Feature.INVESTIGATE)) return null;
         InvestigateSession session = InvestigateSession.get();
         if (!session.isWatching() || client.level == null) return null;
         return new Key(client.level.dimension().identifier().toString(), session.events(), session.index());
@@ -81,6 +84,7 @@ public final class InvestigateOverlay {
     }
 
     public static void renderHud(GuiGraphics ctx) {
+        if (!Features.isOn(Feature.INVESTIGATE)) return;
         InvestigateSession session = InvestigateSession.get();
         if (!session.isWatching()) return;
         Minecraft mc = Minecraft.getInstance();

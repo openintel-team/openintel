@@ -66,6 +66,17 @@ public abstract class InputMacro {
 
     public boolean isActive() { return active; }
 
+    /** Releases the macro when its feature is switched off. Pending toggle presses are dropped. */
+    public final void forceStop(Minecraft mc) {
+        while (toggle.consumeClick()) { }
+        if (active) deactivate(mc);
+    }
+
+    /** Drops toggle presses while the macro feature is off, so they do not fire later. */
+    public final void drainToggle() {
+        while (toggle.consumeClick()) { }
+    }
+
     /** Extra gate for engaging (e.g. don't grab use while eating). */
     protected boolean canEngage(Minecraft mc) { return mc.screen == null; }
 

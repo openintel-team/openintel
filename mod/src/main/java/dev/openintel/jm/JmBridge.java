@@ -1,5 +1,7 @@
 package dev.openintel.jm;
 
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.map.MapMarkerSource;
 import dev.openintel.map.MapMarkerStyle;
@@ -79,7 +81,7 @@ final class JmBridge implements Runnable {
     private void sync() throws Exception {
         var cfg = OpenIntelClient.config();
         Map<String, JmOverlayPlan.Entry> want = new LinkedHashMap<>();
-        if (cfg != null && cfg.jmMarkers) {
+        if (cfg != null && Features.isOn(cfg, Feature.JOURNEYMAP)) {
             long now = System.currentTimeMillis();
             Set<String> selected = MapMarkerSource.selectedLibrarySites(RelicLibraryVisit.current());
             for (JmOverlayPlan.Entry entry : JmOverlayPlan.plan(MapMarkerSource.all(Minecraft.getInstance(), cfg, now,

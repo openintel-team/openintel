@@ -74,7 +74,7 @@ public class ColorPickerScreen extends Screen {
     @Override
     protected void init() {
         sx = (width - (SV + 10 + HUE_W)) / 2;
-        sy = (height - (SV + 12 + ALPHA_H + 12 + 20 + 24)) / 2;
+        sy = Math.max(OiStyle.TITLE_H + 8, (height - OiStyle.BAR_H - (SV + 12 + ALPHA_H + 12 + 20)) / 2 + 8);
         hx = sx + SV + 10;
         ay = sy + SV + 12;
 
@@ -89,7 +89,7 @@ public class ColorPickerScreen extends Screen {
         rebuildSv();
 
         hexField = new EditBox(font, sx, ay + ALPHA_H + 12,
-                SV + 10 + HUE_W, 20, Component.literal("hex"));
+                SV + 10 + HUE_W - 28, 20, Component.literal("hex"));
         hexField.setMaxLength(10);
         hexField.setValue(hexText());
         hexField.setResponder(s -> {
@@ -107,15 +107,17 @@ public class ColorPickerScreen extends Screen {
         });
         addRenderableWidget(hexField);
 
-        int bw = (SV + 10 + HUE_W - 8) / 2;
-        int by = ay + ALPHA_H + 12 + 24;
+        // Bottom bar: the optional "use default" on the left, Done on the right.
+        int bw = Math.clamp((width - 32) / 4 + 20, 60, 130);
+        int by = OiStyle.barButtonY(height);
         addRenderableWidget(Button.builder(Component.literal("Done"), b -> onClose())
-                .bounds(sx, by, autoLabel != null ? bw : SV + 10 + HUE_W, 20).build());
+                .bounds(width - 8 - bw, by, bw, 20).build());
         if (autoLabel != null) {
+            int aw = Math.min(Math.max(bw, font == null ? bw : font.width(autoLabel) + 16), width - bw - 24);
             addRenderableWidget(Button.builder(Component.literal(autoLabel), b -> {
                         if (autoAction != null) autoAction.run();
                         onClose();
-                    }).bounds(sx + bw + 8, by, bw, 20).build());
+                    }).bounds(8, by, aw, 20).build());
         }
     }
 
@@ -198,8 +200,12 @@ public class ColorPickerScreen extends Screen {
         // In-world screens must not call extractBackground — its blur pass can
         // only run once per frame. extractTransparentBackground darkens without it.
         renderTransparentBackground(ctx);
-        ctx.fill(sx - 8, sy - 24, hx + HUE_W + 8, ay + ALPHA_H + 12 + 24 + 24, 0xC0101015);
-        ctx.drawCenteredString(font, title, width / 2, sy - 16, 0xFFFFFFFF);
+        OiStyle.bottomBar(ctx, width, height);
+        OiStyle.panel(ctx, sx - 10, sy - OiStyle.TITLE_H, hx + HUE_W + 10, ay + ALPHA_H + 12 + 20 + 10);
+        OiStyle.sectionTitle(ctx, font, title, (sx + hx + HUE_W) / 2, sy - OiStyle.TITLE_H);
+        ctx.renderOutline(sx - 1, sy - 1, SV + 2, SV + 2, OiStyle.TILE_BORDER);
+        ctx.renderOutline(hx - 1, sy - 1, HUE_W + 2, SV + 2, OiStyle.TILE_BORDER);
+        ctx.renderOutline(sx - 1, ay - 1, SV + 2, ALPHA_H + 2, OiStyle.TILE_BORDER);
 
         // SV square + hue bar.
         ctx.blit(RenderPipelines.GUI_TEXTURED, svId, sx, sy, 0, 0, SV, SV, SV, SV);
@@ -229,8 +235,15 @@ public class ColorPickerScreen extends Screen {
 
         // Preview swatch next to the hex field.
         int pw = 24;
-        ctx.fill(hx + HUE_W - pw, ay + ALPHA_H + 14, hx + HUE_W, ay + ALPHA_H + 14 + 16, argb());
-        ctx.renderOutline(hx + HUE_W - pw, ay + ALPHA_H + 14, pw, 16, 0xFFFFFFFF);
+        int swY = ay + ALPHA_H + 12;
+        for (int i = 0; i < pw; i += 4) {
+            for (int j = 0; j < 20; j += 4) {
+                ctx.fill(hx + HUE_W - pw + i, swY + j, hx + HUE_W - pw + i + 4, swY + j + 4,
+                        ((i + j) / 4) % 2 == 0 ? 0xFF555555 : 0xFF333333);
+            }
+        }
+        ctx.fill(hx + HUE_W - pw, swY, hx + HUE_W, swY + 20, argb());
+        ctx.renderOutline(hx + HUE_W - pw, swY, pw, 20, OiStyle.TILE_BORDER_HOVER);
 
         super.render(ctx, mouseX, mouseY, delta);
     }

@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.chat.ChatChannel;
 import dev.openintel.chat.ChatChannelBar;
+import dev.openintel.chat.ChatChannelFilter;
 import dev.openintel.config.OIConfig;
 import dev.openintel.render.EventFeed;
 import dev.openintel.render.UiFont;
@@ -37,7 +38,7 @@ public abstract class ChatChannelBarMixin extends Screen {
     @Inject(method = "render(Lnet/minecraft/client/gui/GuiGraphics;IIF)V", at = @At("TAIL"))
     private void openintel$drawChannelBar(GuiGraphics graphics, int mouseX, int mouseY, float delta, CallbackInfo ci) {
         OIConfig config = OpenIntelClient.config();
-        if (config == null || this.font == null) return;
+        if (!ChatChannelFilter.active(config) || this.font == null) return;
         List<ChatChannelBar.Chip> chips = openintel$chips();
         for (ChatChannelBar.Chip chip : chips) {
             boolean on = config.views(chip.channel());
@@ -67,7 +68,7 @@ public abstract class ChatChannelBarMixin extends Screen {
     private void openintel$channelClick(MouseButtonEvent event, boolean doubled, CallbackInfoReturnable<Boolean> cir) {
         if (event.button() != InputConstants.MOUSE_BUTTON_LEFT) return;
         OIConfig config = OpenIntelClient.config();
-        if (config == null || this.font == null) return;
+        if (!ChatChannelFilter.active(config) || this.font == null) return;
         ChatChannelBar.Target target = ChatChannelBar.hit(openintel$chips(), event.x(), event.y());
         if (target == null) return;
         if (target.hit() == ChatChannelBar.Hit.CHANNEL) {

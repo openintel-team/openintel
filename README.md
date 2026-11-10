@@ -288,6 +288,7 @@ Lists have no fixed entry cap, and only visible rows are drawn. Import/Export us
 - `mod/` — Fabric client mod (Java 25, Minecraft 26.3, Fabric API)
 - JourneyMap API — compile-time Maven dependency only (optional at runtime)
 - `relay/` — Node.js relay server + webhook integration
+- `docs/UI_STYLE.md` — settings and screen design rules (Jade-style UI)
 
 ## Quick start
 

@@ -108,7 +108,7 @@ public final class ChatVersionParityTest {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         check(compiler != null, "The parity test needs the JDK compiler");
         try (StandardJavaFileManager files = compiler.getStandardFileManager(null, Locale.ROOT, StandardCharsets.UTF_8)) {
-            List<String> options = List.of("--release", "21", "-parameters", "-proc:none", "-encoding", "UTF-8", "-d", out.toString());
+            List<String> options = List.of("--release", "21", "-classpath", System.getProperty("java.class.path"), "-parameters", "-proc:none", "-encoding", "UTF-8", "-d", out.toString());
             Boolean ok = compiler.getTask(null, files, null, options, null,
                     files.getJavaFileObjects(
                             src.resolve("ChatChannel.java").toFile(),
@@ -117,7 +117,27 @@ public final class ChatVersionParityTest {
                             src.resolve("ChatReception.java").toFile())).call();
             check(Boolean.TRUE.equals(ok), "26.3 chat sources failed to compile");
         }
-        URLClassLoader loader = new URLClassLoader(new URL[]{out.toUri().toURL()}, ClassLoader.getPlatformClassLoader());
+        // The 26.3 chat classes come from the compiled copies; anything they reference outside
+        // dev.openintel.chat (such as OIConfig and the feature switches) resolves to this branch.
+        URLClassLoader loader = new URLClassLoader(new URL[]{out.toUri().toURL()},
+                ChatVersionParityTest.class.getClassLoader()) {
+            @Override
+            protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+                if (!name.startsWith("dev.openintel.chat.")) return super.loadClass(name, resolve);
+                synchronized (getClassLoadingLock(name)) {
+                    Class<?> c = findLoadedClass(name);
+                    if (c == null) {
+                        try {
+                            c = findClass(name);
+                        } catch (ClassNotFoundException missing) {
+                            return super.loadClass(name, resolve);
+                        }
+                    }
+                    if (resolve) resolveClass(c);
+                    return c;
+                }
+            }
+        };
         mainFilter = loader.loadClass("dev.openintel.chat.ChatChannelFilter");
         mainChannel = loader.loadClass("dev.openintel.chat.ChatChannel");
         mainBar = loader.loadClass("dev.openintel.chat.ChatChannelBar");

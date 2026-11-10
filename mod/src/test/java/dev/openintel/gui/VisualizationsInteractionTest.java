@@ -2,6 +2,7 @@ package dev.openintel.gui;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.openintel.viz.*;
+import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -32,18 +33,18 @@ public final class VisualizationsInteractionTest {
                 set(screen, name, Button.builder(Component.empty(), button -> {}).bounds(0, 0, 100, 20).build());
             call(screen, "refreshRows");
             // Ungrouped header is row 0; first entry is row 1. Actual version constants.
-            check(click(screen, 70, 118, 0), "Left-click selects real row");
+            check(click(screen, 70, 68, 0), "Left-click selects real row");
             check(a.id.equals(get(screen, "selectedId")), "Clicked entry selected");
-            check(((Button) get(screen, "deleteButton")).active, "Selection enables Delete");
+            check(((AbstractButton) get(screen, "deleteButton")).active, "Selection enables Delete");
             check("1".equals(((EditBox) get(screen, "xField")).getValue()), "Editor populated");
-            check("Snitch".equals(((Button) get(screen, "typeButton")).getMessage().getString().trim()), "Single type picker names Snitch");
-            click(screen, 70, 178, InputConstants.MOD_CONTROL);
+            check("Snitch".equals(((AbstractButton) get(screen, "typeButton")).getMessage().getString().trim()), "Single type picker names Snitch");
+            click(screen, 70, 120, InputConstants.MOD_CONTROL);
             check(model.selected.equals(new LinkedHashSet<>(List.of(a.id, c.id))), "Ctrl-click creates a multiple selection");
-            check(!((Button) get(screen, "saveButton")).active, "Bulk selection cannot accidentally overwrite coordinates");
+            check(!((AbstractButton) get(screen, "saveButton")).active, "Bulk selection cannot accidentally overwrite coordinates");
             call(screen, "deleteEntry");
             check(store.shapes().equals(List.of(b)), "Real bulk Delete removes selected entries only");
             check(model.selected.equals(Set.of(b.id)), "Delete selects the next remaining row");
-            check(((Button) get(screen, "deleteButton")).active, "Delete stays enabled");
+            check(((AbstractButton) get(screen, "deleteButton")).active, "Delete stays enabled");
             call(screen, "undoDeletion");
             check(store.shapes().stream().map(s -> s.x).toList().equals(List.of(1, 2, 3)), "Real Undo restores order");
             check(model.selected.equals(Set.of(a.id, c.id)), "Undo selects restored batch");
@@ -52,12 +53,12 @@ public final class VisualizationsInteractionTest {
             check(model.selected.equals(restoredSelection), "Undo with no history preserves selection");
             // Checkbox is immediate and does not alter selection.
             Set<String> selected = Set.copyOf(model.selected);
-            click(screen, 34, 118, 0);
+            click(screen, 34, 68, 0);
             check(!store.find(a.id).enabled && model.selected.equals(selected), "Row checkbox toggles visibility without selection changes");
-            check("Visible: Mixed".equals(((Button) get(screen, "visibilityButton")).getMessage().getString()), "Combined toggle indicates mixed visibility");
+            check("Visible: Mixed".equals(((AbstractButton) get(screen, "visibilityButton")).getMessage().getString()), "Combined toggle indicates mixed visibility");
             call(screen, "toggleSelectedVisibility");
             check(store.find(a.id).enabled && store.find(c.id).enabled, "Mixed selection toggles all selected entries on");
-            check("Visible: On".equals(((Button) get(screen, "visibilityButton")).getMessage().getString()), "Toggle indicates On");
+            check("Visible: On".equals(((AbstractButton) get(screen, "visibilityButton")).getMessage().getString()), "Toggle indicates On");
             call(screen, "toggleSelectedVisibility");
             check(!store.find(a.id).enabled && !store.find(c.id).enabled, "Second toggle hides all selected entries");
             call(screen, "toggleSelectedVisibility");
@@ -67,7 +68,7 @@ public final class VisualizationsInteractionTest {
             call(screen, "refreshRows");
             int header = rowOfGroup(model, group.id);
             set(screen, "scroll", Math.max(0, header * 30 - 30));
-            click(screen, 34, 82 + header * 30 - (int) get(screen, "scroll") + 8, 0);
+            click(screen, 34, 36 + header * 26 - (int) get(screen, "scroll") + 8, 0);
             check(!group.enabled && store.find(c.id).enabled, "Group checkbox preserves child visibility flags");
             check(!store.isVisible(store.find(c.id)), "Group switch reaches real renderer visibility");
             call(screen, "refreshRows");
@@ -77,7 +78,7 @@ public final class VisualizationsInteractionTest {
             check(!model.selected.isEmpty(), "Deleting with other grouped entries keeps a successor");
             model.selectAll(); call(screen, "deleteEntry");
             check(store.size() == 0 && model.selected.isEmpty(), "Deleting final batch clears selection");
-            check(!((Button) get(screen, "deleteButton")).active, "Empty list disables Delete");
+            check(!((AbstractButton) get(screen, "deleteButton")).active, "Empty list disables Delete");
             modelChecks();
             layoutChecks(store);
             autoFindChecks();
@@ -122,15 +123,15 @@ public final class VisualizationsInteractionTest {
         }
     }
     private static void placementChecks(VisualizationsScreen screen, int width, int height) throws Exception {
-        Button type = (Button) get(screen, "typeButton");
-        Button auto = (Button) get(screen, "autoButton");
-        Button look = (Button) get(screen, "targetButton");
+        AbstractButton type = (AbstractButton) get(screen, "typeButton");
+        AbstractButton auto = (AbstractButton) get(screen, "autoButton");
+        AbstractButton look = (AbstractButton) get(screen, "targetButton");
         check("Auto find".equals(auto.getMessage().getString()), "Auto find sits with the type controls");
         check("Target looking at".equals(look.getMessage().getString()), "Look target is named");
         check(auto.getY() > type.getY() && look.getY() == auto.getY() && look.getX() >= auto.getX() + auto.getWidth(),
                 "Auto find is between the type dropdown and the look-target button");
-        Button done = null;
-        for (var child : screen.children()) if (child instanceof Button button && "Done".equals(button.getMessage().getString())) done = button;
+        AbstractButton done = null;
+        for (var child : screen.children()) if (child instanceof AbstractButton button && "Done".equals(button.getMessage().getString())) done = button;
         check(done != null && done.getY() >= height - 32 && done.getX() + done.getWidth() >= width - 16 && done.getY() + done.getHeight() <= height,
                 "Done is bottom right");
     }
@@ -142,7 +143,8 @@ public final class VisualizationsInteractionTest {
         DropdownLayout bounds = popupLayout(popup);
         check(bounds.x() >= 4 && bounds.y() >= 4 && bounds.x() + bounds.width() <= width - 4
                 && bounds.y() + bounds.height() <= height - 4, "Type popup fits minimum viewport");
-        check(bounds.y() >= 84, "Type popup anchors below its button when space permits");
+        AbstractButton typeAnchor = (AbstractButton) get(screen, "typeButton");
+        check(bounds.y() >= typeAnchor.getY() + typeAnchor.getHeight(), "Type popup anchors below its button when space permits");
         check(click(screen, bounds.x() + 8, bounds.rowsY() + 26, 0), "Actual popup handles selection click");
         check(get(screen, "kind") == VisualizationsScreen.EntryKind.LOGGING && get(screen, "dropdown") == null, "Popup picks Logging Snitch without opening another screen");
         check(originalX.equals(get(screen, "draftX")), "Type change keeps coordinates when no matching block is loaded");
@@ -162,7 +164,9 @@ public final class VisualizationsInteractionTest {
         check("minecraft:the_nether".equals(get(screen, "draftDim")), "Dimension dropdown selects Nether in-place");
         var chooseGroup = VisualizationsScreen.class.getDeclaredMethod("chooseGroup", boolean.class); chooseGroup.setAccessible(true); chooseGroup.invoke(screen, false);
         popup = get(screen, "dropdown"); bounds = popupLayout(popup);
-        check(bounds.y() < ((Button) get(screen, "groupButton")).getY() && bounds.searchHeight() > 0, "Long group list opens upwards with search");
+        AbstractButton groupAnchor = (AbstractButton) get(screen, "groupButton");
+        boolean clear = bounds.y() + bounds.height() <= groupAnchor.getY() || bounds.y() >= groupAnchor.getY() + groupAnchor.getHeight();
+        check(clear && bounds.searchHeight() > 0, "Long group list opens beside its button, never over it, with search");
         var field = popup.getClass().getDeclaredField("search"); field.setAccessible(true);
         ((EditBox) field.get(popup)).setValue("Group 17");
         screen.keyPressed(new net.minecraft.client.input.KeyEvent(InputConstants.KEY_RETURN, 0, 0));
@@ -259,7 +263,7 @@ public final class VisualizationsInteractionTest {
         check("12".equals(get(screen, "draftX")) && "64".equals(get(screen, "draftY")) && "8".equals(get(screen, "draftZ")), "Auto find keeps coordinates when nothing is loaded");
         check(String.valueOf(get(screen, "status")).contains("No obsidian"), "Auto find says when the block is not loaded");
         set(screen, "nearbyOverride", world);
-        click(screen, 70, 118, 0);
+        click(screen, 70, 68, 0);
         check("40".equals(get(screen, "draftX")) && "64".equals(get(screen, "draftY")) && "7".equals(get(screen, "draftZ")), "Opening a saved entry keeps its coordinates");
         } finally {
             try (var paths = Files.walk(dir)) { for (Path p : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(p); }

@@ -5,6 +5,8 @@ import dev.openintel.api.internal.ApiBridge;
 import dev.openintel.api.hud.HudSize;
 import dev.openintel.allegiance.AllegianceManager.Allegiance;
 import dev.openintel.config.OIConfig;
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.player.AbstractClientPlayer;
@@ -95,7 +97,7 @@ public final class EventFeed {
         // without renewing the original line's fade clock or repeating notifications.
         if (relay && coalesceRelay(text, argb, System.currentTimeMillis(), dev.openintel.net.RelaySource.current())) return;
         OIConfig cfg = OpenIntelClient.config();
-        if (cfg != null && cfg.eventFeedEnabled) {
+        if (cfg != null && Features.isOn(cfg, Feature.EVENT_FEED)) {
             while (entries.size() >= MAX_SESSION) entries.pollFirst();
             entries.addLast(new Entry(text, argb, System.currentTimeMillis(), relay));
         }
@@ -179,7 +181,7 @@ public final class EventFeed {
     /** Client tick — watches rendered teammates for deaths. */
     public static void tick(Minecraft client) {
         OIConfig cfg = OpenIntelClient.config();
-        if (!cfg.eventFeedEnabled || client.level == null) return;
+        if (!Features.isOn(cfg, Feature.EVENT_FEED) || client.level == null) return;
 
         for (AbstractClientPlayer p : client.level.players()) {
             if (p == client.player) continue;
@@ -205,7 +207,7 @@ public final class EventFeed {
 
     public static void render(GuiGraphics ctx) {
         OIConfig cfg = OpenIntelClient.config();
-        if (cfg == null || !cfg.eventFeedEnabled) {
+        if (cfg == null || !Features.isOn(cfg, Feature.EVENT_FEED)) {
             logPinned = true;
             return;
         }
@@ -263,7 +265,7 @@ public final class EventFeed {
         if (!(vertical > 0d || vertical < 0d)) return false;
         Minecraft client = Minecraft.getInstance();
         OIConfig cfg = OpenIntelClient.config();
-        if (cfg == null || !cfg.eventFeedEnabled || client.player == null || client.getWindow() == null) return false;
+        if (cfg == null || !Features.isOn(cfg, Feature.EVENT_FEED) || client.player == null || client.getWindow() == null) return false;
         if (client.options.hideGui || !chatOpen(client)) return false;
         List<Entry> session = snapshot();
         if (session.isEmpty()) return false;

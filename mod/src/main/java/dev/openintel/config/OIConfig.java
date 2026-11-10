@@ -131,6 +131,49 @@ public class OIConfig {
     /** Play a sound + chat line when an enemy first enters someone's render. */
     public boolean localEnemyAlert = true;
 
+    // ---------------------------------------------------- feature switches ----
+    // Toggled from the Features screen (dev.openintel.feature). Missing keys
+    // in older configs start on; see applyFeatureDefaults.
+
+    /** Connect to relays at all. Off disconnects every relay. */
+    public boolean relayEnabled = true;
+    /** Parse, show and accept snitch alerts. */
+    public boolean snitchAlertsEnabled = true;
+    /** Investigate log playback. */
+    public boolean investigateEnabled = true;
+    /** Relic treasure-map scanning and everything built on it. */
+    public boolean relicMapsEnabled = true;
+    /** Chest Tracker relic library. */
+    public boolean relicLibraryEnabled = true;
+    /** Nearby in-world pins for carried relic maps. */
+    public boolean relicHudPins = true;
+    /** Chat channel chips and display filtering. */
+    public boolean chatFilterEnabled = true;
+    /** Attack, use, hold and ice-road macros. */
+    public boolean macrosEnabled = true;
+    /** Check public releases once per launch. */
+    public boolean updateCheckEnabled = true;
+
+    /** Feature switches added after configs were first saved. */
+    static final String[] NEW_FEATURE_KEYS = {"relayEnabled", "snitchAlertsEnabled", "investigateEnabled",
+            "relicMapsEnabled", "relicLibraryEnabled", "relicHudPins", "chatFilterEnabled",
+            "macrosEnabled", "updateCheckEnabled"};
+
+    /** Gson leaves a missing boolean false; new feature switches start on. Returns true when one was filled in. */
+    public static boolean applyFeatureDefaults(OIConfig config, JsonObject raw) {
+        boolean changed = false;
+        for (String key : NEW_FEATURE_KEYS) {
+            if (raw.has(key)) continue;
+            try {
+                OIConfig.class.getField(key).setBoolean(config, true);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+            changed = true;
+        }
+        return changed;
+    }
+
     /** Master switch for every relay-driven overlay (markers, chevrons, nameplates). */
     public boolean relayRendering = true;
 
@@ -837,6 +880,7 @@ public class OIConfig {
                 if (c.crosshair == null) c.crosshair = new dev.openintel.render.CrosshairStyle();
                 c.crosshair.sanitize();
                 if (applyReportIntervalDefault(c, raw.has("reportIntervalMs"))) defaults = true;
+                if (applyFeatureDefaults(c, raw)) defaults = true;
                 // Persist repaired IDs as well as one-time legacy migration.
                 String relayBefore = GSON.toJson(c.relays);
                 c.relayProfiles();

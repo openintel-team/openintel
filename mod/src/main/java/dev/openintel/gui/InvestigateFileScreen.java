@@ -25,7 +25,7 @@ import java.util.function.Consumer;
 /** A compact, read-only log picker. Selecting a row never imports it. */
 final class InvestigateFileScreen extends Screen {
     private static final int ROW_H = 18;
-    private static final int TEXT = 0xFFE3E7ED, MUTED = 0xFF9CA6B5, ACCENT = 0xFF9DBCF4;
+    private static final int TEXT = OiStyle.TEXT, MUTED = OiStyle.TEXT_DIM, ACCENT = 0xFF9DBCF4;
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private record Entry(Path path, boolean folder, long bytes, String modified) {
         String name() { return path.getFileName().toString(); }
@@ -40,7 +40,11 @@ final class InvestigateFileScreen extends Screen {
     private Button importButton;
     private String query = "", status = "";
     private int left, top, panelW, panelH, listX, listY, listW, listH, detailX, detailW;
+    private int searchY;
     private int scroll;
+    /** Eases the drawn list offset toward {@code scroll}, which stays the target. */
+    private final SmoothScroll smooth = new SmoothScroll();
+    private int shownScroll() { return smooth.shownPx(scroll); }
     private boolean draggingScroll;
     private double grabOffset;
 
@@ -88,6 +92,7 @@ final class InvestigateFileScreen extends Screen {
         visible = entries.stream().filter(e -> e.name().toLowerCase(Locale.ROOT).contains(needle)).toList();
         if (!visible.contains(selected)) selected = null;
         scroll = 0;
+        smooth.snap(0);
         updateAction();
     }
 
@@ -134,38 +139,41 @@ final class InvestigateFileScreen extends Screen {
 
     @Override
     protected void init() {
-        panelW = Math.min(880, width - 16);
-        panelH = Math.min(520, height - 16);
-        left = (width - panelW) / 2;
-        top = (height - panelH) / 2;
+        // Full-screen Jade layout: centered title, cards above a black bottom bar.
+        left = 8;
+        panelW = width - 16;
+        top = 0;
+        panelH = height;
+        int barTop = height - OiStyle.BAR_H;
         detailW = panelW >= 520 ? Math.max(170, panelW / 4) : 0;
-        listX = left + 10;
-        listY = top + 84;
-        listW = panelW - 20 - (detailW > 0 ? detailW + 8 : 0);
-        listH = Math.max(18, panelH - 144 - (detailW == 0 ? 22 : 0));
+        int navY = OiStyle.TITLE_H + 2;
+        searchY = navY + 23;
+        listX = left + 8;
+        listY = searchY + 33;
+        listW = panelW - 16 - (detailW > 0 ? detailW + 8 : 0);
+        listH = Math.max(18, barTop - 8 - 18 - listY - (detailW == 0 ? 14 : 0));
         detailX = listX + listW + 8;
-        int navY = top + 30;
         Button up = addRenderableWidget(Button.builder(Component.literal("Up"), b -> navigate(directory.getParent()))
-                .bounds(left + 10, navY, 30, 20).build());
+                .bounds(left + 8, navY, 30, 20).build());
         up.active = directory.getParent() != null;
         addRenderableWidget(Button.builder(Component.literal("Downloads"), b ->
                 navigate(Path.of(System.getProperty("user.home", "."), "Downloads")))
-                .bounds(left + 44, navY, 68, 20).build());
-        pathBox = new EditBox(font, left + 118, navY, panelW - 170, 20, Component.literal("Folder or file path"));
+                .bounds(left + 42, navY, 68, 20).build());
+        pathBox = new EditBox(font, left + 116, navY, panelW - 166, 20, Component.literal("Folder or file path"));
         pathBox.setMaxLength(8192);
         pathBox.setValue(directory.toString());
         addRenderableWidget(pathBox);
         addRenderableWidget(Button.builder(Component.literal("Go"), b -> goToPath())
-                .bounds(left + panelW - 46, navY, 36, 20).build());
-        searchBox = new EditBox(font, listX + 44, top + 51, listW - 44, 18, Component.literal("Filter filenames"));
+                .bounds(left + panelW - 44, navY, 36, 20).build());
+        searchBox = new EditBox(font, listX + 44, searchY, listW - 44, 18, Component.literal("Filter filenames"));
         searchBox.setHint(Component.literal("Filter filenames…"));
         searchBox.setValue(query);
         searchBox.setResponder(value -> { query = value; filter(); });
         addRenderableWidget(searchBox);
         importButton = addRenderableWidget(Button.builder(Component.literal("Import log"), b -> openSelected())
-                .bounds(left + panelW - 188, top + panelH - 30, 92, 20).build());
+                .bounds(width - 8 - 80 - 4 - 92, OiStyle.barButtonY(height), 92, 20).build());
         addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> onClose())
-                .bounds(left + panelW - 90, top + panelH - 30, 80, 20).build());
+                .bounds(width - 8 - 80, OiStyle.barButtonY(height), 80, 20).build());
         updateAction();
         draggingScroll = false;
         clampScroll();
@@ -179,7 +187,7 @@ final class InvestigateFileScreen extends Screen {
     private int maxScroll() { return Math.max(0, visible.size() * ROW_H - listH); }
     private void clampScroll() { scroll = Math.max(0, Math.min(scroll, maxScroll())); }
     private int thumbH() { return Math.min(listH, Math.max(20, listH * listH / Math.max(listH, visible.size() * ROW_H))); }
-    private int thumbY() { return listY + (maxScroll() == 0 ? 0 : scroll * (listH - thumbH()) / maxScroll()); }
+    private int thumbY() { return listY + (maxScroll() == 0 ? 0 : shownScroll() * (listH - thumbH()) / maxScroll()); }
 
     private void revealSelection() {
         int row = visible.indexOf(selected);
@@ -199,7 +207,7 @@ final class InvestigateFileScreen extends Screen {
                         ? click.y() - thumbY() : thumbH() / 2.0;
                 dragThumb(click.y());
             } else {
-                int row = (int) ((click.y() - listY + scroll) / ROW_H);
+                int row = (int) ((click.y() - listY + shownScroll()) / ROW_H);
                 if (row < visible.size()) {
                     Entry previous = selected;
                     selected = visible.get(row);
@@ -216,6 +224,8 @@ final class InvestigateFileScreen extends Screen {
         int travel = listH - thumbH();
         if (travel > 0) scroll = (int) Math.round((y - listY - grabOffset) * maxScroll() / travel);
         clampScroll();
+        // Dragging the thumb follows the pointer directly.
+        smooth.snap(scroll);
     }
 
     @Override
@@ -233,7 +243,7 @@ final class InvestigateFileScreen extends Screen {
     @Override
     public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
         if (inList(x, y)) {
-            scroll -= (int) (vertical * ROW_H * 3);
+            scroll -= (int) Math.round(vertical * ROW_H * 3);
             clampScroll();
             return true;
         }
@@ -268,25 +278,28 @@ final class InvestigateFileScreen extends Screen {
 
     @Override
     public void render(GuiGraphics ctx, int mouseX, int mouseY, float delta) {
-        ctx.fill(0, 0, width, height, 0xA0101218);
-        ctx.fill(left, top, left + panelW, top + panelH, 0xF0181C24);
-        ctx.fill(left, top, left + panelW, top + 24, 0xFF232A35);
-        ctx.drawString(font, title, left + 10, top + 8, TEXT);
-        ctx.drawString(font, "Search", listX, top + 56, MUTED);
-        ctx.fill(listX, listY - 12, listX + listW, listY, 0xFF29313D);
+        smooth.update(scroll);
+        // In-world screens must not call extractBackground: its blur pass runs once per frame.
+        renderTransparentBackground(ctx);
+        int barTop = OiStyle.bottomBar(ctx, width, height);
+        OiStyle.sectionTitle(ctx, font, title, width / 2, 0);
+        OiStyle.tile(ctx, listX - 4, searchY - 4, listX + listW + 4, barTop - 6, false, false);
+        if (detailW > 0) OiStyle.tile(ctx, detailX, searchY - 4, detailX + detailW, listY + listH + 4, false, true);
+        ctx.drawString(font, "Search", listX, searchY + 5, MUTED);
+        ctx.fill(listX, listY - 12, listX + listW, listY, 0x40000000);
         ctx.drawString(font, "Name", listX + 22, listY - 10, MUTED);
         if (listW >= 280) ctx.drawString(font, "Size", listX + listW - 65, listY - 10, MUTED);
-        ctx.fill(listX, listY, listX + listW, listY + listH, 0xFF10141A);
+        ctx.fill(listX, listY, listX + listW, listY + listH, 0x60000000);
         ctx.enableScissor(listX, listY, listX + listW - 10, listY + listH);
-        int first = scroll / ROW_H;
-        for (int i = first; i < visible.size() && i * ROW_H - scroll < listH; i++) {
+        int view = shownScroll(), first = view / ROW_H;
+        for (int i = first; i < visible.size() && i * ROW_H - view < listH; i++) {
             Entry entry = visible.get(i);
-            int y = listY + i * ROW_H - scroll;
+            int y = listY + i * ROW_H - view;
             boolean hovered = inList(mouseX, mouseY) && mouseY >= y && mouseY < y + ROW_H;
-            int background = entry.equals(selected) ? 0xFF344D70 : hovered ? 0xFF252F3D
-                    : i % 2 == 0 ? 0xFF161C24 : 0xFF10141A;
+            int background = entry.equals(selected) ? OiStyle.SELECTED_BG : hovered ? OiStyle.ROW_HOVER
+                    : i % 2 == 0 ? 0x18000000 : 0;
             ctx.fill(listX, y, listX + listW - 10, y + ROW_H, background);
-            if (entry.equals(selected)) ctx.fill(listX, y, listX + 2, y + ROW_H, ACCENT);
+            if (entry.equals(selected)) ctx.fill(listX, y + 2, listX + 2, y + ROW_H - 2, OiStyle.TEXT);
             drawIcon(ctx, listX + 7, y + 5, entry.folder());
             int nameWidth = listW - (listW >= 280 ? 100 : 34);
             ctx.drawString(font, ellipsize(entry.name(), nameWidth), listX + 22, y + 5,
@@ -298,27 +311,29 @@ final class InvestigateFileScreen extends Screen {
                 listX + 10, listY + 12, MUTED);
         ctx.disableScissor();
         if (maxScroll() > 0) {
-            ctx.fill(listX + listW - 7, listY, listX + listW - 2, listY + listH, 0xFF252D38);
-            ctx.fill(listX + listW - 7, thumbY(), listX + listW - 2, thumbY() + thumbH(), 0xFF7A8CA6);
+            ctx.fill(listX + listW - 6, listY, listX + listW - 2, listY + listH, 0x40000000);
+            ctx.fill(listX + listW - 6, thumbY(), listX + listW - 2, thumbY() + thumbH(), 0xFFC0C0C0);
+            ctx.fill(listX + listW - 3, thumbY(), listX + listW - 2, thumbY() + thumbH(), 0xFF808080);
         }
         if (detailW > 0) {
-            ctx.enableScissor(detailX, top + 51, detailX + detailW, listY + listH);
+            ctx.enableScissor(detailX, searchY, detailX + detailW, listY + listH);
             drawDetails(ctx);
             ctx.disableScissor();
         }
         else ctx.drawString(font, ellipsize(selected == null ? "Select a file to import." : selected.name(), listW),
-                listX, listY + listH + 8, selected == null ? MUTED : TEXT);
-        int footerY = top + panelH - 50;
+                listX, listY + listH + 6, selected == null ? MUTED : TEXT);
+        int footerY = barTop - 6 - 13;
+        ctx.fill(listX, footerY - 4, listX + listW, footerY - 3, OiStyle.DIVIDER);
         ctx.drawString(font, ellipsize(status.isEmpty() ? visible.size() + " items • .txt logs only • Up to 2 MiB" : status,
-                panelW - 20), left + 10, footerY, MUTED);
-        if (panelW >= 520) ctx.drawString(font, "Double-click to open • Enter to confirm", left + 10, top + panelH - 24, MUTED);
+                listW), listX, footerY, status.isEmpty() ? MUTED : OiStyle.BAD);
+        if (panelW >= 520) ctx.drawString(font, "Double-click to open • Enter to confirm", 10,
+                barTop + (OiStyle.BAR_H - 8) / 2, OiStyle.TEXT_DIM);
         super.render(ctx, mouseX, mouseY, delta);
     }
 
     private void drawDetails(GuiGraphics ctx) {
-        int y = top + 51;
-        ctx.fill(detailX, y, detailX + detailW, listY + listH, 0xFF10141A);
-        ctx.drawString(font, "Selected file", detailX + 10, y + 8, MUTED);
+        int y = searchY;
+        ctx.drawString(font, "Selected file", detailX + 10, y + 4, MUTED);
         y += 28;
         if (selected == null) {
             wrapped(ctx, "Select a text export to see its details, then choose Import log.", y, MUTED, 5);

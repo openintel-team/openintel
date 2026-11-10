@@ -1,5 +1,7 @@
 package dev.openintel.update;
 
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -29,6 +31,7 @@ public final class UpdateChecker {
     private UpdateChecker() { }
 
     public static void start() {
+        if (!Features.isOn(Feature.UPDATE_CHECK)) return;
         if (!STARTED.compareAndSet(false, true)) return;
         String installed = FabricLoader.getInstance().getModContainer("openintel")
                 .map(mod -> mod.getMetadata().getVersion().getFriendlyString()).orElse("");
@@ -57,6 +60,8 @@ public final class UpdateChecker {
     }
 
     public static void onMultiplayerJoin() {
+        if (!Features.isOn(Feature.UPDATE_CHECK)) return;
+        start(); // switched on mid-launch: check now, once
         SESSION.onJoin();
         say();
     }
