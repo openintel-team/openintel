@@ -83,7 +83,7 @@ const report = (socket, subject, x, extra = {}) => socket.submit({ type: 'positi
   { subject, x, y: 64, z: 0, dim: 'minecraft:overworld', ...extra }] });
 const rows = (socket) => socket.take('pos').flatMap(m => m.p.map(row => ({
   name: row[0], x: row[1], y: row[2], z: row[3], dim: m.s[row[4]], age: row[5], reporter: m.s[row[6]],
-  bridge: row[7], hops: row[8], vx: row[9], vz: row[10] })));
+  bridge: row[7], hops: row[8], length: row.length })));
 // First full-list tick reaches everyone; later ticks pace delta clients.
 fullTick();
 clear();
@@ -93,7 +93,7 @@ report(reporter, 'Target', 10.123456, { age: 40, vx: 4.256, vz: -1.5, bridge: { 
 let seen = rows(viewer);
 assert.equal(seen.length, 1, 'delta client gets the change immediately');
 assert.deepEqual(seen[0], { name: 'Target', x: 10.12, y: 64, z: 0, dim: 'minecraft:overworld', age: 40,
-  reporter: 'Reporter', bridge: 'obs-1', hops: 0, vx: 4.26, vz: -1.5 });
+  reporter: 'Reporter', bridge: 'obs-1', hops: 0, length: 9 });
 assert.equal(legacy.take('pos').length, 0, 'older clients never see the new message type');
 assert.equal(legacy.take('state').length, 0, 'older clients wait for the full list');
 assert.equal(trial.take('pos').length, 0, 'trial stays send-only');
@@ -110,7 +110,6 @@ flushTick();
 seen = rows(viewer);
 assert.equal(seen.length, 1);
 assert.equal(seen[0].x, 12);
-assert.equal(seen[0].vx, undefined, 'missing velocity is not invented');
 clear();
 // Unchanged reports do not generate pushes.
 advance(60);
@@ -182,25 +181,25 @@ assert.equal(vm.runInContext('bridgeSeen.size', context), bridgeBefore, 'positio
 assert(vm.runInContext('positionBridgeSeen.size', context) >= 5);
 const minted = vm.runInContext(`positions.get('churn@reporter').bridge.id`, context);
 assert.equal(minted.length, 12, 'relay-minted position IDs are short');
-// Bridged positions also use the position cache and carry velocity.
+// Bridged positions also use the position cache.
 advance(60);
 const bridged = { type: 'position', name: 'Bridged', x: 7, y: 64, z: 7, dim: 'minecraft:overworld',
   t: now - 20, vx: 2, vz: 3, bridge: { id: 'bridged-1', hops: 0 } };
 reporter.submit({ type: 'bridge', event: bridged });
 const bridgedRow = rows(viewer).find(r => r.name === 'Bridged');
 assert.equal(bridgedRow.hops, 1);
-assert.equal(bridgedRow.vx, 2);
+assert.equal(bridgedRow.length, 9, 'velocity from an older client is not forwarded');
 assert.equal(bridgedRow.age, 20);
 assert.equal(vm.runInContext('bridgeSeen.size', context), bridgeBefore);
 assert(vm.runInContext(`positionBridgeSeen.has('bridged-1')`, context));
 clear();
 
-// Bounds: ages and speeds are clamped or dropped, uploads are rate-limited.
+// Bounds: ages are clamped, uploads are rate-limited.
 advance(100);
-report(reporter, 'Clamp', 1, { age: 999999, vx: 500, vz: 1 });
+report(reporter, 'Clamp', 1, { age: 999999 });
 const clamped = vm.runInContext(`positions.get('clamp@reporter')`, context);
 assert.equal(now - clamped.t, 1000, 'report age is capped at one second');
-assert.equal(clamped.vx, undefined, 'implausible velocity is dropped');
+assert.equal(clamped.vx, undefined, 'velocity is never stored');
 advance(1000);
 const before = vm.runInContext('positions.size', context);
 for (let i = 0; i < 20; i++) report(legacy, 'Flood' + i, i);
