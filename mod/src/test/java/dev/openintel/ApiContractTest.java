@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class ApiContractTest {
     public static void main(String[] args) throws Exception {
         verifyStartupHook();
+        settingsViewFollowsFeatures();
         check(OpenIntelApi.API_VERSION == 1, "API version");
         check(!OpenIntelApi.isReady(), "No client initialized in contract test");
         check(OpenIntelApi.settings().snapshot().isEmpty(), "Safe pre-init settings read");
@@ -117,6 +118,28 @@ public final class ApiContractTest {
         replacement.close();
         check(hud.element(id).isEmpty(), "Unregistered HUD removed");
         System.out.println("OpenIntel API contract tests passed");
+    }
+
+    /** The View keeps its shape; enabled flags report the effective feature state. */
+    private static void settingsViewFollowsFeatures() {
+        var names = java.util.Arrays.stream(dev.openintel.api.SettingsApi.View.class.getRecordComponents())
+                .map(java.lang.reflect.RecordComponent::getName).toList();
+        check(names.equals(List.of("radar", "markers", "snitches", "overlays",
+                "pingWheelEnabled", "pingLifetimeSeconds", "reportIntervalMs")), "SettingsApi.View shape unchanged");
+        check(dev.openintel.api.SettingsApi.Radar.class.getRecordComponents().length == 15, "Radar shape unchanged");
+        var cfg = new dev.openintel.config.OIConfig();
+        dev.openintel.feature.Features.bind(() -> cfg, mod -> true);
+        check(ApiBridge.view(cfg).radar().enabled(), "Radar reported on by default");
+        cfg.radarEnabled = false;
+        check(!ApiBridge.view(cfg).radar().enabled(), "Radar reported off when the feature is off");
+        cfg.relayEnabled = false;
+        var view = ApiBridge.view(cfg);
+        check(!view.markers().enabled() && !view.pingWheelEnabled() && !view.snitches().forwardingEnabled()
+                && !view.overlays().presence().enabled(), "Relay-dependent features report off without the relay");
+        check(view.overlays().feed().enabled() == cfg.eventFeedEnabled, "Event feed does not need the relay");
+        cfg.armorHudEnabled = false;
+        check(!ApiBridge.view(cfg).overlays().armor().enabled(), "Armor overlay follows its feature");
+        dev.openintel.feature.Features.bind(() -> null, mod -> true);
     }
 
     private static void verifyStartupHook() throws Exception {

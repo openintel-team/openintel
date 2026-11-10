@@ -86,6 +86,18 @@ public final class ChatChannelFilter {
         return SECTION_CODE.matcher(text).replaceAll("").trim();
     }
 
+    private static volatile int generation;
+
+    /** False while the Chat channel filter feature is off: every line shows and the chip bar is gone. */
+    public static boolean active(dev.openintel.config.OIConfig config) {
+        return config != null && dev.openintel.feature.Features.isOn(config, dev.openintel.feature.Feature.CHAT_FILTER);
+    }
+
+    /** Bumped by the off-hook so chat drops cached channels and visible lines. */
+    public static int generation() { return generation; }
+
+    public static void invalidate() { generation++; }
+
     /**
      * Open chat shows every category that is turned on. Closed chat shows each
      * line whose own eye is open. The two sets are independent, and a hidden

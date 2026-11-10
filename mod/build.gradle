@@ -282,6 +282,27 @@ tasks.register('snitchLogParserTest', JavaExec) {
     enableAssertions = true
 }
 
+tasks.register('smoothScrollTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.gui.SmoothScrollTest'
+    enableAssertions = true
+}
+
+tasks.register('featureListModelTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.gui.FeatureListModelTest'
+    enableAssertions = true
+}
+
+tasks.register('featureRegistryTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.openintel.feature.FeatureRegistryTest'
+    enableAssertions = true
+}
+
 tasks.register('oiConfigMigrationTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
@@ -333,7 +354,7 @@ tasks.register('mouseButtonConstantsTest', JavaExec) {
 }
 
 check.dependsOn relayProfilesTest, relayBridgeTest, positionPipelineTest, investigatePresentationTest, worldOverlayTest, snitchDimensionTest, apiContractTest, cleanFontMetricsTest, uiFontTest, radarLabelLayoutTest, mapFontTest, hudLayoutTest, offlineIntelTest, publicationSafetyTest, logoHudTest, warTableTest, mapMarkerTest, mapParityTest, relicMapTest, rangeShapeTest, investigateLogTest, relicLibraryTest, markerSettingsTest, eventFeedLayoutTest, chatChannelFilterTest, versionPinTest, releaseUpdateTest, crosshairTest
-check.dependsOn allegianceTest, snitchLogParserTest, oiConfigMigrationTest, trackerSnitchIntelTest, pingManagerTest, snitchRelayTest, junkRejectorTest, pingWheelLayoutTest, mouseButtonConstantsTest
+check.dependsOn featureRegistryTest, featureListModelTest, smoothScrollTest, allegianceTest, snitchLogParserTest, oiConfigMigrationTest, trackerSnitchIntelTest, pingManagerTest, snitchRelayTest, junkRejectorTest, pingWheelLayoutTest, mouseButtonConstantsTest
 
 publishing {
     publications {

@@ -1,6 +1,8 @@
 package dev.openintel.junk;
 
 import dev.openintel.OpenIntelClient;
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.inventory.ContainerInput;
@@ -22,7 +24,7 @@ public final class JunkRejector {
 
     public static void tick(Minecraft client) {
         var cfg = OpenIntelClient.config();
-        if (!cfg.junkReject) return;
+        if (!Features.isOn(cfg, Feature.JUNK_REJECT)) return;
         if (client.player == null || client.gameMode == null) return;
         if (client.gui.screen() != null) return;                 // never click under an open GUI
         if (client.player.isCreative() || client.player.isSpectator()) return;
@@ -44,7 +46,7 @@ public final class JunkRejector {
     /** True when junk rejection is on and this stack is on the list. */
     public static boolean isJunk(ItemStack stack) {
         var cfg = OpenIntelClient.config();
-        return cfg.junkReject && !stack.isEmpty()
+        return Features.isOn(cfg, Feature.JUNK_REJECT) && !stack.isEmpty()
                 && normalized(cfg.junkItems).contains(id(stack));
     }
 

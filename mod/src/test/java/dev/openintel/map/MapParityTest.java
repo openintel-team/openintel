@@ -42,6 +42,7 @@ public final class MapParityTest {
         playerModes();
         expiry();
         toggles();
+        featureMasters();
         overworldOnlyNames();
         styles();
         signatures();
@@ -166,6 +167,31 @@ public final class MapParityTest {
         Map<String, MapMarker> some = byId(MapMarkerSource.build(inputs(null), cfg, NOW,
                 MapMarkerSource.PlayerMode.LIVE_POSITIONS));
         check(some.keySet().equals(Set.of("relic:7:x@0", "wartable-label:city")), "per-group toggles: " + some.keySet());
+    }
+
+    private static void featureMasters() {
+        OIConfig cfg = config();
+        dev.openintel.feature.Features.bind(() -> cfg, mod -> true);
+        try {
+            cfg.warTableEnabled = false;
+            cfg.relicMapsEnabled = false;
+            cfg.worldMapIntel = false;
+            Map<String, MapMarker> none = byId(MapMarkerSource.build(inputs(libraryVisit()), cfg, NOW,
+                    MapMarkerSource.PlayerMode.LIVE_POSITIONS));
+            check(none.isEmpty(), "War Table, relic maps and intel off draw no layers: " + none.keySet());
+
+            cfg.relicMapsEnabled = true;
+            cfg.relicLibraryEnabled = false;
+            Map<String, MapMarker> relicsOnly = byId(MapMarkerSource.build(inputs(libraryVisit()), cfg, NOW,
+                    MapMarkerSource.PlayerMode.LIVE_POSITIONS));
+            for (String id : relicsOnly.keySet()) {
+                check(!id.startsWith(MapMarkerStyle.LIBRARY_PREFIX), "library off drops library pins: " + id);
+                check(!id.startsWith("wartable"), "War Table off drops its layers: " + id);
+            }
+            check(!relicsOnly.isEmpty(), "carried relics still draw with the library off");
+        } finally {
+            dev.openintel.feature.Features.bind(() -> null, mod -> true);
+        }
     }
 
     private static void overworldOnlyNames() {

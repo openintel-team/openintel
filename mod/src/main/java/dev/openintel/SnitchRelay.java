@@ -1,6 +1,8 @@
 package dev.openintel;
 
 import com.google.gson.JsonObject;
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.render.EventFeed;
 import dev.openintel.snitch.SnitchLogParser;
 import net.minecraft.client.Minecraft;
@@ -46,7 +48,7 @@ public final class SnitchRelay {
     public static void onGameMessage(Component message, boolean overlay) {
         if (overlay) return;
         var cfg = OpenIntelClient.config();
-        if (cfg == null) return;
+        if (cfg == null || !Features.isOn(cfg, Feature.SNITCH_ALERTS)) return;
 
         String text = message.getString();
         if (text == null || text.isEmpty()) return;
@@ -106,7 +108,7 @@ public final class SnitchRelay {
                     snitchName, player, me, x, y, z, world, System.currentTimeMillis());
         }
 
-        if (cfg.snitchRelay) OpenIntelClient.relay().send(msg);
+        if (Features.isOn(cfg, Feature.SNITCH_SHARE)) OpenIntelClient.relay().send(msg);
         else dev.openintel.api.internal.ApiBridge.relaySnitch(msg);
         EventFeed.add("Snitch: " + compact(text), 0xFFFFAA00);
     }
@@ -120,7 +122,7 @@ public final class SnitchRelay {
     public static Component restyleForChat(Component message, boolean overlay) {
         if (overlay) return message;
         var cfg = OpenIntelClient.config();
-        if (cfg == null) return message;
+        if (cfg == null || !Features.isOn(cfg, Feature.SNITCH_ALERTS)) return message;
         String text = message.getString();
         if (text == null || text.isEmpty() || text.startsWith("[OpenIntel]")) return message;
         Pattern detection;

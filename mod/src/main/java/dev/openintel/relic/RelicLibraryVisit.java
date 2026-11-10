@@ -1,5 +1,7 @@
 package dev.openintel.relic;
 
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -43,11 +45,11 @@ public final class RelicLibraryVisit {
     }
 
     public static RelicLibraryVisit current() {
-        return active;
+        return Features.isOn(Feature.RELIC_LIBRARY) ? active : null;
     }
 
     public static boolean mapVisitActive() {
-        return active != null && active.mapVisit;
+        return current() != null && active.mapVisit;
     }
 
     public static void clear() {

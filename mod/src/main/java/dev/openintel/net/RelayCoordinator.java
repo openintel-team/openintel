@@ -5,6 +5,8 @@ import dev.openintel.OpenIntelClient;
 import dev.openintel.api.Snapshots.ConnectionState;
 import dev.openintel.api.internal.ApiBridge;
 import dev.openintel.config.RelayProfile;
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import net.minecraft.client.Minecraft;
 
 import java.util.LinkedHashMap;
@@ -70,6 +72,11 @@ public final class RelayCoordinator extends RelayClient {
             return false;
         }
         if (updating) return false;
+        if (!Features.isOn(Feature.RELAY)) {
+            // Relay connection switched off: drop every session and never dial out.
+            if (!sessions.isEmpty()) disconnect();
+            return false;
+        }
         updating = true;
         generation++;
         String actual = RelayClient.connectableServer(minecraft);
@@ -135,6 +142,7 @@ public final class RelayCoordinator extends RelayClient {
 
     private void receive(Session source, JsonObject message) {
         if (sessions.get(source.profile.id) != source) return;
+        if (!Features.isOn(Feature.RELAY)) return;
         String type = message.get("type").getAsString();
         if (!type.equals("deny")) source.hadIntel = true;
         if (type.equals("intel_reset")) source.forwarded.clear();
@@ -156,6 +164,7 @@ public final class RelayCoordinator extends RelayClient {
         for (JsonObject event : RelayBridge.events(message)) {
             for (Session destination : List.copyOf(sessions.values())) {
                 if (destination == source || !destination.bridge || !destination.profile.share) continue;
+                if (!featureAllows(String.valueOf(event.has("type") ? event.get("type").getAsString() : ""))) continue;
                 JsonObject forwarded = RelayBridge.forward(event, destination.client.role());
                 if (forwarded == null) continue;
                 String id = event.getAsJsonObject("bridge").get("id").getAsString();
@@ -188,6 +197,11 @@ public final class RelayCoordinator extends RelayClient {
     @Override public void tick() {
         Minecraft minecraft = Minecraft.getInstance();
         if (!minecraft.isSameThread()) { minecraft.execute(this::tick); return; }
+        // Session ticks redial dropped sockets; with the relay off nothing may reconnect.
+        if (!Features.isOn(Feature.RELAY)) {
+            if (!sessions.isEmpty()) disconnect();
+            return;
+        }
         for (Session session : List.copyOf(sessions.values())) session.client.tick();
     }
     @Override public boolean isConnected() { return sessions.values().stream().anyMatch(s -> s.client.isConnected()); }
@@ -224,6 +238,7 @@ public final class RelayCoordinator extends RelayClient {
     @Override public boolean trySend(JsonObject message) {
         if (!Minecraft.getInstance().isSameThread() || updating) return false;
         String type = message.has("type") ? message.get("type").getAsString() : "";
+        if (!featureAllows(type)) return false;
         boolean sent = false;
         JsonObject outgoing = message.deepCopy();
         // One identity for the same local observation sent to several relays.
@@ -266,6 +281,16 @@ public final class RelayCoordinator extends RelayClient {
         java.util.concurrent.ThreadLocalRandom.current().nextBytes(bytes);
         return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
+    /** Feature switches that gate outbound traffic: nothing with the relay off, no snitches or pings while those are off. */
+    static boolean featureAllows(String type) {
+        if (!Features.isOn(Feature.RELAY)) return false;
+        return switch (type) {
+            case "snitch" -> Features.isOn(Feature.SNITCH_SHARE);
+            case "ping" -> Features.isOn(Feature.PINGS);
+            default -> true;
+        };
+    }
+
     static boolean allowsSend(boolean enabled, boolean sharing, boolean authenticated, String role, String type) {
         if (!enabled || !sharing || !authenticated) return false;
         int rank = rank(role == null ? "" : role);

@@ -30,6 +30,9 @@ public class JunkItemPickerScreen extends Screen {
     private List<Item> view = new ArrayList<>();
     private int gridX, gridY, gridW, gridH;
     private int scroll;                             // px offset into the grid
+    /** Eases the drawn list offset toward {@code scroll}, which stays the target. */
+    private final SmoothScroll smooth = new SmoothScroll();
+    private int shownScroll() { return smooth.shownPx(scroll); }
 
     public JunkItemPickerScreen(Screen parent) {
         super(Component.literal("Junk items"));
@@ -47,17 +50,17 @@ public class JunkItemPickerScreen extends Screen {
 
     @Override
     protected void init() {
-        search = new EditBox(font, (width - 180) / 2, 22, 180, 16,
+        search = new EditBox(font, (width - 180) / 2, OiStyle.TITLE_H, 180, 16,
                 Component.literal("search"));
         search.setHint(Component.literal("search items…"));
         search.setResponder(q -> refilter());
         addRenderableWidget(search);
         addRenderableWidget(Button.builder(Component.literal("Done"), b -> onClose())
-                .bounds(width / 2 - 50, height - 26, 100, 20).build());
+                .bounds(width - 8 - 100, OiStyle.barButtonY(height), 100, 20).build());
         gridW = Math.max(CELL, Math.min(CELL * 14, width - 48) / CELL * CELL);
         gridX = (width - gridW) / 2;
-        gridY = 48;
-        gridH = height - gridY - 36;
+        gridY = OiStyle.TITLE_H + 26;
+        gridH = Math.max(CELL, height - OiStyle.BAR_H - gridY - 8);
         refilter();
     }
 
@@ -93,26 +96,29 @@ public class JunkItemPickerScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
-        ctx.fill(0, 0, width, height, 0xC0101015);
+        smooth.update(scroll);
+        // In-world screens must not call extractBackground: its blur pass runs once per frame.
+        extractTransparentBackground(ctx);
+        OiStyle.bottomBar(ctx, width, height);
+        OiStyle.tile(ctx, gridX - 4, gridY - 4, gridX + gridW + 10, gridY + gridH + 4, false, false);
+        OiStyle.sectionTitle(ctx, font, Component.literal("Junk items — click to toggle"), width / 2, 0);
         super.extractRenderState(ctx, mouseX, mouseY, delta);
-        ctx.centeredText(font, "Junk items — click to toggle",
-                width / 2, 8, 0xFFFFFFFF);
 
         int cols = cols();
         ctx.enableScissor(gridX, gridY, gridX + gridW, gridY + gridH);
         ItemStack hovered = null;
         for (int i = 0; i < view.size(); i++) {
             int x = gridX + (i % cols) * CELL;
-            int y = gridY + (i / cols) * CELL - scroll;
+            int y = gridY + (i / cols) * CELL - shownScroll();
             if (y + CELL < gridY || y > gridY + gridH) continue;
             boolean sel = junk.contains(idOf(view.get(i)));
             boolean hov = mouseX >= x && mouseX < x + CELL
                     && mouseY >= y && mouseY < y + CELL
                     && mouseY >= gridY && mouseY < gridY + gridH;
             ctx.fill(x + 1, y + 1, x + CELL - 1, y + CELL - 1,
-                    sel ? 0x8834A800 : (hov ? 0x33FFFFFF : 0x22000000));
+                    sel ? 0x6034A800 : (hov ? 0x30FFFFFF : 0x22000000));
             if (sel)
-                ctx.outline(x + 1, y + 1, CELL - 2, CELL - 2, 0xFF64FF64);
+                ctx.outline(x + 1, y + 1, CELL - 2, CELL - 2, OiStyle.GOOD);
             ItemStack st = new ItemStack(view.get(i));
             ctx.item(st, x + 2, y + 2);
             if (hov) hovered = st;
@@ -121,14 +127,10 @@ public class JunkItemPickerScreen extends Screen {
 
         int max = maxScroll();
         if (max > 0) {
-            int track = gridX + gridW + 3;
-            ctx.fill(track, gridY, track + 3, gridY + gridH, 0x33000000);
-            int h = Math.max(10, gridH * gridH / (gridH + max));
-            int y = gridY + (gridH - h) * scroll / max;
-            ctx.fill(track, y, track + 3, y + h, 0x88AAAAAA);
+            OiStyle.scrollbar(ctx, gridX + gridW + 7, gridY, gridY + gridH, gridH + max, smooth.shown(scroll), max);
         }
-        ctx.centeredText(font, junk.size() + " selected",
-                width / 2, height - 46, 0xFFAAAAAA);
+        ctx.text(font, junk.size() + " selected", 10, height - OiStyle.BAR_H + (OiStyle.BAR_H - 8) / 2,
+                junk.isEmpty() ? OiStyle.TEXT_DIM : OiStyle.GOOD);
         if (hovered != null)
             ctx.setTooltipForNextFrame(font, hovered, mouseX, mouseY);
     }
@@ -139,7 +141,7 @@ public class JunkItemPickerScreen extends Screen {
             double mx = click.x(), my = click.y();
             if (mx >= gridX && mx < gridX + gridW && my >= gridY && my < gridY + gridH) {
                 int c = (int) (mx - gridX) / CELL;
-                int r = (int) (my - gridY + scroll) / CELL;
+                int r = (int) (my - gridY + shownScroll()) / CELL;
                 int idx = r * cols() + c;
                 if (c < cols() && idx >= 0 && idx < view.size()) {
                     toggle(view.get(idx));
@@ -155,7 +157,7 @@ public class JunkItemPickerScreen extends Screen {
                                  double horizontal, double vertical) {
         if (mouseX >= gridX && mouseX < gridX + gridW
                 && mouseY >= gridY && mouseY < gridY + gridH) {
-            scroll = Math.max(0, Math.min(maxScroll(), scroll - (int) vertical * CELL));
+            scroll = Math.max(0, Math.min(maxScroll(), scroll - (int) Math.round(vertical * CELL)));
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, horizontal, vertical);
