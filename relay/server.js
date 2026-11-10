@@ -349,7 +349,6 @@ const NEAR_POSITION_RANGE = configMs(CONFIG.nearPositionRange, 1000, 0, 30000000
 const MIN_REPORT_INTERVAL_MS = configMs(CONFIG.minReportIntervalMs, 25, 0, 1000);
 // Reporters may say how old an observation already was when sent (ms).
 const MAX_REPORT_AGE_MS = 1000;
-const MAX_REPORT_SPEED = 100;   // blocks per second, horizontal velocity bound
 
 // Latest intel of any kind per player — feeds !where and war-table marks.
 // name(lower) -> { name, x, y, z, dim, t, kind, reporter }
@@ -569,7 +568,6 @@ function handleBridge(ws, user, event) {
     if (type === "position") {
       const key = `${lower(event.name)}@${lower(user.name)}`;
       if ((positions.get(key)?.t ?? -Infinity) > event.t) return;
-      Object.assign(clean, positionVelocity(event));
       clean.x = roundCoordinate(clean.x); clean.y = roundCoordinate(clean.y); clean.z = roundCoordinate(clean.z);
       storePosition(key, clean);
       noteSeen(event.name, clean.x, clean.y, clean.z, clean.dim, user.name, "position", event.t);
@@ -654,17 +652,12 @@ function sendVisibleState(deltaClients = true) {
 const dirtyPositions = new Set();
 let lastPositionFlush = -Infinity;
 const roundCoordinate = (v) => Math.round(v * 100) / 100;
-function positionVelocity(r) {
-  const ok = (v) => Number.isFinite(v) && Math.abs(v) <= MAX_REPORT_SPEED;
-  return ok(r?.vx) && ok(r?.vz) ? { vx: roundCoordinate(r.vx), vz: roundCoordinate(r.vz) } : {};
-}
 function reportAge(age) {
   return Number.isFinite(age) && age > 0 ? Math.min(age, MAX_REPORT_AGE_MS) : 0;
 }
 function positionChanged(a, b) {
   return a.dim !== b.dim || a.reporter !== b.reporter
-    || Math.abs(a.x - b.x) > 0.01 || Math.abs(a.y - b.y) > 0.01 || Math.abs(a.z - b.z) > 0.01
-    || (a.vx ?? 0) !== (b.vx ?? 0) || (a.vz ?? 0) !== (b.vz ?? 0);
+    || Math.abs(a.x - b.x) > 0.01 || Math.abs(a.y - b.y) > 0.01 || Math.abs(a.z - b.z) > 0.01;
 }
 function storePosition(key, entry) {
   const previous = positions.get(key);
@@ -684,7 +677,7 @@ function takePositionToken(ws, now) {
   ws.positionTokens -= 1;
   return true;
 }
-// Compact delta row: [name, x, y, z, dim#, ageMs, reporter#, bridgeId, hops, vx?, vz?]
+// Compact delta row: [name, x, y, z, dim#, ageMs, reporter#, bridgeId, hops]
 // where # indexes the message's string table `s`.
 function encodePositions(reports, now) {
   const strings = [], index = new Map();
@@ -693,10 +686,8 @@ function encodePositions(reports, now) {
     return index.get(s);
   };
   const p = reports.map((r) => {
-    const row = [r.name, r.x, r.y, r.z, ref(r.dim), Math.max(0, now - r.t), ref(r.reporter ?? "?"),
+    return [r.name, r.x, r.y, r.z, ref(r.dim), Math.max(0, now - r.t), ref(r.reporter ?? "?"),
       r.bridge?.id ?? "", r.bridge?.hops ?? 0];
-    if (r.vx != null && r.vz != null) row.push(r.vx, r.vz);
-    return row;
   });
   return { type: "pos", s: strings, p };
 }
@@ -1060,7 +1051,7 @@ wss.on("connection", (ws, req) => {
         const t = now - reportAge(r.age);
         storePosition(`${lower(r.subject)}@${lower(ws.authedAs)}`, {
           name: r.subject, x: roundCoordinate(+r.x), y: roundCoordinate(+r.y), z: roundCoordinate(+r.z), bridge,
-          dim: String(r.dim), t, reporter: ws.authedAs, ...positionVelocity(r),
+          dim: String(r.dim), t, reporter: ws.authedAs,
         });
         noteSeen(r.subject, r.x, r.y, r.z, r.dim, ws.authedAs, "position", t);
         if (isEnemy(r.subject) && canReceiveIntel({ role: "member" }, ws.authedAs, r.subject, userByName))

@@ -41,17 +41,10 @@ public class Tracker {
         public volatile long lastSeen;
         public volatile String reporter;
         public volatile Allegiance allegiance;
-        /** Smoothed, forward-projected position for drawing. x/y/z stay the raw report. */
-        public final MotionEstimate motion = new MotionEstimate();
 
         RemotePlayer(String name) {
             this.name = name;
             this.allegiance = Allegiance.NEUTRAL;
-        }
-
-        /** Best estimate of where this player is at {@code now} (raw report if none). */
-        public double[] estimate(long now) {
-            return motion.known() ? motion.at(now) : new double[]{x, y, z};
         }
     }
 
@@ -87,7 +80,6 @@ public class Tracker {
     private final Map<String, java.util.Set<String>> knownUsersBySource = new ConcurrentHashMap<>();
     private long lastReport = 0;
     private long lastAlertSweep = 0;
-    private final PositionSampler sampler = new PositionSampler();
 
     public Iterable<RemotePlayer> all() {
         return mergedPlayers().values();
@@ -124,7 +116,6 @@ public class Tracker {
         knownUsersBySource.clear();
         lastReport = 0;
         lastAlertSweep = 0;
-        sampler.clear();
     }
 
     // ------------------------------------------------------------------ //
@@ -167,8 +158,7 @@ public class Tracker {
 
         // Myself.
         String selfName = client.player.getGameProfile().name();
-        reports.add(report(selfName, client.player.getX(), client.player.getY(), client.player.getZ(), dim,
-                sampler.sample(selfName, dim, client.player.getX(), client.player.getZ(), now), 0));
+        reports.add(report(selfName, client.player.getX(), client.player.getY(), client.player.getZ(), dim, 0));
 
         // Everyone the vanilla client is rendering near me — mod user or not.
         // Relay users report themselves, so re-reporting them here only
@@ -177,10 +167,8 @@ public class Tracker {
             if (p == client.player) continue;
             String name = p.getGameProfile().name();
             if (OpenIntelClient.allegiances().isRelayUser(name)) continue;
-            reports.add(report(name, p.getX(), p.getY(), p.getZ(), dim,
-                    sampler.sample(name, dim, p.getX(), p.getZ(), now), OBSERVED_LAG_MS));
+            reports.add(report(name, p.getX(), p.getY(), p.getZ(), dim, OBSERVED_LAG_MS));
         }
-        sampler.endRound();
 
         JsonObject msg = new JsonObject();
         msg.addProperty("type", "positions");
@@ -192,22 +180,18 @@ public class Tracker {
     static final long MIN_REPORT_INTERVAL_MS = 50;
     /**
      * Other players' positions on this client trail the server's by the
-     * entity smoothing (a few ticks). The report says so, and receivers
-     * project forward from the older time.
+     * entity smoothing (a few ticks). The report says so, so receivers can
+     * date the observation correctly.
      */
     static final long OBSERVED_LAG_MS = 50;
 
-    private static JsonObject report(String name, double x, double y, double z, String dim,
-                                     double[] velocity, long age) {
+    private static JsonObject report(String name, double x, double y, double z, String dim, long age) {
         JsonObject o = new JsonObject();
         o.addProperty("subject", name);
         o.addProperty("x", x);
         o.addProperty("y", y);
         o.addProperty("z", z);
         o.addProperty("dim", dim);
-        // Optional fields; older relays ignore them.
-        o.addProperty("vx", Math.round(velocity[0] * 100) / 100.0);
-        o.addProperty("vz", Math.round(velocity[1] * 100) / 100.0);
         if (age > 0) o.addProperty("age", age);
         return o;
     }
@@ -504,13 +488,13 @@ public class Tracker {
                     : dev.openintel.tracker.RelayEvidence.timestamp(o.has("t") ? o : msg, now);
             applyReport(client, name, o.get("x").getAsDouble(), o.get("y").getAsDouble(), o.get("z").getAsDouble(),
                     o.get("dim").getAsString(), o.has("reporter") ? o.get("reporter").getAsString() : "?",
-                    evidenceTime, optionalNumber(o, "vx"), optionalNumber(o, "vz"), now);
+                    evidenceTime, now);
         }
     }
 
     /**
      * Compact changed-player rows from a current relay:
-     * [name, x, y, z, dim#, ageMs, reporter#, bridgeId, hops, vx?, vz?],
+     * [name, x, y, z, dim#, ageMs, reporter#, bridgeId, hops],
      * where # indexes the string table {@code s}.
      */
     private void applyPositionDeltas(JsonObject msg, Minecraft client) {
@@ -525,7 +509,7 @@ public class Tracker {
                 PositionRow row = PositionRow.parse(element, strings, now);
                 if (row == null || row.name().toLowerCase(Locale.ROOT).equals(self)) continue;
                 applyReport(client, row.name(), row.x(), row.y(), row.z(), row.dim(), row.reporter(),
-                        row.observedAt(), row.vx(), row.vz(), now);
+                        row.observedAt(), now);
             } catch (RuntimeException malformed) {
                 // One bad row does not drop the rest.
             }
@@ -533,7 +517,7 @@ public class Tracker {
     }
 
     private void applyReport(Minecraft client, String name, double x, double y, double z, String dim,
-                             String reporter, long evidenceTime, double vx, double vz, long now) {
+                             String reporter, long evidenceTime, long now) {
         boolean[] isNew = {false};
         RemotePlayer rp = sourcePlayers().compute(name, (key, current) -> {
             if (current != null && evidenceTime < current.lastSeen) return current;
@@ -548,7 +532,6 @@ public class Tracker {
             current.reporter = reporter;
             current.allegiance = OpenIntelClient.allegiances().of(name);
             current.lastSeen = evidenceTime;
-            current.motion.update(x, y, z, dim, vx, vz, evidenceTime, now);
             return current;
         });
 
@@ -564,14 +547,6 @@ public class Tracker {
             return now - (long) Math.min(value, 60_000);
         } catch (RuntimeException invalid) {
             return now;
-        }
-    }
-
-    private static double optionalNumber(JsonObject o, String key) {
-        try {
-            return o.has(key) && o.get(key).isJsonPrimitive() ? o.get(key).getAsDouble() : 0;
-        } catch (RuntimeException invalid) {
-            return 0;
         }
     }
 
