@@ -4,6 +4,11 @@ import com.google.gson.JsonObject;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import dev.openintel.allegiance.AllegianceManager;
 import dev.openintel.api.OpenIntelApi;
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
+import dev.openintel.gui.FeaturesScreen;
+import dev.openintel.macro.InputMacro;
+import java.util.List;
 import dev.openintel.api.internal.ApiBridge;
 import dev.openintel.config.OIConfig;
 import dev.openintel.gui.ClickGuiScreen;
@@ -79,6 +84,7 @@ public class OpenIntelClient implements ClientModInitializer {
     /** JourneyMap sync hook — set by the jm entrypoint only when JM is loaded. */
     public static volatile Runnable jmTick;
 
+    private static KeyMapping settingsKey;
     private static KeyMapping radarToggleKey;
     private static KeyMapping vizToggleKey;
     private static KeyMapping holdAttackKey;
@@ -104,7 +110,7 @@ public class OpenIntelClient implements ClientModInitializer {
 
     /** All mod keybinds, for display in config screens. */
     public static KeyMapping[] allKeys() {
-        return new KeyMapping[]{radarToggleKey, vizToggleKey, attackToggleKey, useToggleKey,
+        return new KeyMapping[]{settingsKey, radarToggleKey, vizToggleKey, attackToggleKey, useToggleKey,
                 holdAttackKey, holdUseKey, iceRoadKey, pingKey, warTableKey,
                 investigatePrevKey, investigateNextKey, investigatePlayKey};
     }
@@ -114,6 +120,8 @@ public class OpenIntelClient implements ClientModInitializer {
         CleanFont.registerPipeline();
         dev.openintel.render.LogoHud.registerPipeline();
         config = OIConfig.load();
+        dev.openintel.feature.Features.bind(() -> config,
+                mod -> net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded(mod));
         RangeStore.get().load();
         UiFont.initialize(config.cleanFont);
         tracker = new Tracker();
@@ -122,53 +130,52 @@ public class OpenIntelClient implements ClientModInitializer {
         relay = new dev.openintel.net.RelayCoordinator(OpenIntelClient::status);
 
         registerKeybinds();
+        registerFeatureHooks();
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (UiFont.setEnabled(config.cleanFont)) client.gui.getChat().rescaleChat();
             dev.openintel.render.HudLayouts.flush();
             relay.tick();
             tracker.tick(client);
-            attackMacro.tick(client);
-            useMacro.tick(client);
-            holdAttackMacro.tick(client);
-            holdUseMacro.tick(client);
-            iceRoadMacro.tick(client);
-            JunkRejector.tick(client);
+            boolean macros = Features.isOn(Feature.MACROS);
+            for (InputMacro macro : macros()) {
+                if (macros) macro.tick(client);
+                else macro.drainToggle();
+            }
+            if (Features.isOn(Feature.JUNK_REJECT)) JunkRejector.tick(client);
             PingManager.tick();
             Runnable jm = jmTick;
             if (jm != null) jm.run();
-            RelicChestSort.tick(client);
-            EventFeed.tick(client);
-            InvestigateOverlay.tick(client);
+            if (Features.isOn(Feature.RELIC_CHEST_SORT)) RelicChestSort.tick(client);
+            if (Features.isOn(Feature.EVENT_FEED)) EventFeed.tick(client);
+            if (Features.isOn(Feature.INVESTIGATE)) InvestigateOverlay.tick(client);
             ApiBridge.settingsChanged();
-            while (radarToggleKey.consumeClick()) {
-                config.radarEnabled = !config.radarEnabled;
-                config.save();
-                status("radar " + (config.radarEnabled ? "on" : "off"));
+            while (settingsKey.consumeClick()) {
+                if (client.screen == null) client.setScreen(new FeaturesScreen(null));
             }
-            while (vizToggleKey.consumeClick()) {
-                config.vizEnabled = !config.vizEnabled;
-                config.save();
-                status("ranges " + (config.vizEnabled ? "on" : "off"));
-            }
-            if (config.pingWheelEnabled && pingKey.consumeClick() && client.player != null
+            while (radarToggleKey.consumeClick()) toggleFeature(Feature.RADAR, "radar");
+            while (vizToggleKey.consumeClick()) toggleFeature(Feature.VISUALIZATIONS, "ranges");
+            if (!Features.isOn(Feature.PINGS)) {
+                while (pingKey.consumeClick()) { }
+            } else if (pingKey.consumeClick() && client.player != null
                     && client.screen == null) {
                 client.setScreen(new PingWheelScreen(pingKey,
                         PingWheelScreen.physicallyHeld(pingKey)));
             }
             while (warTableKey.consumeClick()) {
-                if (config.warTableEnabled && client.screen == null) {
+                if (Features.isOn(Feature.WAR_TABLE) && client.screen == null) {
                     client.setScreen(new WarTableScreen());
                 }
             }
+            boolean investigate = Features.isOn(Feature.INVESTIGATE);
             while (investigatePrevKey.consumeClick()) {
-                if (InvestigateSession.get().isWatching()) InvestigateSession.get().previous();
+                if (investigate && InvestigateSession.get().isWatching()) InvestigateSession.get().previous();
             }
             while (investigateNextKey.consumeClick()) {
-                if (InvestigateSession.get().isWatching()) InvestigateSession.get().next();
+                if (investigate && InvestigateSession.get().isWatching()) InvestigateSession.get().next();
             }
             while (investigatePlayKey.consumeClick()) {
-                if (InvestigateSession.get().isWatching()) InvestigateSession.get().togglePlay();
+                if (investigate && InvestigateSession.get().isWatching()) InvestigateSession.get().togglePlay();
             }
             // Include keyboard playhead changes in the same frame as the caption and camera focus.
             dev.openintel.render.WorldOverlayRenderer.collect(client);
@@ -179,21 +186,21 @@ public class OpenIntelClient implements ClientModInitializer {
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("openintel", "markers"),
                 (ctx, tickCounter) -> MarkerHud.render(ctx));
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("openintel", "radar"),
-                (ctx, tickCounter) -> RadarHud.render(ctx, tickCounter.getGameTimeDeltaPartialTick(true)));
+                (ctx, tickCounter) -> { if (Features.isOn(Feature.RADAR)) RadarHud.render(ctx, tickCounter.getGameTimeDeltaPartialTick(true)); });
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("openintel", "presence"),
-                (ctx, tickCounter) -> PresenceHud.render(ctx));
+                (ctx, tickCounter) -> { if (Features.isOn(Feature.PRESENCE)) PresenceHud.render(ctx); });
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("openintel", "eventfeed"),
-                (ctx, tickCounter) -> EventFeed.render(ctx));
+                (ctx, tickCounter) -> { if (Features.isOn(Feature.EVENT_FEED)) EventFeed.render(ctx); });
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("openintel", "armor"),
-                (ctx, tickCounter) -> ArmorHud.render(ctx));
+                (ctx, tickCounter) -> { if (Features.isOn(Feature.ARMOR_HUD)) ArmorHud.render(ctx); });
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("openintel", "potions"),
-                (ctx, tickCounter) -> PotionHud.render(ctx));
+                (ctx, tickCounter) -> { if (Features.isOn(Feature.POTION_HUD)) PotionHud.render(ctx); });
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("openintel", "logo"),
-                (ctx, tickCounter) -> dev.openintel.render.LogoHud.render(ctx));
+                (ctx, tickCounter) -> { if (Features.isOn(Feature.LOGO)) dev.openintel.render.LogoHud.render(ctx); });
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("openintel", "integrations"),
                 (ctx, tickCounter) -> OpenIntelApi.hud().renderAll(ctx, tickCounter.getGameTimeDeltaPartialTick(true)));
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("openintel", "investigate"),
-                (ctx, tickCounter) -> InvestigateOverlay.renderHud(ctx));
+                (ctx, tickCounter) -> { if (Features.isOn(Feature.INVESTIGATE)) InvestigateOverlay.renderHud(ctx); });
 
         dev.openintel.render.WorldOverlayRenderer.register();
 
@@ -212,8 +219,10 @@ public class OpenIntelClient implements ClientModInitializer {
             EventFeed.clear();
             RelicMapScanner.clear();
             SnitchRelay.reset();
-            reconnectRelay();
-            if (client.getCurrentServer() != null) dev.openintel.update.UpdateChecker.onMultiplayerJoin();
+            if (Features.isOn(Feature.RELAY)) reconnectRelay();
+            if (client.getCurrentServer() != null && Features.isOn(Feature.UPDATE_CHECK)) {
+                dev.openintel.update.UpdateChecker.onMultiplayerJoin();
+            }
             // Fetch the live map now so the War Table is ready when opened. A saved
             // copy is drawn only after the server confirms that file is still current.
             if (config.liveMapBase != null && !config.liveMapBase.isBlank()) LiveMap.refresh();
@@ -234,7 +243,7 @@ public class OpenIntelClient implements ClientModInitializer {
         ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
             ApiBridge.initialize();
             XaeroIntegration.initialize();
-            dev.openintel.update.UpdateChecker.start();
+            if (Features.isOn(Feature.UPDATE_CHECK)) dev.openintel.update.UpdateChecker.start();
         });
         // Absent for a normal launch. The class is loaded only when the smoke task sets the property.
         if (Boolean.getBoolean("openintel.liveSmoke")) {
@@ -248,6 +257,11 @@ public class OpenIntelClient implements ClientModInitializer {
 
     public static boolean reconnectRelay() {
         Minecraft client = Minecraft.getInstance();
+        if (!Features.isOn(Feature.RELAY)) {
+            relay.disconnect();
+            status(featureOffMessage(Feature.RELAY));
+            return false;
+        }
         if (relay instanceof dev.openintel.net.RelayCoordinator coordinator) return coordinator.reconnect();
         relay.disconnect();
         tracker.clearRelay();
@@ -287,6 +301,7 @@ public class OpenIntelClient implements ClientModInitializer {
     }
 
     private void registerKeybinds() {
+        settingsKey = keybind("key.openintel.settings", GLFW.GLFW_KEY_LEFT_BRACKET);
         radarToggleKey = keybind("key.openintel.radar", GLFW.GLFW_KEY_R);
         vizToggleKey = keybind("key.openintel.viz", GLFW.GLFW_KEY_V);
         holdAttackKey = keybind("key.openintel.hold_attack", GLFW.GLFW_KEY_MINUS);
@@ -357,35 +372,45 @@ public class OpenIntelClient implements ClientModInitializer {
                                 .then(ClientCommands.literal("off").executes(c -> setRelayCut("off")))
                                 .then(ClientCommands.literal("status").executes(c -> setRelayCut("status"))))
                         .then(ClientCommands.literal("radar").executes(c -> {
+                            if (featureOffReply(Feature.RADAR)) return 0;
                             // Defer one tick — the chat screen closes itself
                             // after the command dispatches and would wipe it.
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().setScreen(new ClickGuiScreen(null, "radar")));
+                                    Minecraft.getInstance().setScreen(ClickGuiScreen.forCategory(null, "radar")));
                             return 1;
                         }))
                         .then(ClientCommands.literal("macros").executes(c -> {
+                            if (featureOffReply(Feature.MACROS)) return 0;
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().setScreen(new ClickGuiScreen(null, "macros")));
+                                    Minecraft.getInstance().setScreen(ClickGuiScreen.forCategory(null, "macros")));
                             return 1;
                         }))
                         .then(ClientCommands.literal("settings").executes(c -> {
                             Minecraft.getInstance().execute(() ->
-                                    Minecraft.getInstance().setScreen(new ClickGuiScreen(null)));
+                                    Minecraft.getInstance().setScreen(new FeaturesScreen(null)));
+                            return 1;
+                        }))
+                        .then(ClientCommands.literal("features").executes(c -> {
+                            Minecraft.getInstance().execute(() ->
+                                    Minecraft.getInstance().setScreen(new FeaturesScreen(null)));
                             return 1;
                         }))
                         .then(ClientCommands.literal("viz").executes(c -> {
+                            if (featureOffReply(Feature.VISUALIZATIONS)) return 0;
                             Minecraft.getInstance().execute(() ->
                                     Minecraft.getInstance().setScreen(
-                                            new ClickGuiScreen(null, "viz")));
+                                            ClickGuiScreen.forCategory(null, "viz")));
                             return 1;
                         }))
                         .then(ClientCommands.literal("visualizations").executes(c -> {
+                            if (featureOffReply(Feature.VISUALIZATIONS)) return 0;
                             Minecraft.getInstance().execute(() ->
                                     Minecraft.getInstance().setScreen(
                                             new VisualizationsScreen(null)));
                             return 1;
                         }))
                         .then(ClientCommands.literal("investigate").executes(c -> {
+                            if (featureOffReply(Feature.INVESTIGATE)) return 0;
                             Minecraft.getInstance().execute(() ->
                                     Minecraft.getInstance().setScreen(
                                             new InvestigateScreen(null)));
@@ -397,22 +422,26 @@ public class OpenIntelClient implements ClientModInitializer {
                             return 1;
                         }))
                         .then(ClientCommands.literal("ping").executes(c -> {
+                            if (featureOffReply(Feature.PINGS)) return 0;
                             Minecraft.getInstance().execute(() ->
                                     Minecraft.getInstance().setScreen(
                                             new PingWheelScreen(pingKey, false)));
                             return 1;
                         }))
                         .then(ClientCommands.literal("map").executes(c -> {
+                            if (featureOffReply(Feature.WAR_TABLE)) return 0;
                             Minecraft.getInstance().execute(() ->
                                     Minecraft.getInstance().setScreen(new WarTableScreen()));
                             return 1;
                         }))
                         .then(ClientCommands.literal("wartable").executes(c -> {
+                            if (featureOffReply(Feature.WAR_TABLE)) return 0;
                             Minecraft.getInstance().execute(() ->
                                     Minecraft.getInstance().setScreen(new WarTableScreen()));
                             return 1;
                         }))
                         .then(ClientCommands.literal("snitchtest").executes(c -> {
+                            if (featureOffReply(Feature.SNITCH_ALERTS)) return 0;
                             Minecraft mc = Minecraft.getInstance();
                             if (mc.player != null && mc.level != null) {
                                 tracker.addSnitchHit("Test Vault", "ExamplePlayer", "local",
@@ -545,6 +574,56 @@ public class OpenIntelClient implements ClientModInitializer {
             default -> OpenIntelApi.allegiances().requestFocus(subject);
         };
         result.thenAccept(value -> { if (!value.accepted()) status(value.message()); });
+    }
+
+    private List<InputMacro> macros() {
+        return List.of(attackMacro, useMacro, holdAttackMacro, holdUseMacro, iceRoadMacro);
+    }
+
+    /** Keybind shortcut for a master switch: flips it and applies off-hooks like the Features screen. */
+    private static void toggleFeature(Feature feature, String label) {
+        var before = Features.snapshot(config);
+        feature.set(config, !feature.get(config));
+        config.save();
+        Features.applyChanges(before, config);
+        status(label + " " + (feature.get(config) ? "on" : "off"));
+    }
+
+    /** True (and replies in chat) when a command's feature is switched off. */
+    private static boolean featureOffReply(Feature feature) {
+        if (Features.isOn(feature)) return false;
+        status(featureOffMessage(feature));
+        return true;
+    }
+
+    public static String featureOffMessage(Feature feature) {
+        return Component.translatable("openintel.features.is_off",
+                Component.translatable(feature.labelKey())).getString();
+    }
+
+    /** Off-hooks owned by the entrypoint; subsystem hooks live in dev.openintel.feature.hooks. */
+    private void registerFeatureHooks() {
+        Features.onDisabled(Feature.RELAY, () -> {
+            relay.disconnect();
+            tracker.clearRelay();
+            PingManager.clearRelay();
+            EventFeed.clearRelay();
+            allegiances.replaceAll(List.of(), List.of(), List.of(), List.of());
+        });
+        Features.onDisabled(Feature.MACROS, () -> {
+            for (InputMacro macro : macros()) macro.forceStop(Minecraft.getInstance());
+        });
+        Features.onDisabled(Feature.INVESTIGATE, () -> InvestigateSession.get().stopWatching());
+        Features.onDisabled(Feature.WAR_TABLE, () -> {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.screen instanceof WarTableScreen) mc.setScreen(null);
+        });
+        Features.onDisabled(Feature.PINGS, () -> {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.screen instanceof PingWheelScreen) mc.setScreen(null);
+        });
+        Features.onDisabled(Feature.RELIC_MAPS, RelicMapScanner::clear);
+        dev.openintel.feature.hooks.FeatureHooks.registerAll();
     }
 
     public static void status(String message) {

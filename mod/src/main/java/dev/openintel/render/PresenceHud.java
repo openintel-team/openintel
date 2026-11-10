@@ -3,6 +3,8 @@ package dev.openintel.render;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.api.hud.HudSize;
 import dev.openintel.config.OIConfig;
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.tracker.Tracker.RemotePlayer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -37,7 +39,7 @@ public final class PresenceHud {
 
     public static void render(GuiGraphicsExtractor ctx) {
         OIConfig cfg = OpenIntelClient.config();
-        if (!cfg.presenceEnabled || !cfg.relayRendering) return;
+        if (!Features.isOn(cfg, Feature.PRESENCE)) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null || mc.options.hideGui) return;
         if (cfg.presenceOnlyOnTab && !mc.options.keyPlayerList.isDown()) return;

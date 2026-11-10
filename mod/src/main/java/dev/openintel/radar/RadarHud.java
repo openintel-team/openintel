@@ -1,5 +1,7 @@
 package dev.openintel.radar;
 
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.config.OIConfig;
 import dev.openintel.ping.PingManager;
@@ -61,7 +63,7 @@ public final class RadarHud {
 
     public static void render(GuiGraphicsExtractor ctx, float tickDelta) {
         OIConfig cfg = OpenIntelClient.config();
-        if (!cfg.radarEnabled) return;
+        if (!Features.isOn(cfg, Feature.RADAR)) return;
 
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null || mc.options.hideGui) return;

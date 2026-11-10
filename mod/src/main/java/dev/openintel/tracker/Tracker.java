@@ -6,6 +6,8 @@ import com.google.gson.JsonObject;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.api.ApiEvent;
 import dev.openintel.api.internal.ApiBridge;
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.allegiance.AllegianceManager.Allegiance;
 import dev.openintel.net.PositionRow;
 import dev.openintel.ping.PingManager;
@@ -96,6 +98,17 @@ public class Tracker {
 
     public void clearRelay() {
         clear(false);
+    }
+
+    /** Drops every snitch hit, local and relay (Snitch alerts switched off). */
+    public void clearSnitchHits() {
+        Minecraft client = Minecraft.getInstance();
+        if (!client.isSameThread()) {
+            client.execute(this::clearSnitchHits);
+            return;
+        }
+        snitchHits.clear();
+        ApiBridge.trackerChanged(ApiEvent.Cause.CLEAR);
     }
 
     private void clear(boolean includeLocal) {
@@ -310,6 +323,8 @@ public class Tracker {
      * real position report.
      */
     private void applySnitch(JsonObject msg) {
+        // Snitch alerts off: incoming relay snitches are dropped — no marker, feed line or API event.
+        if (!Features.isOn(Feature.SNITCH_ALERTS)) return;
         ApiBridge.relaySnitch(msg);
         String who = msg.has("player") ? msg.get("player").getAsString() : "?";
         String from = msg.has("from") ? msg.get("from").getAsString()
@@ -377,6 +392,7 @@ public class Tracker {
             });
             return;
         }
+        if (!Features.isOn(Feature.SNITCH_ALERTS)) return;
         String dim = resolveSnitchDim(world, snitch, player, reporter);
         if (dim == null) return;
         snitchHits.putLocal(player.equals("?") ? snitch + "@" + (int) x + "," + (int) z : player,
@@ -552,7 +568,7 @@ public class Tracker {
     }
 
     private void localEnemyAlert(Minecraft client, RemotePlayer rp, long now) {
-        if (!OpenIntelClient.config().localEnemyAlert) return;
+        if (!Features.isOn(Feature.LOCAL_ENEMY_ALERT)) return;
         if (now - lastAlertSweep < 3000) return; // don't stack sounds during a raid
         lastAlertSweep = now;
 

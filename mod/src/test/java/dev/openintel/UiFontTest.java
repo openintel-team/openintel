@@ -230,32 +230,29 @@ public final class UiFontTest {
         };
     }
 
+    /** Clean font is a switch on the Features screen; the tick applies it live. */
     private static void verifyFontToggle() throws Exception {
-        var factory = dev.openintel.gui.ClickGui.class.getDeclaredMethod("fontToggle",
-                java.util.function.BooleanSupplier.class, java.util.function.Consumer.class);
-        factory.setAccessible(true);
-        var value = new java.util.concurrent.atomic.AtomicBoolean(true);
-        var changes = new java.util.concurrent.atomic.AtomicInteger();
-        java.util.function.Consumer<Boolean> apply = next -> {
-            value.set(next);
-            UiFont.setEnabled(next);
-            changes.incrementAndGet();
-        };
-        var button = (net.minecraft.client.gui.components.Button) factory.invoke(null,
-                (java.util.function.BooleanSupplier) value::get, apply);
-        check(button.getMessage().equals(net.minecraft.network.chat.Component.translatable("options.openintel.hud.font.clean")),
-                "Font toggle displays the loaded clean-font preference");
-        button.onPress(null);
-        check(!value.get() && button.getMessage().equals(net.minecraft.network.chat.Component.translatable("options.openintel.hud.font.minecraft")),
-                "First click selects and displays Minecraft font");
-        UiFont.withHudFont(() -> check(UiFont.select(FontDescription.DEFAULT) == FontDescription.DEFAULT,
-                "Minecraft font selection takes effect at runtime"));
-        button.onPress(null);
-        check(value.get() && changes.get() == 2
-                && button.getMessage().equals(net.minecraft.network.chat.Component.translatable("options.openintel.hud.font.clean")),
-                "Second click restores clean font and each click applies once");
+        var feature = dev.openintel.feature.Feature.CLEAN_FONT;
+        var config = new dev.openintel.config.OIConfig();
+        check(!feature.defaultOn && !feature.get(config), "Clean font feature defaults off (Minecraft font)");
+        check(feature.group == dev.openintel.feature.FeatureGroup.HUD, "Clean font is listed under HUD");
+        feature.set(config, true);
+        check(config.cleanFont, "Switching the feature on stores cleanFont");
+        UiFont.setEnabled(config.cleanFont);
         UiFont.withHudFont(() -> check(UiFont.select(FontDescription.DEFAULT).equals(UiFont.SOURCE),
                 "Clean font selection takes effect at runtime"));
+        feature.set(config, false);
+        check(!config.cleanFont && UiFont.setEnabled(config.cleanFont), "Switching off stores and applies Minecraft font");
+        UiFont.withHudFont(() -> check(UiFont.select(FontDescription.DEFAULT) == FontDescription.DEFAULT,
+                "Minecraft font selection takes effect at runtime"));
+        var gson = new com.google.gson.Gson();
+        check(gson.fromJson("{\"cleanFont\":true}", dev.openintel.config.OIConfig.class).cleanFont,
+                "Saved Clean font choice loads back");
+        UiFont.setEnabled(true);
+        try (var input = UiFontTest.class.getResourceAsStream("/assets/openintel/lang/en_us.json")) {
+            var lang = JsonParser.parseReader(new InputStreamReader(input, StandardCharsets.UTF_8)).getAsJsonObject();
+            check(lang.get(feature.labelKey()).getAsString().equals("Clean font"), "Clean font feature is localized");
+        }
         try (var input = UiFontTest.class.getResourceAsStream("/assets/openintel/lang/en_us.json")) {
             var lang = JsonParser.parseReader(new InputStreamReader(input, StandardCharsets.UTF_8)).getAsJsonObject();
             check(lang.get("options.openintel.hud.font").getAsString().equals("Font"), "HUD font option is localized");
@@ -323,30 +320,34 @@ public final class UiFontTest {
         }
     }
 
+    /** The client tick applies cleanFont live and reflows chat, so the Features screen needs no font code. */
     private static void verifyFontSettingWiring() throws Exception {
-        boolean[] wired = new boolean[4];
-        try (var input = dev.openintel.gui.ClickGui.class.getResourceAsStream("ClickGui.class")) {
+        boolean[] wired = new boolean[3];
+        try (var input = OpenIntelClient.class.getResourceAsStream("OpenIntelClient.class")) {
             new org.objectweb.asm.ClassReader(input).accept(new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
                 @Override
                 public org.objectweb.asm.MethodVisitor visitMethod(int access, String name, String descriptor,
                                                                    String signature, String[] exceptions) {
-                    if (!name.equals("applyFont")) return null;
+                    boolean[] local = new boolean[3];
                     return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
                         @Override
                         public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
-                            if (opcode == org.objectweb.asm.Opcodes.PUTFIELD && name.equals("cleanFont")) wired[0] = true;
+                            if (opcode == org.objectweb.asm.Opcodes.GETFIELD && name.equals("cleanFont")) local[0] = true;
                         }
                         @Override
                         public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
-                            if (owner.equals("dev/openintel/render/UiFont") && name.equals("setEnabled")) wired[1] = true;
-                            if (owner.equals("net/minecraft/client/gui/components/ChatComponent") && name.equals("rescaleChat")) wired[2] = true;
-                            if (owner.equals("dev/openintel/config/OIConfig") && name.equals("save")) wired[3] = true;
+                            if (owner.equals("dev/openintel/render/UiFont") && name.equals("setEnabled")) local[1] = true;
+                            if (owner.equals("net/minecraft/client/gui/components/ChatComponent") && name.equals("rescaleChat")) local[2] = true;
+                        }
+                        @Override
+                        public void visitEnd() {
+                            if (local[0] && local[1] && local[2]) wired[0] = wired[1] = wired[2] = true;
                         }
                     };
                 }
             }, org.objectweb.asm.ClassReader.SKIP_DEBUG | org.objectweb.asm.ClassReader.SKIP_FRAMES);
         }
-        check(wired[0] && wired[1] && wired[2] && wired[3], "HUD font toggle updates config, applies live, reflows chat, and persists");
+        check(wired[0] && wired[1] && wired[2], "Client tick reads cleanFont, applies it live, and reflows chat");
     }
 
     private static void verifyChatInputHook() throws Exception {

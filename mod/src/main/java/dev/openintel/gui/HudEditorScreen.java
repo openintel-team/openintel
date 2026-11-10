@@ -6,6 +6,8 @@ import dev.openintel.api.hud.HudApi;
 import dev.openintel.api.hud.HudElementDescriptor;
 import dev.openintel.api.hud.HudPosition;
 import dev.openintel.config.OIConfig;
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.render.EventFeed;
 import dev.openintel.render.HudLayout;
 import dev.openintel.render.HudLayouts;
@@ -304,16 +306,19 @@ public class HudEditorScreen extends Screen {
         OIConfig c = OpenIntelClient.config();
         List<Box> boxes = new ArrayList<>();
         if (width <= 0 || height <= 0) return boxes;
-        addBuiltin(boxes, Element.RADAR, "Radar", 0xFF55FFFF);
-        addBuiltin(boxes, Element.RELAY, "Relay roster", 0xFF55FF55);
-        addBuiltin(boxes, Element.EVENTS, "Event feed", 0xFFFFAA00);
-        addBuiltin(boxes, Element.ARMOR, "Armor HUD", 0xFF55AAFF);
-        addBuiltin(boxes, Element.POTIONS, "Potion effects", 0xFFAA55FF);
-        float scale = HudLayouts.scale(c, width, height);
-        addEdge(boxes, Element.TOP, "Top markers", 74, c.edgeTopXPct, c.edgeRowInset, scale);
-        addEdge(boxes, Element.BOTTOM, "Bottom markers", 88, c.edgeBottomXPct, c.edgeRowInset, scale);
-        addEdge(boxes, Element.LEFT, "Left", 48, c.edgeLeftYPct, c.edgeColumnInset, scale);
-        addEdge(boxes, Element.RIGHT, "Right", 52, c.edgeRightYPct, c.edgeColumnInset, scale);
+        // Elements whose feature is switched off are not shown or draggable.
+        if (Features.isOn(c, Feature.RADAR)) addBuiltin(boxes, Element.RADAR, "Radar", 0xFF55FFFF);
+        if (Features.isOn(c, Feature.PRESENCE)) addBuiltin(boxes, Element.RELAY, "Relay roster", 0xFF55FF55);
+        if (Features.isOn(c, Feature.EVENT_FEED)) addBuiltin(boxes, Element.EVENTS, "Event feed", 0xFFFFAA00);
+        if (Features.isOn(c, Feature.ARMOR_HUD)) addBuiltin(boxes, Element.ARMOR, "Armor HUD", 0xFF55AAFF);
+        if (Features.isOn(c, Feature.POTION_HUD)) addBuiltin(boxes, Element.POTIONS, "Potion effects", 0xFFAA55FF);
+        if (Features.isOn(c, Feature.EDGE_CHEVRONS)) {
+            float scale = HudLayouts.scale(c, width, height);
+            addEdge(boxes, Element.TOP, "Top markers", 74, c.edgeTopXPct, c.edgeRowInset, scale);
+            addEdge(boxes, Element.BOTTOM, "Bottom markers", 88, c.edgeBottomXPct, c.edgeRowInset, scale);
+            addEdge(boxes, Element.LEFT, "Left", 48, c.edgeLeftYPct, c.edgeColumnInset, scale);
+            addEdge(boxes, Element.RIGHT, "Right", 52, c.edgeRightYPct, c.edgeColumnInset, scale);
+        }
         return boxes;
     }
 

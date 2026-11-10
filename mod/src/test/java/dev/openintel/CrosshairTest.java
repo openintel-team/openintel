@@ -72,10 +72,11 @@ public final class CrosshairTest {
         check(!gson.fromJson("{}", CrosshairStyle.class).enabled, "Missing settings retain defaults");
         verifyHook();
         String gui = Files.readString(Path.of("src/main/java/dev/openintel/gui/ClickGui.java"));
-        check(gui.contains("new Category(\"crosshair\"") && gui.contains("Crosshair color")
+        check(gui.contains("category(\"crosshair\", Feature.CROSSHAIR") && gui.contains("options.openintel.crosshair.color")
                 && gui.contains("cfg.crosshair.gap") && gui.contains("cfg.crosshair.width"), "Settings wired into the category");
         String screen = Files.readString(Path.of("src/main/java/dev/openintel/gui/ClickGuiScreen.java"));
-        check(screen.contains("CrosshairRenderer.preview(") && screen.contains("crosshairPreviewHeight()"), "Pinned shared-renderer preview");
+        check(screen.contains("CrosshairRenderer.draw(") && screen.contains("showsCrosshairPreview()")
+                && screen.contains("new Placed(PREVIEW"), "Crosshair page ends with a shared-renderer preview tile");
         System.out.println("Crosshair geometry, persistence and hook tests passed");
     }
 

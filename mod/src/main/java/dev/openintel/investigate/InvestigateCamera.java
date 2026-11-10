@@ -1,5 +1,7 @@
 package dev.openintel.investigate;
 
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.OpenIntelClient;
 import net.minecraft.client.Camera;
 import net.minecraft.client.CameraType;
@@ -20,6 +22,7 @@ public final class InvestigateCamera {
     public static void update(Camera camera, DeltaTracker delta) {
         Minecraft mc = Minecraft.getInstance();
         if (camera != mc.gameRenderer.getMainCamera()) return;
+        if (!Features.isOn(Feature.INVESTIGATE)) return;
         CameraType type = mc.options.getCameraType();
         if (level != mc.level || player != mc.player || perspective != type) {
             MOTION.reset();

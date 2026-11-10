@@ -1,5 +1,7 @@
 package dev.openintel.relic;
 
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.OpenIntelClient;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.gui.screens.Screen;
@@ -27,12 +29,12 @@ public final class RelicMapBridge {
 
     private static boolean xaeroUsable() {
         var cfg = OpenIntelClient.config();
-        return xaeroLoaded() && (cfg == null || cfg.xaeroWorldMap);
+        return xaeroLoaded() && (cfg == null || Features.isOn(cfg, Feature.XAERO_WORLD_MAP));
     }
 
     private static boolean journeyMapUsable() {
         var cfg = OpenIntelClient.config();
-        return journeyMapLoaded() && (cfg == null || cfg.jmMarkers);
+        return journeyMapLoaded() && (cfg == null || Features.isOn(cfg, Feature.JOURNEYMAP));
     }
 
     public static boolean available() {

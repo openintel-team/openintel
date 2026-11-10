@@ -16,9 +16,33 @@ public final class RangeShapeTest {
         renderedShells();
         postsAfterAppendedShell();
         persistence();
+        featureGates();
         RangeGroupTest.run();
         dev.openintel.gui.VisualizationsInteractionTest.run();
         System.out.println("Range shape tests passed");
+    }
+
+    private static void featureGates() {
+        dev.openintel.config.OIConfig cfg = new dev.openintel.config.OIConfig();
+        cfg.vizEnabled = true;
+        cfg.vizSnitch = cfg.vizBastion = cfg.vizSanctuary = cfg.vizLiveSanctuaries = true;
+        dev.openintel.feature.Features.bind(() -> cfg, mod -> true);
+        try {
+            assertTrue(RangeOverlay.shapesOn(cfg) && RangeOverlay.bastionHeightsOn(cfg)
+                    && RangeOverlay.sanctuariesOn(cfg) && RangeOverlay.liveOn(cfg), "Every layer draws while on");
+            cfg.vizEnabled = false;
+            assertFalse(RangeOverlay.shapesOn(cfg) || RangeOverlay.bastionHeightsOn(cfg)
+                    || RangeOverlay.sanctuariesOn(cfg) || RangeOverlay.liveOn(cfg),
+                    "Visualizations off draws nothing, whatever its children say");
+            cfg.vizEnabled = true;
+            cfg.vizSnitch = false;
+            assertTrue(RangeOverlay.shapesOn(cfg), "Bastions alone still need the shape layer");
+            cfg.vizBastion = false;
+            assertFalse(RangeOverlay.shapesOn(cfg) || RangeOverlay.bastionHeightsOn(cfg), "Shape layer off with both children off");
+            assertFalse(RangeOverlay.shapesOn(null), "No config draws nothing");
+        } finally {
+            dev.openintel.feature.Features.bind(() -> null, mod -> true);
+        }
     }
 
     private static void renderedShells() {

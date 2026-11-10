@@ -1,6 +1,8 @@
 package dev.openintel.gui;
 
 import dev.openintel.OpenIntelClient;
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.radar.RadarHud;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -21,9 +23,11 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Sodium-style settings screen: a translucent category sidebar on the
- * left, a vertically scrolling options pane on the right, and a search
- * box that flattens matching options from every category into one list.
+ * One feature's settings page, in the same Jade-style look as the main
+ * Features screen ({@link OiStyle}): a black sidebar with a search box and a
+ * jump list of the page's sections, centered section titles over one tile per
+ * option (label left, control right), and a bottom bar with Back and Done.
+ * Searching flattens matching options into one list.
  *
  * The option model comes from {@link ClickGui#build} — Groups render as
  * section headers, Options as label + right-aligned widget rows. Every
@@ -41,46 +45,34 @@ import java.util.Locale;
 public class ClickGuiScreen extends Screen implements ClickGui.RebindHandler {
 
     // ----------------------------------------------------- layout (px) ----
-    private static final int MARGIN = 16;
-    private static final int SIDEBAR_W = 150;
-    private static final int PANE_X = 178;
-    private static final int PANE_BOTTOM_PAD = 40;  // pane bottom = height - 40
-    private static final int INSET_X = 8;           // content inset inside pane
-    private static final int INSET_TOP = 8;
-    private static final int INSET_BOTTOM = 8;
-    private static final int CAT_ROW_H = 20;
-    private static final int OPTION_H = 22;
-    private static final int GROUP_H = 22;
+    private static final int SIDE_LIST_TOP = 26;
+    private static final int OPTION_H = 30;        // option tile height
+    private static final int OPTION_STEP = OPTION_H + OiStyle.GAP;
+    private static final int GROUP_H = OiStyle.TITLE_H;
     private static final int WIDGET_W = 150;
-    private static final int WIDGET_H = 20;
-    private static final int WIDGET_COL = 280;  // preferred widget column, px from pane content left
+    private static final int WIDGET_H = 18;
     private static final int AUX_W = 60;
     private static final int AUX_GAP = 6;
-    private static final double SCROLL_STEP = 22;
-
-    // --------------------------------------------------------- colors -----
-    private static final int ACCENT       = 0xFF7C8CF8;  // indigo
-    private static final int SIDEBAR_BG   = 0xC00E0F14;
-    private static final int PANE_BG      = 0xB8121319;
-    private static final int PANEL_BORDER = 0x22FFFFFF;
-    private static final int CAT_SELECTED = 0x2E7C8CF8;
-    private static final int CAT_HOVER    = 0x1EFFFFFF;
-    private static final int ROW_HOVER    = 0x0FFFFFFF;
-    private static final int DIVIDER      = 0x33FFFFFF;
-    private static final int TEXT_MAIN    = 0xFFE8EAF0;
-    private static final int TEXT_BRIGHT  = 0xFFFFFFFF;
-    private static final int TEXT_DIM     = 0xFF8E93A6;
+    /** Two options per notch, so each notch is a long, visible glide (Jade moves three entries). */
+    private static final double SCROLL_STEP = 2 * (OPTION_H + OiStyle.GAP);
+    private static final int TOOLTIP_W = 220;
 
     private final Screen parent;
-    private final List<ClickGui.Category> categories;
+    /** Categories of enabled features; rebuilt on every {@link #init()}, e.g. after the Features screen. */
+    private List<ClickGui.Category> categories = List.of();
     private final String version;
     private final EditBox searchField;
     private Button doneButton;
+    private Button featuresButton;
+    /** Category to show after the next rebuild, by id. */
+    private String selectedId;
 
     private int selected;
     private List<ClickGui.Item> rows = List.of();
     private boolean viewDirty = true;
+    /** Scroll target; {@link #smooth} eases the drawn offset toward it. */
     private double scrollOffset;
+    private final SmoothScroll smooth = new SmoothScroll();
 
     /** Non-null while a keybind row is capturing the next input. */
     private KeyMapping listeningFor;
@@ -89,21 +81,32 @@ public class ClickGuiScreen extends Screen implements ClickGui.RebindHandler {
         this(parent, null);
     }
 
+    /** Non-null on a single feature's settings page opened from the main Features screen. */
+    private String focusId;
+
+    private int sidebarW() { return Math.max(96, Math.min(132, width / 7)); }
+
+    /**
+     * One category's settings page, as opened from a feature tile. Its own
+     * sub-sections stay visible even while their switches are off, so the
+     * feature can be set up before it is turned on. Back returns to parent.
+     */
+    public static ClickGuiScreen forCategory(Screen parent, String categoryId) {
+        return forCategory(parent, categoryId, null);
+    }
+
+    /** Opens a page already filtered by {@code query}, e.g. the main screen's search that found it. */
+    public static ClickGuiScreen forCategory(Screen parent, String categoryId, String query) {
+        ClickGuiScreen screen = new ClickGuiScreen(parent, categoryId);
+        screen.focusId = categoryId;
+        if (query != null && !query.isBlank()) screen.searchField.setValue(query.trim());
+        return screen;
+    }
+
     public ClickGuiScreen(Screen parent, String categoryId) {
         super(Component.literal("OpenIntel"));
         this.parent = parent;
-        this.categories = ClickGui.build(this, this);
-
-        int sel = 0;
-        if (categoryId != null) {
-            for (int i = 0; i < categories.size(); i++) {
-                if (categories.get(i).id().equals(categoryId)) {
-                    sel = i;
-                    break;
-                }
-            }
-        }
-        this.selected = sel;
+        this.selectedId = categoryId;
 
         this.version = FabricLoader.getInstance().getModContainer("openintel")
                 .map(m -> m.getMetadata().getVersion().getFriendlyString())
@@ -111,11 +114,12 @@ public class ClickGuiScreen extends Screen implements ClickGui.RebindHandler {
 
         searchField = new EditBox(
                 net.minecraft.client.Minecraft.getInstance().font,
-                0, 0, 134, 16, Component.literal("Search"));
-        searchField.setHint(Component.literal("Search…"));
+                0, 0, 134, 16, Component.translatable("options.openintel.settings.search"));
+        searchField.setHint(Component.translatable("options.openintel.settings.search"));
         searchField.setResponder(q -> {
             viewDirty = true;
             scrollOffset = 0;
+            smooth.snap(0);
             blurOptionFocus();
         });
     }
@@ -124,15 +128,47 @@ public class ClickGuiScreen extends Screen implements ClickGui.RebindHandler {
 
     @Override
     protected void init() {
-        searchField.setX(MARGIN + 8);
-        searchField.setY(MARGIN + 40);
-        searchField.setWidth(SIDEBAR_W - 16);
-        searchField.setHeight(16);
+        searchField.setX(8);
+        searchField.setY(7);
+        searchField.setWidth(sidebarW() - 14);
+        searchField.setHeight(12);
+        searchField.setBordered(false);
+        searchField.setHint(Component.translatable("options.openintel.settings.search")
+                .withStyle(ChatFormatting.DARK_GRAY));
         addRenderableWidget(searchField);
 
-        doneButton = addRenderableWidget(Button.builder(Component.literal("Done"),
+        featuresButton = addRenderableWidget(Button.builder(
+                        Component.translatable(focusId != null ? "options.openintel.settings.back"
+                                : "options.openintel.features.button"),
+                        b -> {
+                            if (focusId != null) onClose();
+                            else minecraft.setScreen(new FeaturesScreen(this));
+                        })
+                .bounds(10, OiStyle.barButtonY(height), 90, 20).build());
+
+        // Rebuilt each time so sections of features switched off on the
+        // Features screen disappear when it returns here.
+        listeningFor = null;
+        if (!categories.isEmpty()) selectedId = categories.get(selected).id();
+        if (focusId != null) {
+            // Keybinds still list only enabled features' keys; any other page shows all of its settings.
+            java.util.function.Predicate<Feature> on = "keybinds".equals(focusId) ? Features::isOn : f -> true;
+            categories = ClickGui.visible(ClickGui.build(this, this).stream()
+                    .filter(c -> c.id().equals(focusId)).toList(), on);
+        } else {
+            categories = ClickGui.visible(ClickGui.build(this, this), Features::isOn);
+        }
+        selected = 0;
+        for (int i = 0; i < categories.size(); i++) {
+            if (categories.get(i).id().equals(selectedId)) {
+                selected = i;
+                break;
+            }
+        }
+
+        doneButton = addRenderableWidget(Button.builder(Component.translatable("options.openintel.settings.done"),
                         b -> onClose())
-                .bounds(width - 116, height - 30, 100, 20).build());
+                .bounds(width - 100, OiStyle.barButtonY(height), 90, 20).build());
 
         // Every option widget is a real child — vanilla input gives us
         // drags, clicks and text focus. They start hidden; render() turns
@@ -149,17 +185,28 @@ public class ClickGuiScreen extends Screen implements ClickGui.RebindHandler {
         viewDirty = true;
     }
 
-    private int paneLeft()      { return PANE_X; }
-    private int paneTop()       { return MARGIN; }
-    private int paneRight()     { return width - MARGIN; }
-    private int paneBottom()    { return height - PANE_BOTTOM_PAD; }
-    private int crosshairPreviewHeight() {
-        return !searching() && "crosshair".equals(categories.get(selected).id())
-                ? Math.min(116, Math.max(0, paneBottom() - paneTop() - OPTION_H * 2)) : 0;
+    private int paneLeft()      { return sidebarW() + 6; }
+    private int paneTop()       { return 0; }
+    private int paneRight()     { return width - 8; }
+    private int paneBottom()    { return height - OiStyle.BAR_H; }
+    /** Marker for the crosshair preview tile placed after the crosshair page's options. */
+    private static final ClickGui.Group PREVIEW = new ClickGui.Group("preview");
+    private static final int PREVIEW_H = 96;
+
+    /**
+     * The crosshair page ends with a preview of the custom style. It shows
+     * even while the feature is off, so the crosshair can be set up first.
+     */
+    private boolean showsCrosshairPreview() {
+        return !searching() && "crosshair".equals(selectedCategoryId());
     }
 
-    private int contentTop()    { return paneTop() + crosshairPreviewHeight() + INSET_TOP; }
-    private int contentBottom() { return paneBottom() - INSET_BOTTOM; }
+    private String selectedCategoryId() {
+        return selected < categories.size() ? categories.get(selected).id() : null;
+    }
+
+    private int contentTop()    { return paneTop() + 2; }
+    private int contentBottom() { return paneBottom() - 2; }
     private int viewportHeight() {
         return Math.max(0, contentBottom() - contentTop());
     }
@@ -202,7 +249,7 @@ public class ClickGuiScreen extends Screen implements ClickGui.RebindHandler {
                 }
             }
         } else {
-            out.addAll(categories.get(selected).items());
+            if (selected < categories.size()) out.addAll(categories.get(selected).items());
         }
         rows = out;
         scrollOffset = Math.max(0, Math.min(maxScroll(), scrollOffset));
@@ -214,12 +261,64 @@ public class ClickGuiScreen extends Screen implements ClickGui.RebindHandler {
                     && opt.tooltip().toLowerCase(Locale.ROOT).contains(q));
     }
 
-    private int contentHeight() {
-        int h = 0;
-        for (ClickGui.Item item : rows) {
-            h += item instanceof ClickGui.Group ? GROUP_H : OPTION_H;
+    /** Where each row sits in content coordinates: section titles full width, options in a grid. */
+    private record Placed(ClickGui.Item item, int x, int y, int w, int h) { }
+
+    /** One centered column, about as wide as a column of the old two-column grid. */
+    private static final int COLUMN_W = 430;
+
+    private int columnLeft() {
+        int room = paneRight() - 6 - paneLeft();
+        return paneLeft() + Math.max(0, (room - Math.min(COLUMN_W, room)) / 2);
+    }
+
+    private int columnRight() {
+        return columnLeft() + Math.min(COLUMN_W, paneRight() - 6 - paneLeft());
+    }
+
+    /** Lays rows out from y = 0 in a single column. */
+    /** place() runs for content height, max scroll, the sidebar and drawing; build it once per change. */
+    private List<Placed> placedCache;
+    private Object placedKey;
+
+    private List<Placed> place() {
+        Object key = List.of(System.identityHashCode(rows), rows.size(), columnLeft(), columnRight(), showsCrosshairPreview());
+        if (placedCache == null || !key.equals(placedKey)) {
+            placedCache = placeUncached();
+            placedKey = key;
         }
-        return h;
+        return placedCache;
+    }
+
+    private List<Placed> placeUncached() {
+        int cL = columnLeft(), cR = columnRight();
+        int cols = 1;
+        int tileW = (cR - cL - OiStyle.GAP * (cols - 1)) / cols;
+        List<Placed> out = new ArrayList<>(rows.size());
+        int y = 0, col = 0;
+        for (ClickGui.Item item : rows) {
+            if (item instanceof ClickGui.Group) {
+                if (col > 0) { y += OPTION_STEP; col = 0; }
+                out.add(new Placed(item, cL, y, cR - cL, GROUP_H));
+                y += GROUP_H;
+            } else {
+                out.add(new Placed(item, cL + col * (tileW + OiStyle.GAP), y, tileW, OPTION_H));
+                if (++col == cols) { col = 0; y += OPTION_STEP; }
+            }
+        }
+        if (col > 0) y += OPTION_STEP;
+        if (showsCrosshairPreview()) {
+            y += 4;
+            out.add(new Placed(PREVIEW, cL, y, cR - cL, PREVIEW_H));
+            y += PREVIEW_H + OiStyle.GAP;
+        }
+        out.add(new Placed(null, cL, y, 0, 0));  // end marker carries the total height
+        return out;
+    }
+
+    private int contentHeight() {
+        List<Placed> placed = place();
+        return placed.get(placed.size() - 1).y() + 6;
     }
 
     private int maxScroll() {
@@ -232,6 +331,7 @@ public class ClickGuiScreen extends Screen implements ClickGui.RebindHandler {
         // A pick while searching means "jump to that category".
         if (searching()) searchField.setValue("");
         scrollOffset = 0;
+        smooth.snap(0);
         viewDirty = true;
         blurOptionFocus();
     }
@@ -244,6 +344,36 @@ public class ClickGuiScreen extends Screen implements ClickGui.RebindHandler {
         }
     }
 
+    /**
+     * Sidebar entries. On a single feature's page the entries jump to its
+     * sections; otherwise (or while searching across pages) they pick a page.
+     */
+    private record SideEntry(Component title, int categoryIndex, int offset) { }
+
+    private List<SideEntry> sideEntries() {
+        List<SideEntry> out = new ArrayList<>();
+        if (focusId != null && !searching()) {
+            for (Placed p : place()) {
+                if (p.item() instanceof ClickGui.Group g && g != PREVIEW) out.add(new SideEntry(Component.literal(g.title()), -1, p.y()));
+            }
+            if (out.isEmpty() && !categories.isEmpty()) {
+                out.add(new SideEntry(Component.literal(categories.get(0).title()), -1, 0));
+            }
+        } else {
+            for (int i = 0; i < categories.size(); i++) {
+                out.add(new SideEntry(Component.literal(categories.get(i).title()), i, 0));
+            }
+        }
+        return out;
+    }
+
+    private boolean isCurrent(SideEntry e, List<SideEntry> all) {
+        if (e.categoryIndex() >= 0) return e.categoryIndex() == selected;
+        SideEntry current = null;
+        for (SideEntry x : all) if (current == null || x.offset() <= scrollOffset + 8) current = x;
+        return current == e;
+    }
+
     // --------------------------------------------------------- render -----
 
     @Override
@@ -253,65 +383,50 @@ public class ClickGuiScreen extends Screen implements ClickGui.RebindHandler {
         extractTransparentBackground(ctx);
 
         // Live dial preview behind the translucent UI.
-        if ("radar".equals(categories.get(selected).id())
+        if ("radar".equals(selectedCategoryId()) && Features.isOn(Feature.RADAR)
                 && minecraft.level != null && minecraft.player != null) {
             RadarHud.render(ctx, delta);
         }
 
         if (viewDirty) refreshView();
         scrollOffset = Math.max(0, Math.min(maxScroll(), scrollOffset));
+        smooth.update(scrollOffset);
 
         renderSidebar(ctx, mouseX, mouseY, delta);
         ClickGui.Option hovered = renderPane(ctx, mouseX, mouseY, delta);
 
         if (doneButton != null) doneButton.extractRenderState(ctx, mouseX, mouseY, delta);
+        if (featuresButton != null) featuresButton.extractRenderState(ctx, mouseX, mouseY, delta);
 
         // Tooltips ride above everything else.
         if (hovered != null && hovered.tooltip() != null) {
-            ctx.setComponentTooltipForNextFrame(font,
-                    List.of(Component.literal(hovered.tooltip())), mouseX, mouseY);
+            // Wrapped, so long descriptions read as a short paragraph instead of one wide line.
+            ctx.setTooltipForNextFrame(font,
+                    font.split(Component.literal(hovered.tooltip()), TOOLTIP_W), mouseX, mouseY);
         }
     }
 
     private void renderSidebar(GuiGraphicsExtractor ctx, int mouseX, int mouseY,
                                float delta) {
-        int sbL = MARGIN, sbT = MARGIN;
-        int sbR = sbL + SIDEBAR_W, sbB = height - MARGIN;
-
-        ctx.fill(sbL, sbT, sbR, sbB, SIDEBAR_BG);
-        ctx.outline(sbL, sbT, SIDEBAR_W, sbB - sbT, PANEL_BORDER);
-
-        // Mod title — scaled up for weight — over a dim version line.
-        var pose = ctx.pose();
-        pose.pushMatrix();
-        pose.translate(sbL + 10, sbT + 8);
-        pose.scale(1.4f, 1.4f);
-        ctx.text(font, "OpenIntel", 0, 0, ACCENT);
-        pose.popMatrix();
-        ctx.text(font, "v" + version,
-                sbL + 10, sbT + 26, TEXT_DIM);
-
+        int sbW = sidebarW(), bottom = paneBottom();
+        OiStyle.sidebar(ctx, sbW, bottom);
+        int barTop = OiStyle.bottomBar(ctx, width, height);
         searchField.extractRenderState(ctx, mouseX, mouseY, delta);
 
-        int listTop = sbT + 64;
-        for (int i = 0; i < categories.size(); i++) {
-            int rowTop = listTop + i * CAT_ROW_H;
-            if (rowTop + CAT_ROW_H > sbB - 4) break;
-            boolean sel = i == selected;
-            boolean hov = mouseX >= sbL + 4 && mouseX < sbR - 4
-                    && mouseY >= rowTop && mouseY < rowTop + CAT_ROW_H;
-            if (sel) {
-                ctx.fill(sbL + 4, rowTop, sbR - 4, rowTop + CAT_ROW_H,
-                        CAT_SELECTED);
-                ctx.fill(sbL + 4, rowTop, sbL + 6, rowTop + CAT_ROW_H, ACCENT);
-            } else if (hov) {
-                ctx.fill(sbL + 4, rowTop, sbR - 4, rowTop + CAT_ROW_H,
-                        CAT_HOVER);
-            }
-            ctx.text(font, categories.get(i).title(),
-                    sbL + 12, rowTop + (CAT_ROW_H - font.lineHeight) / 2,
-                    sel ? TEXT_BRIGHT : TEXT_MAIN);
+        List<SideEntry> entries = sideEntries();
+        ctx.enableScissor(0, SIDE_LIST_TOP, sbW, bottom);
+        int y = SIDE_LIST_TOP;
+        for (SideEntry e : entries) {
+            boolean hov = mouseX >= 0 && mouseX < sbW && mouseY >= y && mouseY < y + OiStyle.SIDE_LINE_H;
+            OiStyle.sidebarEntry(ctx, font, e.title(), y, sbW, isCurrent(e, entries), hov);
+            y += OiStyle.SIDE_LINE_H;
         }
+        ctx.disableScissor();
+
+        // Page name in the middle of the bottom bar, the version dim after Back.
+        String page = focusId != null && !categories.isEmpty() ? categories.get(0).title() : "OpenIntel";
+        ctx.centeredText(font, page, width / 2, barTop + (OiStyle.BAR_H - 8) / 2, OiStyle.TEXT);
+        ctx.text(font, "v" + version, 108, barTop + (OiStyle.BAR_H - 8) / 2, OiStyle.TEXT_FAINT);
     }
 
     /** Draws the options pane and returns the Option row under the mouse
@@ -320,97 +435,116 @@ public class ClickGuiScreen extends Screen implements ClickGui.RebindHandler {
                                        float delta) {
         int pL = paneLeft(), pT = paneTop();
         int pR = paneRight(), pB = paneBottom();
-        int cL = pL + INSET_X, cR = pR - INSET_X;
+        int cL = pL, cR = pR - 6;
 
-        ctx.fill(pL, pT, pR, pB, PANE_BG);
-        int previewH = crosshairPreviewHeight();
-        if (previewH > 0) {
-            ctx.fill(cL, pT + 20, cR, pT + previewH - 4, 0xFF303A42);
-            ctx.text(font, "Preview - 1:1", cL + 4, pT + 6, ACCENT);
-            ctx.enableScissor(cL, pT + 20, cR, pT + previewH - 4);
-            dev.openintel.render.CrosshairRenderer.preview(ctx, OpenIntelClient.config().crosshair,
-                    (cL + cR) / 2, pT + (previewH + 16) / 2);
-            ctx.disableScissor();
-        }
-        pT += previewH;
+        int cx = (columnLeft() + columnRight()) / 2;
 
         // Visible rows re-show their widgets below; everything else stays
         // dark — visible=false is also the input gate.
         hideOptionWidgets();
 
         ClickGui.Option hovered = null;
-        int y = contentTop() - (int) Math.round(scrollOffset);
 
-        ctx.enableScissor(pL + 1, pT + 1, pR - 1, pB - 1);
-        for (ClickGui.Item item : rows) {
-            int rowH = item instanceof ClickGui.Group ? GROUP_H : OPTION_H;
-            int rowTop = y;
-            boolean intersects = rowTop + rowH > pT && rowTop < pB;
+        int clipTop = pT + 1;
+        // Laid out at whole pixels, then shifted by the sub-pixel remainder of the glide.
+        // Widget hitboxes stay on whole pixels; the difference is under one GUI pixel.
+        int base = contentTop() - smooth.shownFloor(scrollOffset);
+        ctx.enableScissor(pL - 6, clipTop, width, pB);
+        ctx.pose().pushMatrix();
+        ctx.pose().translate(0, -smooth.fraction(scrollOffset));
+        for (Placed p : place()) {
+            ClickGui.Item item = p.item();
+            if (item == null) continue;
+            int rowTop = base + p.y();
+            boolean intersects = rowTop + p.h() > clipTop && rowTop < pB;
 
-            if (item instanceof ClickGui.Group group) {
-                if (intersects) {
-                    ctx.text(font, group.title(),
-                            cL + 4, rowTop + 6, ACCENT);
-                    ctx.fill(cL + 4, rowTop + GROUP_H - 4, cR - 4,
-                            rowTop + GROUP_H - 3, DIVIDER);
-                }
+            if (item == PREVIEW) {
+                if (intersects) drawCrosshairPreview(ctx, p.x(), rowTop, p.x() + p.w(), rowTop + p.h(), clipTop, pB);
+            } else if (item instanceof ClickGui.Group group) {
+                if (intersects) OiStyle.sectionTitle(ctx, font, Component.literal(group.title()), cx, rowTop);
             } else if (item instanceof ClickGui.Option opt) {
-                int wy = rowTop + (OPTION_H - WIDGET_H) / 2;
+                int tL = p.x(), tR = p.x() + p.w();
+                int t0 = rowTop, t1 = rowTop + OPTION_H;
+                int wy = t0 + (OPTION_H - WIDGET_H) / 2;
                 AbstractWidget widget = opt.widget();
                 AbstractWidget aux = opt.aux();
 
-                // Widgets sit in a fixed column near the label rather than
-                // hugging the pane's right edge — clamped so narrow windows
-                // still fit the whole control.
+                // Controls hug the tile's right edge; switches take only their own width,
+                // like the tiles on the main screen. Narrow tiles shrink controls before labels.
                 int auxW = aux != null ? AUX_W + AUX_GAP : 0;
-                int widgetLeft = Math.min(cL + WIDGET_COL, cR - auxW - WIDGET_W);
-                widget.setX(widgetLeft);
-                widget.setY(wy);
-                widget.setWidth(WIDGET_W);
+                boolean toggle = widget instanceof OiWidgets.Toggle;
+                boolean field = widget instanceof EditBox;
+                int widgetW = toggle ? OiStyle.SW_W + 2
+                        : Math.max(60, Math.min(field ? 180 : WIDGET_W, (tR - tL) * 11 / 20 - auxW));
+                int widgetLeft = tR - 8 - auxW - widgetW;
+                if (field) {
+                    // Borderless field inside a drawn box: inset the text.
+                    widget.setX(widgetLeft + 5);
+                    widget.setY(wy + 5);
+                    widget.setWidth(widgetW - 10);
+                } else {
+                    widget.setX(widgetLeft);
+                    widget.setY(wy);
+                    widget.setWidth(widgetW);
+                }
+                widget.setHeight(field ? 10 : WIDGET_H);
                 widget.visible = intersects;
                 if (aux != null) {
-                    aux.setX(widgetLeft + WIDGET_W + AUX_GAP);
+                    aux.setX(widgetLeft + widgetW + AUX_GAP);
                     aux.setY(wy);
                     aux.setWidth(AUX_W);
+                    aux.setHeight(WIDGET_H);
                     aux.visible = intersects;
                 }
 
                 if (intersects) {
-                    if (mouseX >= cL && mouseX < cR
-                            && mouseY >= Math.max(rowTop, pT)
-                            && mouseY < Math.min(rowTop + rowH, pB)) {
-                        ctx.fill(cL, rowTop, cR, rowTop + rowH, ROW_HOVER);
-                        hovered = opt;
+                    boolean hov = mouseX >= tL && mouseX < tR
+                            && mouseY >= Math.max(t0, clipTop) && mouseY < Math.min(t1, pB);
+                    if (hov) hovered = opt;
+                    OiStyle.tile(ctx, tL, t0, tR, t1, hov, false);
+                    String label = font.plainSubstrByWidth(opt.label(), Math.max(10, widgetLeft - tL - 14));
+                    ctx.text(font, label, tL + 8, t0 + (OPTION_H - 8) / 2, OiStyle.TEXT);
+                    if (field) {
+                        boolean fh = widget.isFocused() || (mouseX >= widgetLeft && mouseX < widgetLeft + widgetW
+                                && mouseY >= wy && mouseY < wy + WIDGET_H);
+                        OiWidgets.box(ctx, widgetLeft, wy, widgetW, WIDGET_H, fh, true);
                     }
-                    ctx.text(font, opt.label(), cL + 4,
-                            rowTop + (OPTION_H - font.lineHeight) / 2,
-                            TEXT_MAIN);
                     widget.extractRenderState(ctx, mouseX, mouseY, delta);
                     if (aux != null) aux.extractRenderState(ctx, mouseX, mouseY, delta);
                 }
             }
-            y += rowH;
         }
+        ctx.pose().popMatrix();
         ctx.disableScissor();
 
-        ctx.outline(pL, pT, pR - pL, pB - pT, PANEL_BORDER);
-
-        // Slim accent thumb on the pane's inner right edge — only when the
-        // content overflows the viewport.
-        int contentH = contentHeight(), viewH = viewportHeight();
-        if (contentH > viewH) {
-            int thumbH = Math.max(14, viewH * viewH / contentH);
-            int travel = viewH - thumbH;
-            int thumbY = contentTop() + (maxScroll() <= 0 ? 0
-                    : (int) Math.round(travel * scrollOffset / maxScroll()));
-            ctx.fill(pR - 3, thumbY, pR - 1, thumbY + thumbH, ACCENT);
-        }
+        OiStyle.scrollbar(ctx, width, contentTop(), contentBottom(), contentHeight(), smooth.shown(scrollOffset), maxScroll());
 
         if (rows.isEmpty() && searching()) {
-            ctx.centeredText(font, "No matching options",
-                    (pL + pR) / 2, pT + 24, TEXT_DIM);
+            ctx.centeredText(font, Component.translatable("options.openintel.settings.no_matches"),
+                    (pL + pR) / 2, pT + 24, OiStyle.TEXT_DIM);
         }
         return hovered;
+    }
+
+    /** Tile with the custom crosshair drawn at 1:1 over a mid-grey backdrop. */
+    private void drawCrosshairPreview(GuiGraphicsExtractor ctx, int x0, int y0, int x1, int y1, int clipTop, int clipBottom) {
+        OiStyle.tile(ctx, x0, y0, x1, y1, false, true);
+        int cx = (x0 + x1) / 2;
+        ctx.centeredText(font, Component.translatable("options.openintel.settings.preview"), cx, y0 + 6, OiStyle.TEXT_DIM);
+        int bx0 = x0 + 8, by0 = y0 + 18, bx1 = x1 - 8, by1 = y1 - 8;
+        // A sky-and-ground backdrop so light and dark crosshairs both read.
+        int mid = (by0 + by1) / 2;
+        ctx.fill(bx0, by0, bx1, mid, 0xFF5C7EA8);
+        ctx.fill(bx0, mid, bx1, by1, 0xFF4A5A3A);
+        ctx.outline(bx0, by0, bx1 - bx0, by1 - by0, OiStyle.TILE_BORDER);
+        ctx.enableScissor(bx0 + 1, Math.max(by0 + 1, clipTop), bx1 - 1, Math.min(by1 - 1, clipBottom));
+        // Always the custom style, so it can be tuned before the feature is switched on.
+        dev.openintel.render.CrosshairRenderer.draw(ctx, OpenIntelClient.config().crosshair, cx, (by0 + by1) / 2);
+        ctx.disableScissor();
+        if (!Features.isOn(Feature.CROSSHAIR)) {
+            String note = Component.translatable("options.openintel.crosshair.preview_off").getString();
+            ctx.text(font, font.plainSubstrByWidth(note, bx1 - bx0 - 8), bx0 + 4, by1 - 12, OiStyle.TEXT_SUB);
+        }
     }
 
     // ---------------------------------------------------------- input -----
@@ -424,15 +558,15 @@ public class ClickGuiScreen extends Screen implements ClickGui.RebindHandler {
             return true;
         }
 
-        // Sidebar category rows.
-        int sbL = MARGIN, sbR = MARGIN + SIDEBAR_W, sbB = height - MARGIN;
-        int listTop = MARGIN + 64;
-        if (click.x() >= sbL + 4 && click.x() < sbR - 4
-                && click.y() >= listTop && click.y() < sbB - 4) {
-            int idx = (int) (click.y() - listTop) / CAT_ROW_H;
-            if (idx >= 0 && idx < categories.size()
-                    && listTop + (idx + 1) * CAT_ROW_H <= sbB - 4) {
-                selectCategory(idx);
+        // Sidebar entries: pick a page, or jump to a section of this page.
+        if (click.button() == InputConstants.MOUSE_BUTTON_LEFT
+                && click.x() < sidebarW() && click.y() >= SIDE_LIST_TOP && click.y() < paneBottom()) {
+            List<SideEntry> entries = sideEntries();
+            int idx = (int) (click.y() - SIDE_LIST_TOP) / OiStyle.SIDE_LINE_H;
+            if (idx >= 0 && idx < entries.size()) {
+                SideEntry e = entries.get(idx);
+                if (e.categoryIndex() >= 0) selectCategory(e.categoryIndex());
+                else scrollOffset = Math.max(0, Math.min(maxScroll(), e.offset()));
                 return true;
             }
         }

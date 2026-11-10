@@ -1,5 +1,7 @@
 package dev.openintel.mixin;
 
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.relic.RelicLibraryScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Tooltip;
@@ -32,6 +34,7 @@ public abstract class ChestTrackerScreenMixin extends Screen {
 
     @Inject(method = "init", at = @At("TAIL"))
     private void openintel$relicButton(CallbackInfo ci) {
+        if (!Features.isOn(Feature.RELIC_LIBRARY)) return;
         int keyButtons = 0;
         for (var child : this.children()) {
             if (child instanceof ItemButton button

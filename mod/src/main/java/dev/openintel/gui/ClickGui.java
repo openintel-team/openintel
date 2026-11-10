@@ -2,7 +2,7 @@ package dev.openintel.gui;
 
 import dev.openintel.OpenIntelClient;
 import dev.openintel.config.OIConfig;
-import dev.openintel.render.UiFont;
+import dev.openintel.feature.Feature;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.components.Button;
@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * Option model and content for {@link ClickGuiScreen}.
@@ -26,6 +27,12 @@ import java.util.function.Function;
  * an optional narrow aux widget on its right). All widgets are built here
  * once and repositioned by the screen during layout.
  *
+ * On/off switches live on the Features screen; this model holds only the
+ * values to adjust. Categories, groups and rows can name the {@link Feature}
+ * they configure, and {@link #visible} drops them while that feature is off.
+ * Every label and tooltip comes from the language file: a row's label is
+ * its key and its tooltip is {@code key + ".tooltip"}.
+ *
  * Keybind rows set {@link Option#keybind()}; clicking their widget calls
  * back through {@link RebindHandler} so the screen can own capture state.
  */
@@ -34,8 +41,12 @@ public final class ClickGui {
 
     public sealed interface Item permits Group, Option { }
 
-    /** Section divider inside a category. */
-    public record Group(String title) implements Item { }
+    /** Section divider inside a category; a non-null feature hides the whole section while it is off. */
+    public record Group(String title, Feature feature) implements Item {
+        public Group(String title) {
+            this(title, null);
+        }
+    }
 
     /**
      * One settings row.
@@ -44,21 +55,52 @@ public final class ClickGui {
      * @param widget  main control, right-aligned
      * @param aux     optional narrow control to the right of widget (e.g. reset)
      * @param keybind non-null when the row rebinds a KeyMapping
+     * @param feature hides the row while this feature is off; null always shows it
      */
     public record Option(String label, String tooltip, AbstractWidget widget,
-                         AbstractWidget aux, KeyMapping keybind) implements Item {
+                         AbstractWidget aux, KeyMapping keybind, Feature feature) implements Item {
         public Option(String label, String tooltip, AbstractWidget widget) {
-            this(label, tooltip, widget, null, null);
+            this(label, tooltip, widget, null, null, null);
         }
     }
 
-    /** A sidebar category. */
-    public record Category(String id, String title, List<Item> items) { }
+    /** A sidebar category; a non-null feature hides it while that feature is off. */
+    public record Category(String id, String title, Feature feature, List<Item> items) { }
 
     /** Rebind capture is owned by the screen; rows only report clicks. */
     public interface RebindHandler {
         void begin(KeyMapping kb);
         void reset(KeyMapping kb);
+    }
+
+    /**
+     * Drops categories, sections and rows whose feature is off, then any
+     * category left without a row. Search runs over the result, so hidden
+     * settings never match.
+     */
+    public static List<Category> visible(List<Category> all, Predicate<Feature> on) {
+        List<Category> out = new ArrayList<>();
+        for (Category cat : all) {
+            if (cat.feature() != null && !on.test(cat.feature())) continue;
+            List<Item> items = new ArrayList<>();
+            Group pending = null;
+            boolean sectionOn = true;
+            for (Item item : cat.items()) {
+                if (item instanceof Group g) {
+                    sectionOn = g.feature() == null || on.test(g.feature());
+                    pending = g;
+                } else if (item instanceof Option o) {
+                    if (!sectionOn || (o.feature() != null && !on.test(o.feature()))) continue;
+                    if (pending != null) {
+                        items.add(pending);
+                        pending = null;
+                    }
+                    items.add(o);
+                }
+            }
+            if (!items.isEmpty()) out.add(new Category(cat.id(), cat.title(), cat.feature(), List.copyOf(items)));
+        }
+        return out;
     }
 
     // ------------------------------------------------------------ content ----
@@ -68,373 +110,265 @@ public final class ClickGui {
         List<Category> cats = new ArrayList<>();
 
         // ---------------------------------------------------------- general
-        cats.add(new Category("general", "General", List.of(
-                new Group("Relay connection"),
-                new Option(tr("options.openintel.relays.title"),
-                        tr("options.openintel.relays.tooltip"),
-                        button(tr("options.openintel.relays.manage"), () -> Minecraft.getInstance()
-                                .setScreenAndShow(new RelaySettingsScreen(self)))),
-                new Option("Live map URL", "Livemap API base used as the War Table backdrop.",
+        cats.add(category("general", null,
+                group("relay"),
+                row(Feature.RELAY, "options.openintel.relays.title",
+                        button("options.openintel.relays.manage", () -> Minecraft.getInstance()
+                                .setScreen(new RelaySettingsScreen(self)))),
+                row("options.openintel.general.live_map",
                         textField(cfg.liveMapBase, "https://host/livemap-api", 512, s -> cfg.liveMapBase = s)),
-                new Option("Reconnect", "Save credentials and reconnect to the relay now.",
-                        button("Reconnect", () -> {
+                row(Feature.RELAY, "options.openintel.general.reconnect",
+                        button("options.openintel.general.reconnect.button", () -> {
                             OpenIntelClient.config().save();
                             OpenIntelClient.reconnectRelay();
-                        }))
-        )));
+                        }))));
 
-        // --------------------------------------------------------- crosshair
-        cats.add(new Category("crosshair", "Crosshair", List.of(
-                new Group("Style"),
-                new Option("Crosshair", "Switch to Custom to edit your crosshair, or Vanilla to restore Minecraft's crosshair.",
-                        crosshairToggle(cfg)),
-                new Option("Color", "Crosshair color and opacity.",
-                        colorButton(self, "Crosshair color", () -> cfg.crosshair.color,
-                                v -> cfg.crosshair.color = v, null, null)),
-                new Option("Length", "Length of each arm in GUI pixels. Set to 0 for a dot-only crosshair.",
-                        slider("options.openintel.crosshair.length", 0, 20, cfg.crosshair.length,
-                                " px", v -> cfg.crosshair.length = v)),
-                new Option("Width", "Thickness of the arms and center dot in GUI pixels.",
-                        slider("options.openintel.crosshair.width", 1, 8, cfg.crosshair.width,
-                                " px", v -> cfg.crosshair.width = v)),
-                new Option("Gap", "Space between the center square and each arm in GUI pixels.",
-                        slider("options.openintel.crosshair.gap", 0, 20, cfg.crosshair.gap,
-                                " px", v -> cfg.crosshair.gap = v)),
-                new Option("Outlines", "Add a one-pixel black outline for contrast.",
-                        bool("options.openintel.crosshair.outline", cfg.crosshair.outline,
-                                v -> cfg.crosshair.outline = v)),
-                new Option("Center dot", "Show a center square using the selected width.",
-                        bool("options.openintel.crosshair.dot", cfg.crosshair.dot,
-                                v -> cfg.crosshair.dot = v))
-        )));
-
-        // ---------------------------------------------------------- markers
-        cats.add(new Category("markers", "Markers", List.of(
-                new Group("Player markers"),
-                new Option(tr("options.openintel.relay.rendering"), "Master switch for all relay markers.",
-                        bool("options.openintel.relay.rendering", cfg.relayRendering, v -> cfg.relayRendering = v)),
-                new Option(tr("options.openintel.relay.visible_markers"), "Keep markers on players you can already see.",
+        // ===================================================== Intel & Relay
+        cats.add(category("markers", Feature.PLAYER_MARKERS,
+                group("markers"),
+                row("options.openintel.relay.visible_markers",
                         bool("options.openintel.relay.visible_markers", cfg.markVisiblePlayers, v -> cfg.markVisiblePlayers = v)),
-                new Option(tr("options.openintel.relay.edge_chevrons"), "Pin off-screen targets to the screen edges.",
-                        bool("options.openintel.relay.edge_chevrons", cfg.edgeChevrons, v -> cfg.edgeChevrons = v)),
-                new Option(tr("options.openintel.relay.stale_decay"), "Fade markers as their intel ages out.",
+                row("options.openintel.relay.stale_decay",
                         bool("options.openintel.relay.stale_decay", cfg.staleDecay, v -> cfg.staleDecay = v)),
-                new Option(tr("options.openintel.relay.enemy_alert"), "Chat alert when an enemy is spotted by the relay.",
-                        bool("options.openintel.relay.enemy_alert", cfg.localEnemyAlert, v -> cfg.localEnemyAlert = v)),
-                new Option(tr("options.openintel.relay.opacity"), "Opacity of active relay markers and pings.",
+                row("options.openintel.relay.opacity",
                         slider("options.openintel.relay.opacity", 0, 100,
                                 OIConfig.markerOpacityPercent(cfg.relayOpacity),
                                 "%", v -> cfg.relayOpacity = v)),
-                new Option(tr("options.openintel.relay.marker_scale"), "Size of over-head markers — chevron and name label together.",
+                row("options.openintel.relay.marker_scale",
                         slider("options.openintel.relay.marker_scale", 50, 200, (int) (cfg.markerScale * 100),
                                 "%", v -> cfg.markerScale = v / 100f)),
-                new Option(tr("options.openintel.relay.max_dist"), "Hide markers beyond this distance; 0 is unlimited.",
+                row("options.openintel.relay.max_dist",
                         rangeSlider("options.openintel.relay.max_dist",
                                 (int) Math.min(20000, Math.max(0, cfg.maxMarkerDistance)),
-                                v -> cfg.maxMarkerDistance = v))
-        )));
+                                v -> cfg.maxMarkerDistance = v))));
 
-        // -------------------------------------------------------- war table
-        cats.add(new Category("wartable", "War Table", List.of(
-                new Group("Map"),
-                new Option(tr("options.openintel.wartable.enabled"),
-                        "Enable the War Table keybind and shared map screen.",
-                        bool("options.openintel.wartable.enabled",
-                                cfg.warTableEnabled, v -> cfg.warTableEnabled = v)),
-                new Option(tr("options.openintel.wartable.sanctuaries"),
-                        "Draw sanctuary boundaries over the live map.",
-                        bool("options.openintel.wartable.sanctuaries",
-                                cfg.warTableSanctuaries, v -> cfg.warTableSanctuaries = v)),
-                new Group("Waypoints"),
-                new Option(tr("options.openintel.wartable.pin_markers"),
-                        "Show synced War Table pins as in-world HUD waypoints.",
-                        bool("options.openintel.wartable.pin_markers",
-                                cfg.warTablePinMarkers, v -> cfg.warTablePinMarkers = v)),
-                new Option(tr("options.openintel.wartable.pin_world_map"),
-                        "Draw War Table pins on the fullscreen world map (JourneyMap or Xaero) as a colored marker with the name underneath.",
-                        bool("options.openintel.wartable.pin_world_map",
-                                cfg.warTablePinWorldMap, v -> cfg.warTablePinWorldMap = v)),
-                new Option(tr("options.openintel.wartable.label_world_map"),
-                        "Draw War Table place labels on the fullscreen world map (JourneyMap or Xaero) as a colored marker with the name underneath.",
-                        bool("options.openintel.wartable.label_world_map",
-                                cfg.warTableLabelWorldMap, v -> cfg.warTableLabelWorldMap = v)),
-                new Option(tr("options.openintel.wartable.sanctuary_world_map"),
-                        "Draw sanctuary names on the fullscreen world map (JourneyMap or Xaero) in the gold circle color.",
-                        bool("options.openintel.wartable.sanctuary_world_map",
-                                cfg.warTableSanctuaryWorldMap, v -> cfg.warTableSanctuaryWorldMap = v)),
-                new Option(tr("options.openintel.wartable.pin_opacity"),
-                        "Static waypoint opacity; lower than active relay markers.",
-                        slider("options.openintel.wartable.pin_opacity", 30, 150,
-                                cfg.warTablePinOpacity, "", v -> cfg.warTablePinOpacity = v))
-        )));
-
-        // ------------------------------------------------------------- radar
-        cats.add(new Category("radar", "Radar", List.of(
-                new Group("Radar"),
-                new Option(tr("options.openintel.radar.enabled"), "Show the circular player radar.",
-                        bool("options.openintel.radar.enabled", cfg.radarEnabled, v -> cfg.radarEnabled = v)),
-                new Option(tr("options.openintel.radar.north_up"), "Lock the dial to north instead of rotating with you.",
-                        bool("options.openintel.radar.north_up", cfg.radarNorthUp, v -> cfg.radarNorthUp = v)),
-                new Option(tr("options.openintel.radar.compress"), "Magnify the inner field while compressing the outer ring. 0 = true linear.",
-                        slider("options.openintel.radar.compress", 0, 100, cfg.radarCompression,
-                                "%", v -> cfg.radarCompression = v)),
-                new Option(tr("options.openintel.radar.items"), "Draw dropped items on the radar.",
-                        bool("options.openintel.radar.items", cfg.radarShowItems, v -> cfg.radarShowItems = v)),
-                new Option(tr("options.openintel.radar.vehicles"), "Draw boats and minecarts on the radar.",
-                        bool("options.openintel.radar.vehicles", cfg.radarShowVehicles, v -> cfg.radarShowVehicles = v)),
-                new Group("Contacts"),
-                new Option(tr("options.openintel.radar.players"), "Show locally loaded players within radar range. Distant relay-only players are not shown.",
-                        bool("options.openintel.radar.players", cfg.radarShowPlayers, v -> cfg.radarShowPlayers = v)),
-                new Option(tr("options.openintel.radar.ping_filter"), "Which players appear: everyone, non-relay players, or enemies only.",
-                        cycle("options.openintel.radar.ping_filter", cfg.radarPlayerFilter,
-                                v -> cfg.radarPlayerFilter = v)),
-                new Option(tr("options.openintel.radar.pings"), "Draw shared pings on the radar.",
-                        bool("options.openintel.radar.pings", cfg.radarShowPings, v -> cfg.radarShowPings = v)),
-                new Group("Dial"),
-                new Option(tr("options.openintel.radar.size"), "Radar radius in pixels.",
-                        slider("options.openintel.radar.size", 16, 160, cfg.radarSize,
-                                " px", v -> cfg.radarSize = v)),
-                new Option(tr("options.openintel.radar.range"), "How far the dial reaches, in blocks.",
-                        slider("options.openintel.radar.range", 8, 512, (int) cfg.radarRange,
-                                " blocks", v -> cfg.radarRange = v)),
-                new Option(tr("options.openintel.radar.circles"), "Number of range rings; 0 hides them.",
-                        slider("options.openintel.radar.circles", 0, 8, cfg.radarCircles,
-                                "", v -> cfg.radarCircles = v)),
-                new Option(tr("options.openintel.radar.icon_size"), "Scale of contact icons.",
-                        slider("options.openintel.radar.icon_size", 50, 200, (int) (cfg.radarIconSize * 100),
-                                "%", v -> cfg.radarIconSize = v / 100f)),
-                new Option(tr("options.openintel.radar.text_size"), "Scale of distance labels.",
-                        slider("options.openintel.radar.text_size", 50, 200, (int) (cfg.radarTextSize * 100),
-                                "%", v -> cfg.radarTextSize = v / 100f)),
-                new Group("Colors"),
-                new Option(tr("options.openintel.radar.bg_alpha"), "Background fill opacity.",
-                        alphaSlider("options.openintel.radar.bg_alpha", cfg.radarBgColor,
-                                v -> cfg.radarBgColor = v)),
-                new Option(tr("options.openintel.radar.fg_alpha"), "Ring and blip opacity.",
-                        alphaSlider("options.openintel.radar.fg_alpha", cfg.radarFgColor,
-                                v -> cfg.radarFgColor = v)),
-                new Option("Radar lines", "RGB of the radar rings and blips.",
-                        colorButton(self, "Radar lines", () -> cfg.radarFgColor,
-                                v -> cfg.radarFgColor = v, null, null)),
-                new Option("Radar background", "RGB of the dial fill.",
-                        colorButton(self, "Radar background", () -> cfg.radarBgColor,
-                                v -> cfg.radarBgColor = v, null, null))
-        )));
-
-        // -------------------------------------------------------------- hud
-        cats.add(new Category("hud", "HUD", List.of(
-                new Group("Layout"),
-                new Option("HUD editor", "Drag every HUD element into place on a live preview.",
-                        button("Open HUD editor…", () ->
-                                Minecraft.getInstance().setScreen(new HudEditorScreen(self)))),
-                new Group("Text"),
-                new Option(tr("options.openintel.hud.font"),
-                        "Switch between clean text and Minecraft/resource-pack fonts. Applies immediately; other menus and mods keep their fonts.",
-                        fontToggle(() -> cfg.cleanFont, value -> applyFont(cfg, value))),
-                new Group("Elements"),
-                new Option(tr("options.openintel.logo.enabled"), "Small resolution-aware logo in the bottom-right corner. Hidden while menus are open.",
-                        bool("options.openintel.logo.enabled", cfg.logoHudEnabled, value -> cfg.logoHudEnabled = value)),
-                new Option(tr("options.openintel.armor.enabled"), "Equipped armor with durability readouts.",
-                        bool("options.openintel.armor.enabled", cfg.armorHudEnabled, v -> cfg.armorHudEnabled = v)),
-                new Option(tr("options.openintel.armor.layout"), "Stack armor pieces in a row or a column.",
-                        cycle("options.openintel.armor.layout", OIConfig.ArmorHudLayout.values(),
-                                l -> l.translationKey, OIConfig.ArmorHudLayout::byName,
-                                cfg.armorHudLayout, v -> cfg.armorHudLayout = v)),
-                new Option(tr("options.openintel.armor.mode"), "Durability readout: percent, health bar, or points left.",
-                        cycle("options.openintel.armor.mode", OIConfig.ArmorHudMode.values(),
-                                m -> m.translationKey, OIConfig.ArmorHudMode::byName,
-                                cfg.armorHudMode, v -> cfg.armorHudMode = v)),
-                new Option(tr("options.openintel.potions.enabled"), "Active potion effects and timers.",
-                        bool("options.openintel.potions.enabled", cfg.potionHudEnabled, v -> cfg.potionHudEnabled = v)),
-                new Group("Presence panel"),
-                new Option(tr("options.openintel.presence.enabled"), "Connected relay players and their status.",
-                        bool("options.openintel.presence.enabled", cfg.presenceEnabled, v -> cfg.presenceEnabled = v)),
-                new Option(tr("options.openintel.presence.all_dims"), "Show players in other dimensions too.",
-                        bool("options.openintel.presence.all_dims", cfg.presenceShowAllDims, v -> cfg.presenceShowAllDims = v)),
-                new Option(tr("options.openintel.presence.tab_only"), "Show the panel only while the player list (Tab) is open.",
-                        bool("options.openintel.presence.tab_only", cfg.presenceOnlyOnTab, v -> cfg.presenceOnlyOnTab = v)),
-                new Option(tr("options.openintel.presence.rows"), "Maximum rows before the list truncates.",
-                        slider("options.openintel.presence.rows", 4, 24, cfg.presenceMaxRows,
-                                "", v -> cfg.presenceMaxRows = v)),
-                new Group("Event feed"),
-                new Option(tr("options.openintel.feed.enabled"), "Presence, sightings, and snitch events in a feed.",
-                        bool("options.openintel.feed.enabled", cfg.eventFeedEnabled, v -> cfg.eventFeedEnabled = v)),
-                new Option(tr("options.openintel.feed.show_on_chat"), "Show the session log as soon as chat opens. Off keeps it hidden until the pointer is over the feed.",
-                        bool("options.openintel.feed.show_on_chat", cfg.eventFeedShowOnChat, v -> cfg.eventFeedShowOnChat = v)),
-                new Option(tr("options.openintel.feed.align"), "Align feed text to the left or right edge of the HUD box.",
-                        cycle("options.openintel.feed.align", OIConfig.FeedAlign.values(),
-                                a -> a.translationKey, OIConfig.FeedAlign::byName,
-                                cfg.eventFeedAlign, v -> cfg.eventFeedAlign = v)),
-                new Option(tr("options.openintel.feed.seconds"), "How long feed entries linger.",
-                        slider("options.openintel.feed.seconds", 3, 30, cfg.eventFeedSeconds,
-                                "s", v -> cfg.eventFeedSeconds = v))
-        )));
-
-        // ----------------------------------------------------------- snitch
-        cats.add(new Category("snitch", "Snitch", List.of(
-                new Group("Snitch relay"),
-                new Option(tr("options.openintel.snitch.enabled"), "Forward local snitch alerts to the relay. Local detection and markers still work when this is off.",
-                        bool("options.openintel.snitch.enabled", cfg.snitchRelay, v -> cfg.snitchRelay = v)),
-                new Option(tr("options.openintel.snitch.seconds"), "How long a snitch-hit marker stays on screen.",
+        cats.add(category("snitch", Feature.SNITCH_ALERTS,
+                group("snitch"),
+                row("options.openintel.snitch.seconds",
                         slider("options.openintel.snitch.seconds", 30, 300, cfg.snitchMarkerSeconds,
                                 "s", v -> cfg.snitchMarkerSeconds = v)),
-                new Option(tr("options.openintel.snitch.range"), "Hide snitch markers beyond this distance; 0 is unlimited.",
+                row("options.openintel.snitch.range",
                         rangeSlider("options.openintel.snitch.range", cfg.snitchMarkerRange,
                                 v -> cfg.snitchMarkerRange = v)),
-                new Option(tr("options.openintel.snitch.opacity"),
-                        "Static snitch marker opacity; lower than active relay markers.",
+                row("options.openintel.snitch.opacity",
                         slider("options.openintel.snitch.opacity", 30, 150,
                                 cfg.snitchMarkerOpacity, "", v -> cfg.snitchMarkerOpacity = v)),
-                new Option("Snitch marker color", "Fixed color, or the tripper's allegiance color.",
-                        colorButton(self, "Snitch marker color",
+                row("options.openintel.snitch.color",
+                        colorButton(self, tr("options.openintel.snitch.color"),
                                 () -> cfg.snitchMarkerColorAuto ? -1 : cfg.snitchMarkerColor,
                                 v -> {
                                     cfg.snitchMarkerColor = v;
                                     cfg.snitchMarkerColorAuto = false;
                                 },
-                                "Allegiance color", () -> {
+                                tr("options.openintel.snitch.color.auto"), () -> {
                                     cfg.snitchMarkerColorAuto = true;
                                     cfg.snitchMarkerColor = 0xFFAAAAAA;
-                                }))
-        )));
+                                }))));
 
-        // -------------------------------------------------- visualizations
-        cats.add(new Category("viz", "Visualizations", List.of(
-                new Group("In-world ranges"),
-                new Option(tr("options.openintel.viz.enabled"),
-                        "Draw Civ+ snitch, bastion, and sanctuary coverage in the world.",
-                        bool("options.openintel.viz.enabled", cfg.vizEnabled, v -> cfg.vizEnabled = v)),
-                new Option(tr("options.openintel.viz.snitch"),
-                        "Block shell around each placed snitch. Radius is set below.",
-                        bool("options.openintel.viz.snitch", cfg.vizSnitch, v -> cfg.vizSnitch = v)),
-                new Option(tr("options.openintel.viz.snitch_radius"),
-                        "How far a snitch covers, block-center to block-center. Default 8. Other Civ servers may differ.",
+        cats.add(category("pings", Feature.PINGS,
+                group("pings"),
+                row("options.openintel.ping.seconds",
+                        slider("options.openintel.ping.seconds", 10, 120, cfg.pingSeconds,
+                                "s", v -> cfg.pingSeconds = v))));
+
+        cats.add(category("presence", Feature.PRESENCE,
+                group("presence"),
+                row("options.openintel.presence.all_dims",
+                        bool("options.openintel.presence.all_dims", cfg.presenceShowAllDims, v -> cfg.presenceShowAllDims = v)),
+                row("options.openintel.presence.tab_only",
+                        bool("options.openintel.presence.tab_only", cfg.presenceOnlyOnTab, v -> cfg.presenceOnlyOnTab = v)),
+                row("options.openintel.presence.rows",
+                        slider("options.openintel.presence.rows", 4, 24, cfg.presenceMaxRows,
+                                "", v -> cfg.presenceMaxRows = v))));
+
+        cats.add(category("feed", Feature.EVENT_FEED,
+                group("feed"),
+                row("options.openintel.feed.show_on_chat",
+                        bool("options.openintel.feed.show_on_chat", cfg.eventFeedShowOnChat, v -> cfg.eventFeedShowOnChat = v)),
+                row("options.openintel.feed.align",
+                        cycle("options.openintel.feed.align", OIConfig.FeedAlign.values(),
+                                a -> a.translationKey, OIConfig.FeedAlign::byName,
+                                cfg.eventFeedAlign, v -> cfg.eventFeedAlign = v)),
+                row("options.openintel.feed.seconds",
+                        slider("options.openintel.feed.seconds", 3, 30, cfg.eventFeedSeconds,
+                                "s", v -> cfg.eventFeedSeconds = v))));
+
+        // =================================================== Visuals & World
+        cats.add(category("crosshair", Feature.CROSSHAIR,
+                group("crosshair"),
+                row("options.openintel.crosshair.color",
+                        colorButton(self, tr("options.openintel.crosshair.color"), () -> cfg.crosshair.color,
+                                v -> cfg.crosshair.color = v, null, null)),
+                row("options.openintel.crosshair.length",
+                        slider("options.openintel.crosshair.length", 0, 20, cfg.crosshair.length,
+                                " px", v -> cfg.crosshair.length = v)),
+                row("options.openintel.crosshair.width",
+                        slider("options.openintel.crosshair.width", 1, 8, cfg.crosshair.width,
+                                " px", v -> cfg.crosshair.width = v)),
+                row("options.openintel.crosshair.gap",
+                        slider("options.openintel.crosshair.gap", 0, 20, cfg.crosshair.gap,
+                                " px", v -> cfg.crosshair.gap = v)),
+                row("options.openintel.crosshair.outline",
+                        bool("options.openintel.crosshair.outline", cfg.crosshair.outline,
+                                v -> cfg.crosshair.outline = v)),
+                row("options.openintel.crosshair.dot",
+                        bool("options.openintel.crosshair.dot", cfg.crosshair.dot,
+                                v -> cfg.crosshair.dot = v))));
+
+        cats.add(category("radar", Feature.RADAR,
+                group("radar"),
+                row("options.openintel.radar.north_up",
+                        bool("options.openintel.radar.north_up", cfg.radarNorthUp, v -> cfg.radarNorthUp = v)),
+                row("options.openintel.radar.compress",
+                        slider("options.openintel.radar.compress", 0, 100, cfg.radarCompression,
+                                "%", v -> cfg.radarCompression = v)),
+                row("options.openintel.radar.items",
+                        bool("options.openintel.radar.items", cfg.radarShowItems, v -> cfg.radarShowItems = v)),
+                row("options.openintel.radar.vehicles",
+                        bool("options.openintel.radar.vehicles", cfg.radarShowVehicles, v -> cfg.radarShowVehicles = v)),
+                group("contacts"),
+                row("options.openintel.radar.players",
+                        bool("options.openintel.radar.players", cfg.radarShowPlayers, v -> cfg.radarShowPlayers = v)),
+                row("options.openintel.radar.ping_filter",
+                        cycle("options.openintel.radar.ping_filter", cfg.radarPlayerFilter,
+                                v -> cfg.radarPlayerFilter = v)),
+                row(Feature.PINGS, "options.openintel.radar.pings",
+                        bool("options.openintel.radar.pings", cfg.radarShowPings, v -> cfg.radarShowPings = v)),
+                group("dial"),
+                row("options.openintel.radar.size",
+                        slider("options.openintel.radar.size", 16, 160, cfg.radarSize,
+                                " px", v -> cfg.radarSize = v)),
+                row("options.openintel.radar.range",
+                        slider("options.openintel.radar.range", 8, 512, (int) cfg.radarRange,
+                                " blocks", v -> cfg.radarRange = v)),
+                row("options.openintel.radar.circles",
+                        slider("options.openintel.radar.circles", 0, 8, cfg.radarCircles,
+                                "", v -> cfg.radarCircles = v)),
+                row("options.openintel.radar.icon_size",
+                        slider("options.openintel.radar.icon_size", 50, 200, (int) (cfg.radarIconSize * 100),
+                                "%", v -> cfg.radarIconSize = v / 100f)),
+                row("options.openintel.radar.text_size",
+                        slider("options.openintel.radar.text_size", 50, 200, (int) (cfg.radarTextSize * 100),
+                                "%", v -> cfg.radarTextSize = v / 100f)),
+                group("colors"),
+                row("options.openintel.radar.bg_alpha",
+                        alphaSlider("options.openintel.radar.bg_alpha", cfg.radarBgColor,
+                                v -> cfg.radarBgColor = v)),
+                row("options.openintel.radar.fg_alpha",
+                        alphaSlider("options.openintel.radar.fg_alpha", cfg.radarFgColor,
+                                v -> cfg.radarFgColor = v)),
+                row("options.openintel.radar.fg_color",
+                        colorButton(self, tr("options.openintel.radar.fg_color"), () -> cfg.radarFgColor,
+                                v -> cfg.radarFgColor = v, null, null)),
+                row("options.openintel.radar.bg_color",
+                        colorButton(self, tr("options.openintel.radar.bg_color"), () -> cfg.radarBgColor,
+                                v -> cfg.radarBgColor = v, null, null))));
+
+        cats.add(category("viz", Feature.VISUALIZATIONS,
+                group("viz"),
+                row(Feature.VIZ_SNITCH, "options.openintel.viz.snitch_radius",
                         slider("options.openintel.viz.snitch_radius", 1, 32,
                                 Math.clamp(cfg.vizSnitchRadius, 1, 32),
                                 "", v -> cfg.vizSnitchRadius = v)),
-                new Option(tr("options.openintel.viz.bastion"),
-                        "Block ring and a 64-block column from the bastion upward. Protection continues above the column.",
-                        bool("options.openintel.viz.bastion", cfg.vizBastion, v -> cfg.vizBastion = v)),
-                new Option(tr("options.openintel.viz.bastion_radius"),
-                        "Default is the Civ+ field, 19 blocks across. Any other value draws a block-center circle of that diameter. Blocks below the bastion are not covered.",
+                row(Feature.VIZ_BASTION, "options.openintel.viz.bastion_radius",
                         halfSlider("options.openintel.viz.bastion_radius", 2, 128,
                                 bastionHalf(cfg.vizBastionRadius),
                                 v -> {
                                     cfg.vizBastionRadius = v / 2.0;
                                     cfg.vizBastionRadiusEdited = v != 21;
                                 })),
-                new Option(tr("options.openintel.viz.sanctuary"),
-                        "Block ring for manually placed sanctuary shapes. Radius is per shape.",
-                        bool("options.openintel.viz.sanctuary", cfg.vizSanctuary, v -> cfg.vizSanctuary = v)),
-                new Option(tr("options.openintel.viz.live_sanctuaries"),
-                        "Block rings from the live-map API (same feed as the War Table).",
-                        bool("options.openintel.viz.live_sanctuaries",
-                                cfg.vizLiveSanctuaries, v -> cfg.vizLiveSanctuaries = v)),
-                new Option(tr("options.openintel.viz.see_through"),
-                        "Draw wireframes on top of terrain so buried fields stay visible.",
-                        bool("options.openintel.viz.see_through", cfg.vizSeeThrough, v -> cfg.vizSeeThrough = v)),
-                new Option("Edit shapes", "Add snitch / bastion / sanctuary shapes at the block you look at.",
-                        button("Edit shapes…", () -> Minecraft.getInstance()
-                                .setScreen(new VisualizationsScreen(self))))
-        )));
+                row("options.openintel.viz.edit_shapes",
+                        button("options.openintel.viz.edit_shapes.button", () -> Minecraft.getInstance()
+                                .setScreen(new VisualizationsScreen(self))))));
 
-        // ------------------------------------------------------ investigate
-        cats.add(new Category("investigate", "Investigate", List.of(
-                new Group("Log playback"),
-                new Option("Investigate logs",
-                        "Paste snitch or Discord logs, then watch break/place highlights in the world.",
-                        button("Open investigate…", () -> Minecraft.getInstance()
+        cats.add(category("investigate", Feature.INVESTIGATE,
+                group("investigate_logs"),
+                row("options.openintel.investigate.open",
+                        button("options.openintel.investigate.open.button", () -> Minecraft.getInstance()
                                 .setScreen(new InvestigateScreen(self)))),
-                new Group("Camera focus"),
-                new Option("Focus transition", "Look at the selected event: pan smoothly, snap instantly, or leave the camera alone. Mouse look cancels an active pan.",
+                row("options.openintel.investigate.clear",
+                        button("options.openintel.investigate.clear.button", () -> {
+                            dev.openintel.investigate.InvestigateSession.get().clear();
+                            OpenIntelClient.status("investigate cleared");
+                        })),
+                group("camera"),
+                row("options.openintel.investigate.camera",
                         cycle("options.openintel.investigate.camera", OIConfig.InvestigateCameraMode.values(),
                                 mode -> mode.translationKey, OIConfig.InvestigateCameraMode::byName,
                                 cfg.investigateCameraMode, value -> cfg.investigateCameraMode = value)),
-                new Option("Pan duration", "Time to turn toward the focused block. Applies to Pan mode.",
+                row("options.openintel.investigate.pan_duration",
                         slider("options.openintel.investigate.pan_duration", 100, 2000,
-                                cfg.investigatePanDurationMs, "ms", value -> cfg.investigatePanDurationMs = value)),
-                new Option("Stop watching", "Clear the active investigate playback session.",
-                        button("Clear session", () -> {
-                            dev.openintel.investigate.InvestigateSession.get().clear();
-                            OpenIntelClient.status("investigate cleared");
-                        }))
-        )));
+                                cfg.investigatePanDurationMs, "ms", value -> cfg.investigatePanDurationMs = value))));
 
-        // ------------------------------------------------------------ pings
-        cats.add(new Category("pings", "Pings", List.of(
-                new Group("Ping wheel"),
-                new Option(tr("options.openintel.ping.enabled"), "Hold the ping key to broadcast a shared marker.",
-                        bool("options.openintel.ping.enabled", cfg.pingWheelEnabled, v -> cfg.pingWheelEnabled = v)),
-                new Option(tr("options.openintel.ping.seconds"), "How long a shared ping stays visible.",
-                        slider("options.openintel.ping.seconds", 10, 120, cfg.pingSeconds,
-                                "s", v -> cfg.pingSeconds = v))
-        )));
+        cats.add(category("wartable", Feature.WAR_TABLE,
+                group("wartable_pins", Feature.WAR_TABLE_HUD_PINS),
+                row("options.openintel.wartable.pin_opacity",
+                        slider("options.openintel.wartable.pin_opacity", 30, 150,
+                                cfg.warTablePinOpacity, "", v -> cfg.warTablePinOpacity = v))));
 
-        // ------------------------------------------------------ integrations
-        cats.add(new Category("integrations", "Integrations", List.of(
-                new Group("World map"),
-                new Option(tr("options.openintel.jm.markers"), "Draw OpenIntel markers on JourneyMap's fullscreen map.",
-                        bool("options.openintel.jm.markers", cfg.jmMarkers, v -> cfg.jmMarkers = v)),
-                new Option(tr("options.openintel.xaero.world_map"), "Draw OpenIntel markers on Xaero's World Map screen.",
-                        bool("options.openintel.xaero.world_map", cfg.xaeroWorldMap, v -> cfg.xaeroWorldMap = v)),
-                new Option(tr("options.openintel.world_map.intel"), "Draw relay players, snitch hits and pings on the fullscreen world map (JourneyMap or Xaero).",
-                        bool("options.openintel.world_map.intel", cfg.worldMapIntel, v -> cfg.worldMapIntel = v)),
-                new Option(tr("options.openintel.world_map.relics"), "Show relic maps from your inventory on the fullscreen world map (JourneyMap or Xaero).",
-                        bool("options.openintel.world_map.relics", cfg.worldMapRelics, v -> cfg.worldMapRelics = v)),
-                new Option(tr("options.openintel.relic.marker_range"), "How far away a carried relic map can be before the in-world pin appears.",
+        // =============================================================== HUD
+        cats.add(category("hud", null,
+                group("layout"),
+                row("options.openintel.hud.editor",
+                        button("options.openintel.hud.editor.button", () ->
+                                Minecraft.getInstance().setScreen(new HudEditorScreen(self)))),
+                group("armor", Feature.ARMOR_HUD),
+                row("options.openintel.armor.layout",
+                        cycle("options.openintel.armor.layout", OIConfig.ArmorHudLayout.values(),
+                                l -> l.translationKey, OIConfig.ArmorHudLayout::byName,
+                                cfg.armorHudLayout, v -> cfg.armorHudLayout = v)),
+                row("options.openintel.armor.mode",
+                        cycle("options.openintel.armor.mode", OIConfig.ArmorHudMode.values(),
+                                m -> m.translationKey, OIConfig.ArmorHudMode::byName,
+                                cfg.armorHudMode, v -> cfg.armorHudMode = v))));
+
+        // ===================================================== Maps & Relics
+        cats.add(category("relics", Feature.RELIC_MAPS,
+                group("relic_pins", Feature.RELIC_HUD_PINS),
+                row("options.openintel.relic.marker_range",
                         slider("options.openintel.relic.marker_range", 50, 2000, cfg.relicMarkerRange,
-                                "m", v -> cfg.relicMarkerRange = v)),
-                new Option(tr("options.openintel.relic.sort_chest"), "When you open a chest, barrel, ender chest, or shulker, arrange located relic maps from closest to furthest. Other items stay put.",
-                        bool("options.openintel.relic.sort_chest", cfg.sortRelicMaps, v -> cfg.sortRelicMaps = v))
-        )));
+                                "m", v -> cfg.relicMarkerRange = v))));
 
-        // ----------------------------------------------------------- macros
-        cats.add(new Category("macros", "Macros", List.of(
-                new Group("Attack macro"),
-                new Option(tr("options.openintel.macro.attack_interval"), "Milliseconds between swings.",
+        // =========================================================== Utility
+        cats.add(category("macros", Feature.MACROS,
+                group("attack_macro"),
+                row("options.openintel.macro.attack_interval",
                         slider("options.openintel.macro.attack_interval", 50, 1000, cfg.attackMacroIntervalMs,
                                 " ms", v -> cfg.attackMacroIntervalMs = v)),
-                new Group("Use macro"),
-                new Option(tr("options.openintel.macro.use_interval"), "Milliseconds between uses — bottles, pearls, throws.",
+                group("use_macro"),
+                row("options.openintel.macro.use_interval",
                         slider("options.openintel.macro.use_interval", 50, 1000, cfg.useMacroIntervalMs,
                                 " ms", v -> cfg.useMacroIntervalMs = v)),
-                new Group("Ice road"),
-                new Option(tr("options.openintel.macro.snap_yaw"), "Snap movement to 45-degree angles.",
+                group("ice_road"),
+                row("options.openintel.macro.snap_yaw",
                         bool("options.openintel.macro.snap_yaw", cfg.iceRoadSnapYaw, v -> cfg.iceRoadSnapYaw = v)),
-                new Option(tr("options.openintel.macro.snap_pitch"), "Snap view pitch for boat gliding.",
+                row("options.openintel.macro.snap_pitch",
                         bool("options.openintel.macro.snap_pitch", cfg.iceRoadSnapPitch, v -> cfg.iceRoadSnapPitch = v)),
-                new Option(tr("options.openintel.macro.auto_eat"), "Eat automatically when hungry.",
+                row("options.openintel.macro.auto_eat",
                         bool("options.openintel.macro.auto_eat", cfg.iceRoadAutoEat, v -> cfg.iceRoadAutoEat = v)),
-                new Option(tr("options.openintel.macro.stop_hunger"), "Park the boat when hunger runs too low.",
-                        bool("options.openintel.macro.stop_hunger", cfg.iceRoadStopAtHunger, v -> cfg.iceRoadStopAtHunger = v))
-        )));
+                row("options.openintel.macro.stop_hunger",
+                        bool("options.openintel.macro.stop_hunger", cfg.iceRoadStopAtHunger, v -> cfg.iceRoadStopAtHunger = v))));
+
+        cats.add(category("inventory", Feature.JUNK_REJECT,
+                group("junk"),
+                row("options.openintel.junk.items",
+                        button("options.openintel.junk.items.button", () -> Minecraft.getInstance()
+                                .setScreen(new JunkItemPickerScreen(self)))),
+                row("options.openintel.junk.reset",
+                        button("options.openintel.junk.reset.button", () ->
+                                cfg.junkItems = new ArrayList<>(OIConfig.DEFAULT_JUNK_ITEMS)))));
 
         // --------------------------------------------------------- keybinds
         List<Item> keyItems = new ArrayList<>();
-        keyItems.add(new Group("Controls"));
+        keyItems.add(group("controls"));
         for (KeyMapping kb : OpenIntelClient.allKeys()) {
-            Button bind = Button.builder(kb.getTranslatedKeyMessage(),
-                    b -> rebind.begin(kb)).build();
-            Button reset = Button.builder(Component.literal("Reset"),
-                    b -> rebind.reset(kb)).build();
-            keyItems.add(new Option(Component.translatable(kb.getName()).getString(),
-                    "Click to rebind, then press a key or mouse button. ESC cancels.",
-                    bind, reset, kb));
+            AbstractWidget bind = new OiWidgets.Flat(kb.getTranslatedKeyMessage(), () -> rebind.begin(kb));
+            AbstractWidget reset = new OiWidgets.Flat(Component.translatable("options.openintel.keybind.reset"),
+                    () -> rebind.reset(kb));
+            keyItems.add(new Option(tr(kb.getName()), tr("options.openintel.keybind.tooltip"),
+                    bind, reset, kb, KeybindFeatures.featureFor(kb.getName())));
         }
-        cats.add(new Category("keybinds", "Keybinds", keyItems));
-
-        // -------------------------------------------------------- inventory
-        cats.add(new Category("inventory", "Inventory", List.of(
-                new Group("Junk reject"),
-                new Option("Auto-drop junk", "Throw listed items back out the moment they enter your inventory.",
-                        bool("options.openintel.junk.enabled", cfg.junkReject, v -> cfg.junkReject = v)),
-                new Option("Junk items", "Pick which blocks and items get thrown out.",
-                        button("Pick items…", () -> Minecraft.getInstance()
-                                .setScreen(new JunkItemPickerScreen(self)))),
-                new Option("Reset junk list", "Back to the default common blocks.",
-                        button("Restore defaults", () ->
-                                cfg.junkItems = new ArrayList<>(OIConfig.DEFAULT_JUNK_ITEMS)))
-        )));
+        cats.add(new Category("keybinds", tr("options.openintel.category.keybinds"), null, keyItems));
 
         return cats;
     }
@@ -445,56 +379,42 @@ public final class ClickGui {
         return Component.translatable(key).getString();
     }
 
-    private static Button fontToggle(java.util.function.BooleanSupplier current, Consumer<Boolean> apply) {
-        return Button.builder(fontLabel(current.getAsBoolean()), button -> {
-            apply.accept(!current.getAsBoolean());
-            button.setMessage(fontLabel(current.getAsBoolean()));
-        }).build();
+    private static Category category(String id, Feature feature, Item... items) {
+        return new Category(id, tr("options.openintel.category." + id), feature, List.of(items));
     }
 
-    private static Component fontLabel(boolean clean) {
-        return Component.translatable(clean ? "options.openintel.hud.font.clean" : "options.openintel.hud.font.minecraft");
+    private static Group group(String id) {
+        return group(id, null);
     }
 
-    private static Button crosshairToggle(OIConfig cfg) {
-        return Button.builder(Component.literal(cfg.crosshair.enabled ? "Custom" : "Vanilla"), button -> {
-            cfg.crosshair.enabled = !cfg.crosshair.enabled;
-            button.setMessage(Component.literal(cfg.crosshair.enabled ? "Custom" : "Vanilla"));
-        }).build();
+    private static Group group(String id, Feature feature) {
+        return new Group(tr("options.openintel.group." + id), feature);
     }
 
-    private static void applyFont(OIConfig config, boolean clean) {
-        config.cleanFont = clean;
-        if (UiFont.setEnabled(clean)) Minecraft.getInstance().gui.getChat().rescaleChat();
-        config.save();
+    /** Row whose label is {@code key} and tooltip {@code key + ".tooltip"}. */
+    private static Option row(String key, AbstractWidget widget) {
+        return row(null, key, widget);
+    }
+
+    private static Option row(Feature feature, String key, AbstractWidget widget) {
+        return new Option(tr(key), tr(key + ".tooltip"), widget, null, null, feature);
     }
 
     private static AbstractWidget bool(String key, boolean current,
                                         Consumer<Boolean> apply) {
-        return OptionInstance.createBoolean(key, current, v -> apply.accept(v))
-                .createButton(Minecraft.getInstance().options, 0, 0, 150);
+        return new OiWidgets.Toggle(current, apply);
     }
 
     private static AbstractWidget slider(String key, int min, int max, int current,
                                           String suffix, Consumer<Integer> apply) {
-        return new OptionInstance<>(key, OptionInstance.noTooltip(),
-                (text, v) -> text.copy().append(": " + v + suffix),
-                new OptionInstance.IntRange(min, max, true),
-                current, v -> apply.accept(v))
-                .createButton(Minecraft.getInstance().options, 0, 0, 150);
+        return new OiWidgets.Slider(min, max, current, v -> v + suffix, apply);
     }
 
     /** Slider stored in half-block steps. 21 keeps the Civ+ field (19 blocks across). */
     private static AbstractWidget halfSlider(String key, int minHalf, int maxHalf, int current,
                                               Consumer<Integer> apply) {
-        int clamped = Math.clamp(current, minHalf, maxHalf);
-        return new OptionInstance<>(key, OptionInstance.noTooltip(),
-                (text, v) -> v == 21
-                        ? text.copy().append(": Civ+")
-                        : text.copy().append(": " + halfText(v) + " (Ø " + v + ")"),
-                new OptionInstance.IntRange(minHalf, maxHalf, true),
-                clamped, v -> apply.accept(v))
-                .createButton(Minecraft.getInstance().options, 0, 0, 150);
+        return new OiWidgets.Slider(minHalf, maxHalf, current,
+                v -> v == 21 ? "Civ+" : halfText(v) + " (Ø " + v + ")", apply);
     }
 
     private static String halfText(int half) {
@@ -511,22 +431,16 @@ public final class ClickGui {
     /** 0–20000 slider that reads "unlimited" at 0. */
     private static AbstractWidget rangeSlider(String key, int current,
                                                Consumer<Integer> apply) {
-        return new OptionInstance<>(key, OptionInstance.noTooltip(),
-                (text, v) -> text.copy().append(": " + (v <= 0 ? "unlimited" : v + "m")),
-                new OptionInstance.IntRange(0, 20000, true),
-                current, v -> apply.accept(v))
-                .createButton(Minecraft.getInstance().options, 0, 0, 150);
+        return new OiWidgets.Slider(0, 20000, current,
+                v -> v <= 0 ? Component.translatable("options.openintel.unlimited").getString() : v + "m", apply);
     }
 
     /** 0–255 slider that writes only the alpha byte of an ARGB color. */
     private static AbstractWidget alphaSlider(String key, int color,
                                                Consumer<Integer> apply) {
         int alpha = (color >>> 24) & 0xFF;
-        return new OptionInstance<>(key, OptionInstance.noTooltip(),
-                (text, v) -> text.copy().append(": " + v),
-                new OptionInstance.IntRange(0, 255, true),
-                alpha, (Integer v) -> apply.accept((color & 0x00FFFFFF) | (v << 24)))
-                .createButton(Minecraft.getInstance().options, 0, 0, 150);
+        return new OiWidgets.Slider(0, 255, alpha, Integer::toString,
+                v -> apply.accept((color & 0x00FFFFFF) | (v << 24)));
     }
 
     /** Cycles a RadarBlipFilter; the label resolves through the enum's lang key. */
@@ -540,12 +454,8 @@ public final class ClickGui {
     private static <E extends Enum<E>> AbstractWidget cycle(String key, E[] values,
             Function<E, String> lang, Function<String, E> byName,
             E current, Consumer<E> apply) {
-        return new OptionInstance<>(key, OptionInstance.noTooltip(),
-                (text, v) -> Component.translatable(lang.apply(v)),
-                new OptionInstance.Enum<>(List.of(values),
-                        com.mojang.serialization.Codec.STRING.xmap(byName, Enum::name)),
-                current, v -> apply.accept(v))
-                .createButton(Minecraft.getInstance().options, 0, 0, 150);
+        return new OiWidgets.Picker<>(List.of(values), current,
+                v -> Component.translatable(lang.apply(v)), apply);
     }
 
     private static AbstractWidget textField(String current, String placeholder,
@@ -555,14 +465,17 @@ public final class ClickGui {
                 Component.literal("field"));
         field.setMaxLength(maxLen);
         field.setValue(current);
-        field.setHint(Component.literal(placeholder));
+        field.setHint(Component.literal(placeholder).withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+        // The settings tile draws the field box; the text sits inset inside it.
+        field.setBordered(false);
         field.setResponder(s -> apply.accept(s.trim()));
         return field;
     }
 
 
-    private static AbstractWidget button(String label, Runnable action) {
-        return Button.builder(Component.literal(label), b -> action.run()).build();
+    /** Button whose caption is the translation of {@code key}. */
+    private static AbstractWidget button(String key, Runnable action) {
+        return new OiWidgets.Flat(Component.translatable(key), action);
     }
 
     /**
@@ -574,15 +487,18 @@ public final class ClickGui {
                                                java.util.function.IntSupplier get,
                                                java.util.function.IntConsumer set,
                                                String autoLabel, Runnable autoAction) {
-        Button[] ref = new Button[1];
+        OiWidgets.Flat[] ref = new OiWidgets.Flat[1];
         java.util.function.IntConsumer apply = v -> {
             set.accept(v);
-            ref[0].setMessage(Component.literal(v == -1 ? "auto" : String.format("#%08X", v)));
+            ref[0].setMessage(v == -1
+                    ? Component.translatable("options.openintel.color.auto")
+                    : Component.literal(String.format("#%08X", v)));
         };
-        ref[0] = Button.builder(Component.literal(""), b ->
+        ref[0] = new OiWidgets.Flat(Component.literal(""), () ->
                 Minecraft.getInstance().setScreen(new ColorPickerScreen(self, label,
                         get.getAsInt() == -1 ? 0xFFFF5555 : get.getAsInt(),
-                        apply, autoLabel, autoAction))).build();
+                        apply, autoLabel, autoAction)));
+        ref[0].swatch(get::getAsInt);
         apply.accept(get.getAsInt());
         return ref[0];
     }

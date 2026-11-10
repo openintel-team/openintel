@@ -1,5 +1,7 @@
 package dev.openintel.viz;
 
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.config.OIConfig;
 import dev.openintel.wartable.Sanctuaries;
@@ -64,7 +66,7 @@ public final class RangeOverlay {
     public static ShapesKey shapesKey(Minecraft client) {
         if (client == null || client.level == null || client.player == null) return null;
         OIConfig cfg = OpenIntelClient.config();
-        if (cfg == null || !cfg.vizEnabled || !(cfg.vizSnitch || cfg.vizBastion)) return null;
+        if (!shapesOn(cfg)) return null;
         String dim = client.level.dimension().identifier().toString();
         double snitchR = snitchRadius(cfg), bastionR = bastionRadius(cfg);
         Vec3 eye = client.player.position();
@@ -76,14 +78,14 @@ public final class RangeOverlay {
             RangeShape shape = shapes.get(i);
             if (shape == null || !shape.enabled || shape.type == null || !dimEquals(dim, shape.dimension)) continue;
             boolean near = switch (shape.type) {
-                case SNITCH -> cfg.vizSnitch && nearShape(eye, shape.x + 0.5, shape.y + 0.5, shape.z + 0.5, snitchR);
-                case BASTION -> cfg.vizBastion && nearShape(eye, shape.x + 0.5, shape.y + 0.5, shape.z + 0.5, bastionR);
+                case SNITCH -> on(cfg, Feature.VIZ_SNITCH) && nearShape(eye, shape.x + 0.5, shape.y + 0.5, shape.z + 0.5, snitchR);
+                case BASTION -> on(cfg, Feature.VIZ_BASTION) && nearShape(eye, shape.x + 0.5, shape.y + 0.5, shape.z + 0.5, bastionR);
                 case SANCTUARY -> false;
             };
             if (near) inRange.set(i);
         }
         if (inRange.isEmpty()) return null;
-        return new ShapesKey(dim, revision, cfg.vizSnitch, cfg.vizBastion, cfg.vizSeeThrough, snitchR, bastionR,
+        return new ShapesKey(dim, revision, on(cfg, Feature.VIZ_SNITCH), on(cfg, Feature.VIZ_BASTION), seeThrough(cfg), snitchR, bastionR,
                 inRange, client.level.getMaxY());
     }
 
@@ -91,7 +93,7 @@ public final class RangeOverlay {
     public static BastionHeightKey bastionHeightKey(Minecraft client) {
         if (client == null || client.level == null || client.player == null) return null;
         OIConfig cfg = OpenIntelClient.config();
-        if (cfg == null || !cfg.vizEnabled || !cfg.vizBastion) return null;
+        if (!bastionHeightsOn(cfg)) return null;
         String dim = client.level.dimension().identifier().toString();
         double bastionR = bastionRadius(cfg);
         Vec3 eye = client.player.position();
@@ -107,14 +109,14 @@ public final class RangeOverlay {
             rings.set(i);
         }
         if (rings.isEmpty()) return null;
-        return new BastionHeightKey(dim, store.revision(), cfg.vizSeeThrough, bastionR, rings);
+        return new BastionHeightKey(dim, store.revision(), seeThrough(cfg), bastionR, rings);
     }
 
     /** Null when no manual sanctuary can be drawn in this dimension. */
     public static DiskKey diskKey(Minecraft client) {
         if (client == null || client.level == null || client.player == null) return null;
         OIConfig cfg = OpenIntelClient.config();
-        if (cfg == null || !cfg.vizEnabled || !cfg.vizSanctuary) return null;
+        if (!sanctuariesOn(cfg)) return null;
         String dim = client.level.dimension().identifier().toString();
         RangeStore store = RangeStore.get();
         long revision = store.revision();
@@ -126,7 +128,7 @@ public final class RangeOverlay {
             }
         }
         if (!any) return null;
-        return new DiskKey(dim, revision, cfg.vizSeeThrough,
+        return new DiskKey(dim, revision, seeThrough(cfg),
                 cell(client.player.getX()), cell(client.player.getY()), cell(client.player.getZ()));
     }
 
@@ -134,10 +136,10 @@ public final class RangeOverlay {
     public static LiveKey liveKey(Minecraft client) {
         if (client == null || client.level == null || client.player == null) return null;
         OIConfig cfg = OpenIntelClient.config();
-        if (cfg == null || !cfg.vizEnabled || !cfg.vizLiveSanctuaries) return null;
+        if (!liveOn(cfg)) return null;
         if (!isOverworld(client.level.dimension().identifier().toString())) return null;
         Sanctuaries.ensureLoaded();
-        return new LiveKey(Sanctuaries.revision(), cfg.vizSeeThrough,
+        return new LiveKey(Sanctuaries.revision(), seeThrough(cfg),
                 cell(client.player.getX()), cell(client.player.getZ()));
     }
 
@@ -329,6 +331,19 @@ public final class RangeOverlay {
         return RangeGeometry.bastionDiskCovers((int) Math.floor(centerX), (int) Math.floor(centerZ),
                 blockX, blockZ, radius);
     }
+
+    private static boolean on(OIConfig cfg, Feature f) { return cfg != null && Features.isOn(cfg, f); }
+
+    // Layer gates: each is false while Visualizations (or that child) is off, so no geometry is built.
+    static boolean shapesOn(OIConfig cfg) { return on(cfg, Feature.VIZ_SNITCH) || on(cfg, Feature.VIZ_BASTION); }
+
+    static boolean bastionHeightsOn(OIConfig cfg) { return on(cfg, Feature.VIZ_BASTION); }
+
+    static boolean sanctuariesOn(OIConfig cfg) { return on(cfg, Feature.VIZ_SANCTUARY); }
+
+    static boolean liveOn(OIConfig cfg) { return on(cfg, Feature.VIZ_LIVE_SANCTUARIES); }
+
+    private static boolean seeThrough(OIConfig cfg) { return Features.isOn(cfg, Feature.VIZ_SEE_THROUGH); }
 
     private static double snitchRadius(OIConfig cfg) {
         int r = cfg.vizSnitchRadius;

@@ -3,6 +3,8 @@ package dev.openintel.render;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.allegiance.AllegianceManager.Allegiance;
 import dev.openintel.config.OIConfig;
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.ping.PingManager;
 import dev.openintel.tracker.Tracker.RemotePlayer;
 import dev.openintel.xaero.RelicMapMath;
@@ -113,7 +115,9 @@ public final class MarkerHud {
         for (var e : client.level.players()) localPlayers.put(e.getGameProfile().name(), e);
 
         List<Target> targets = new ArrayList<>();
-        if (cfg.relayRendering) {
+        // Each layer follows its own feature switch: relay players (Player markers),
+        // pings, snitch hits, relic pins and War Table pins.
+        if (Features.isOn(cfg, Feature.PLAYER_MARKERS)) {
             for (RemotePlayer p : OpenIntelClient.tracker().all()) {
                 if (p.dimension == null || !p.dimension.equals(myDim)) continue;
                 var local = localPlayers.get(p.name);
@@ -135,6 +139,8 @@ public final class MarkerHud {
                 targets.add(new Target("player|" + myDim + "|" + p.name, p.name, color,
                         allegiance == Allegiance.FOCUS ? 1 : 0, relayAlpha, tx, ty, tz));
             }
+        }
+        if (Features.isOn(cfg, Feature.PINGS)) {
             for (PingManager.Ping ping : PingManager.active()) {
                 if (ping.dimension == null || !ping.dimension.equals(myDim)) continue;
                 float life = Math.min(1f, (ping.expiresAt - now) / 4000f);
@@ -142,6 +148,8 @@ public final class MarkerHud {
                         scaleAlpha(ping.color, opacity * life), 1, relayAlpha,
                         ping.x, ping.y, ping.z));
             }
+        }
+        if (Features.isOn(cfg, Feature.SNITCH_ALERTS)) {
             // Snitch hits: "snitch | tripper | 42s", fading to nothing over
             // snitchMarkerSeconds. The live counter is free — we render per frame.
             long snitchLife = cfg.snitchMarkerSeconds * 1000L;
@@ -164,7 +172,8 @@ public final class MarkerHud {
 
         // Nearby relic maps from inventory: X/Z only, so the diamond rides at
         // eye level. Within cfg.relicMarkerRange they pin like snitch labels.
-        if (RelicMapMath.OVERWORLD.equals(myDim) && pinOpacity > 0) {
+        if (Features.isOn(cfg, Feature.RELIC_HUD_PINS)
+                && RelicMapMath.OVERWORLD.equals(myDim) && pinOpacity > 0) {
             Vec3 feet = client.player.getPosition(tickDelta);
             double anchorY = feet.y + 1.5;
             for (var marker : RelicMapScanner.markers(client)) {
@@ -182,7 +191,7 @@ public final class MarkerHud {
 
         // War Table pins are persistent waypoints: shared while the relay is
         // live, local-only while offline. Same X/Z convention as relic points.
-        if (cfg.warTablePinMarkers && pinOpacity > 0
+        if (Features.isOn(cfg, Feature.WAR_TABLE_HUD_PINS) && pinOpacity > 0
                 && RelicMapMath.OVERWORLD.equals(myDim)) {
             for (Stroke s : WarTable.waypointStrokes()) {
                 if (s.tool != Stroke.Tool.MARKER) continue;
@@ -215,6 +224,8 @@ public final class MarkerHud {
         List<EdgeEntry> left = new ArrayList<>(), right = new ArrayList<>();
         List<EdgeEntry> top = new ArrayList<>(), bottom = new ArrayList<>();
 
+        // Player chevrons follow the Player markers feature; other intel keeps the stored edge-chevron choice.
+        boolean playerChevrons = Features.isOn(cfg, Feature.EDGE_CHEVRONS);
         for (Target t : targets) {
             double dx = t.x - camPos.x, dy = t.y - camPos.y, dz = t.z - camPos.z;
             double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -260,7 +271,7 @@ public final class MarkerHud {
             // Off-screen: the border the center→target ray hits first, i.e.
             // whichever NDC axis overflows more. Directly-behind targets have
             // ~zero NDC magnitude, so fall back to camera-space dominance.
-            if (cfg.edgeChevrons) {
+            if (t.key.startsWith("player|") ? playerChevrons : cfg.edgeChevrons) {
                 EdgeEntry e = new EdgeEntry(text, t.color, dist, t.opacityGroup);
                 if (Math.abs(nx) > 0.01f || Math.abs(ny) > 0.01f) {
                     if (Math.abs(nx) > Math.abs(ny)) {

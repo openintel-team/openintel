@@ -594,7 +594,7 @@ public class WarTableScreen extends Screen {
 
     private boolean showSanctuaries() {
         var cfg = OpenIntelClient.config();
-        return cfg == null || cfg.warTableSanctuaries;
+        return cfg == null || dev.openintel.feature.Features.isOn(cfg, dev.openintel.feature.Feature.WAR_TABLE_SANCTUARIES);
     }
 
     private void paintSanctuariesG(Graphics2D g, MapProjection proj) {
