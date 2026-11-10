@@ -21,9 +21,7 @@ mod's types, so JourneyMap and Xaero draw the same content:
   with the live position. `PlayerMode.SKIP_LOADED` (JourneyMap) leaves loaded
   players out because JourneyMap's own radar already draws them. This is the
   only intended difference between the two maps. Relay players are drawn at
-  `RemotePlayer.estimate(now)`: the last report projected along its velocity
-  for up to 500 ms from when it was observed, easing over 150 ms to each new
-  report (`MotionEstimate`).
+  the last reported position, with no projection or easing between reports.
 - `MapMarkerStyle.of(marker, selected)` picks the shape (circle, diamond, name
   diamond, relic texture, or cross), the relic texture, the title and caption,
   the color, and the selected-library highlight. `signature` is the rebuild key.
