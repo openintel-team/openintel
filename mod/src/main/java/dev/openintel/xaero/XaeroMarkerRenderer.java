@@ -1,5 +1,7 @@
 package dev.openintel.xaero;
 
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.map.MapMarker;
 import dev.openintel.map.MapMarkerSource;
@@ -67,7 +69,7 @@ final class XaeroMarkerRenderer extends ElementRenderer<MapMarker, XaeroMarkerRe
     /** Shared marker list, narrowed to the dimension Xaero is showing. */
     private static List<MapMarker> snapshot(String dimension) {
         var cfg = OpenIntelClient.config();
-        if (cfg != null && !cfg.xaeroWorldMap) return List.of();
+        if (cfg == null || !Features.isOn(cfg, Feature.XAERO_WORLD_MAP)) return List.of();
         long now = System.currentTimeMillis();
         List<MapMarker> result = new ArrayList<>();
         for (MapMarker marker : MapMarkerSource.all(Minecraft.getInstance(), cfg, now,

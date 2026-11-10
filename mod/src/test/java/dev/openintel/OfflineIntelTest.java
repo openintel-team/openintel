@@ -20,6 +20,7 @@ public final class OfflineIntelTest {
         verifyProducerOrigins();
         verifyActualStores();
         verifyFeedOwnership();
+        verifySnitchFeatureOff();
         System.out.println("Offline intel ownership tests passed");
     }
 
@@ -101,7 +102,7 @@ public final class OfflineIntelTest {
         int index = 0, local = -1, forward = -1;
         for (var instruction : intake.instructions) {
             if (instruction instanceof MethodInsnNode call && call.name.equals("addSnitchHit")) local = index;
-            if (instruction instanceof FieldInsnNode field && field.name.equals("snitchRelay")) forward = index;
+            if (instruction instanceof FieldInsnNode field && field.name.equals("SNITCH_SHARE")) forward = index;
             index++;
         }
         check(local >= 0 && forward > local, "Forwarding toggle is checked only after local snitch detection");
@@ -240,6 +241,35 @@ public final class OfflineIntelTest {
         check(entries.size() == 1, "Clearing first relay preserves coalesced source ownership");
         clearSource.invoke(null, "second");
         check(entries.isEmpty(), "Coalesced line clears after final source disappears");
+    }
+
+    /** Snitch alerts off: an incoming relay snitch and a local hit are both rejected. */
+    private static void verifySnitchFeatureOff() throws Exception {
+        var cfg = new dev.openintel.config.OIConfig();
+        cfg.snitchAlertsEnabled = false;
+        dev.openintel.feature.Features.bind(() -> cfg, mod -> true);
+        try {
+            var tracker = new dev.openintel.tracker.Tracker();
+            var msg = new com.google.gson.JsonObject();
+            msg.addProperty("type", "snitch");
+            msg.addProperty("player", "Enemy1");
+            msg.addProperty("snitch", "Gate");
+            msg.addProperty("from", "teammate");
+            msg.addProperty("x", 10);
+            msg.addProperty("y", 64);
+            msg.addProperty("z", 20);
+            msg.addProperty("world", "minecraft:overworld");
+            var apply = tracker.getClass().getDeclaredMethod("applySnitch", com.google.gson.JsonObject.class);
+            apply.setAccessible(true);
+            apply.invoke(tracker, msg);
+            check(!tracker.snitchHits().iterator().hasNext(), "Snitch alerts off rejects incoming relay snitch events");
+            tracker.addSnitchHit("Gate", "Enemy1", "self", 10, 64, 20, "minecraft:overworld", 1L);
+            check(!tracker.snitchHits().iterator().hasNext(), "Snitch alerts off rejects local snitch hits");
+            check(!dev.openintel.feature.Features.isOn(dev.openintel.feature.Feature.SNITCH_SHARE),
+                    "Snitch sharing follows the Snitch alerts parent");
+        } finally {
+            dev.openintel.feature.Features.bind(() -> null, mod -> true);
+        }
     }
 
     private static ClassNode readClass(String name) throws Exception {

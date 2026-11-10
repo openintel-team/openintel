@@ -1,5 +1,7 @@
 package dev.openintel.xaero;
 
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.config.OIConfig;
 import net.minecraft.client.Minecraft;
@@ -31,7 +33,7 @@ public final class RelicChestSort {
     public static void tick(Minecraft client) {
         OIConfig cfg = OpenIntelClient.config();
         Player player = client.player;
-        if (cfg == null || !cfg.sortRelicMaps || player == null || client.gameMode == null || client.level == null) {
+        if (cfg == null || !Features.isOn(cfg, Feature.RELIC_CHEST_SORT) || player == null || client.gameMode == null || client.level == null) {
             reset();
             return;
         }

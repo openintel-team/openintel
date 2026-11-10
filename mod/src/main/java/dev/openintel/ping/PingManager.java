@@ -4,6 +4,8 @@ import com.google.gson.JsonObject;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.api.ApiEvent;
 import dev.openintel.api.internal.ApiBridge;
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.render.EventFeed;
 import dev.openintel.tracker.LocalRelayStore;
 import net.minecraft.client.Minecraft;
@@ -93,6 +95,7 @@ public final class PingManager {
             client.execute(() -> { if (client.level == world) send(label, color, x, y, z, dim); });
             return;
         }
+        if (!Features.isOn(Feature.PINGS)) return;
         String sender = client.player != null ? client.player.getGameProfile().name() : "?";
         String id = sender + "-" + Long.toString(System.currentTimeMillis(), 36)
                 + Integer.toString((int) x ^ (int) z, 36);
@@ -117,7 +120,8 @@ public final class PingManager {
 
     public static boolean sendShared(String label, int color, double x, double y, double z, String dim) {
         Minecraft client = Minecraft.getInstance();
-        if (!client.isSameThread() || client.player == null || !OpenIntelClient.relay().isAuthenticated()) return false;
+        if (!client.isSameThread() || client.player == null || !Features.isOn(Feature.PINGS)
+                || !OpenIntelClient.relay().isAuthenticated()) return false;
         String sender = client.player.getGameProfile().name();
         String id = java.util.UUID.randomUUID().toString();
         JsonObject msg = new JsonObject();
@@ -145,6 +149,7 @@ public final class PingManager {
             executor.execute(() -> { if (executor.level == world) dev.openintel.net.RelaySource.run(source, () -> receive(copy)); });
             return;
         }
+        if (!Features.isOn(Feature.PINGS)) return;
         if (!msg.has("id") || !msg.has("label")
                 || !msg.has("x") || !msg.has("y") || !msg.has("z")) return;
         String id = msg.get("id").getAsString();
@@ -184,6 +189,7 @@ public final class PingManager {
             client.execute(() -> { if (client.level == world) dev.openintel.net.RelaySource.run(source, () -> receiveWhere(copy)); });
             return;
         }
+        if (!Features.isOn(Feature.PINGS)) return;
         if (!msg.has("player") || !msg.has("x") || !msg.has("y") || !msg.has("z")) return;
         String player = msg.get("player").getAsString();
         long t = msg.has("t") ? msg.get("t").getAsLong() : System.currentTimeMillis();

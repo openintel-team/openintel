@@ -4,7 +4,8 @@ import com.google.gson.JsonObject;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.api.*;
 import dev.openintel.config.OIConfig;
-import dev.openintel.gui.ClickGuiScreen;
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.gui.HudEditorScreen;
 import dev.openintel.ping.PingManager;
 import dev.openintel.render.EventFeed;
@@ -104,27 +105,33 @@ public final class ApiBridge {
     public static EventsApi events() { return EVENTS; }
     public static SettingsApi settings() { return SETTINGS; }
 
-    public static void settingsChanged() {
-        if (!ready) return;
-        requireClientThread();
-        var c = OpenIntelClient.config();
-        var value = new SettingsApi.View(
-                new SettingsApi.Radar(c.radarEnabled, c.radarX, c.radarY, c.radarSize, c.radarRange,
+    /** Settings snapshot; enabled flags report the effective feature state. */
+    public static SettingsApi.View view(OIConfig c) {
+        return new SettingsApi.View(
+                new SettingsApi.Radar(on(c, Feature.RADAR), c.radarX, c.radarY, c.radarSize, c.radarRange,
                         c.radarCircles, c.radarNorthUp, c.radarCompression > 0, c.radarShowItems,
                         c.radarShowVehicles, false, c.radarIconSize, c.radarTextSize,
                         c.radarBgColor, c.radarFgColor),
-                new SettingsApi.Markers(c.relayRendering, c.markVisiblePlayers, c.edgeChevrons,
+                new SettingsApi.Markers(on(c, Feature.PLAYER_MARKERS), c.markVisiblePlayers, on(c, Feature.EDGE_CHEVRONS),
                         OIConfig.markerAlpha(c.relayOpacity), c.staleDecay, c.staleAfterMs, c.maxMarkerDistance,
                         c.edgeTopXPct, c.edgeBottomXPct, c.edgeLeftYPct, c.edgeRightYPct,
                         c.edgeRowInset, c.edgeColumnInset),
-                new SettingsApi.Snitches(c.snitchRelay, c.snitchMarkerSeconds, c.snitchMarkerRange,
+                new SettingsApi.Snitches(on(c, Feature.SNITCH_SHARE), c.snitchMarkerSeconds, c.snitchMarkerRange,
                         c.snitchMarkerColor, c.snitchMarkerColorAuto),
-                new SettingsApi.Overlays(new SettingsApi.Overlay(c.presenceEnabled, c.presenceX, c.presenceY),
+                new SettingsApi.Overlays(new SettingsApi.Overlay(on(c, Feature.PRESENCE), c.presenceX, c.presenceY),
                         c.presenceMaxRows, c.presenceShowAllDims,
-                        new SettingsApi.Overlay(c.eventFeedEnabled, c.eventFeedX, c.eventFeedY), c.eventFeedSeconds,
-                        new SettingsApi.Overlay(c.armorHudEnabled, c.armorHudX, c.armorHudY),
-                        new SettingsApi.Overlay(c.potionHudEnabled, c.potionHudX, c.potionHudY)),
-                c.pingWheelEnabled, c.pingSeconds, c.reportIntervalMs);
+                        new SettingsApi.Overlay(on(c, Feature.EVENT_FEED), c.eventFeedX, c.eventFeedY), c.eventFeedSeconds,
+                        new SettingsApi.Overlay(on(c, Feature.ARMOR_HUD), c.armorHudX, c.armorHudY),
+                        new SettingsApi.Overlay(on(c, Feature.POTION_HUD), c.potionHudX, c.potionHudY)),
+                on(c, Feature.PINGS), c.pingSeconds, c.reportIntervalMs);
+    }
+
+    private static boolean on(OIConfig c, Feature feature) { return Features.isOn(c, feature); }
+
+    public static void settingsChanged() {
+        if (!ready) return;
+        requireClientThread();
+        var value = view(OpenIntelClient.config());
         if (!value.equals(settingsState)) {
             settingsState = value;
             publish(new ApiEvent.SettingsChanged(value));
@@ -264,7 +271,7 @@ public final class ApiBridge {
     private static CompletableFuture<ActionResult> screen(boolean editor) {
         return action(false, () -> {
             var client = Minecraft.getInstance();
-            client.setScreenAndShow(editor ? new HudEditorScreen(client.gui.screen()) : new ClickGuiScreen(client.gui.screen()));
+            client.setScreenAndShow(editor ? new HudEditorScreen(client.gui.screen()) : new dev.openintel.gui.FeaturesScreen(client.gui.screen()));
             return completed("Screen opened");
         });
     }

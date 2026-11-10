@@ -1,5 +1,7 @@
 package dev.openintel.map;
 
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.config.OIConfig;
 import dev.openintel.ping.PingManager;
@@ -65,6 +67,17 @@ public final class MapMarkerSource {
 
     private MapMarkerSource() { }
 
+    private static boolean intel(OIConfig cfg) { return Features.isOn(cfg, Feature.WORLD_MAP_INTEL); }
+
+    private static boolean relics(OIConfig cfg) {
+        return Features.isOn(cfg, Feature.WORLD_MAP_RELICS) && Features.isOn(cfg, Feature.RELIC_MAPS);
+    }
+
+    /** War Table layers need the War Table itself on. */
+    private static boolean on(OIConfig cfg, Feature layer) {
+        return Features.isOn(cfg, layer) && Features.isOn(cfg, Feature.WAR_TABLE);
+    }
+
     /** Every drawable marker for the running client. Shared toggles in {@code cfg} gate each group. */
     public static List<MapMarker> all(Minecraft client, OIConfig cfg, long now, PlayerMode mode) {
         if (client == null || client.level == null || cfg == null) {
@@ -77,7 +90,7 @@ public final class MapMarkerSource {
     /** Pure core of {@link #all}: no client state is read here. */
     public static List<MapMarker> build(Inputs in, OIConfig cfg, long now, PlayerMode mode) {
         List<MapMarker> result = new ArrayList<>();
-        if (cfg.worldMapIntel) {
+        if (intel(cfg)) {
             addPlayers(result, in, now, mode, cfg.staleAfterMs);
             for (SnitchReport h : in.snitches()) {
                 add(result, now, new MapMarker("snitch:" + h.player() + "@" + h.snitch(),
@@ -91,15 +104,15 @@ public final class MapMarkerSource {
                         p.color() | 0xFF000000, "Ping: " + p.label(), p.sender(), p.expiresAt()));
             }
         }
-        if (cfg.worldMapRelics) {
+        if (relics(cfg)) {
             for (MapMarker marker : in.relics()) add(result, now, marker);
         }
-        addLibraryRelics(result, in.visit(), now);
-        if (cfg.warTablePinWorldMap || cfg.warTableLabelWorldMap || cfg.warTableSanctuaryWorldMap) {
+        if (Features.isOn(cfg, Feature.RELIC_LIBRARY)) addLibraryRelics(result, in.visit(), now);
+        if (on(cfg, Feature.WORLD_MAP_WAR_TABLE_PINS) || on(cfg, Feature.WORLD_MAP_PLACE_LABELS) || on(cfg, Feature.WORLD_MAP_SANCTUARY_NAMES)) {
             List<MapMarker> names = new ArrayList<>();
             WarTableMapMarkers.add(names, in.strokes(),
-                    cfg.warTableSanctuaryWorldMap ? in.sanctuaries() : List.of(),
-                    cfg.warTablePinWorldMap, cfg.warTableLabelWorldMap);
+                    on(cfg, Feature.WORLD_MAP_SANCTUARY_NAMES) ? in.sanctuaries() : List.of(),
+                    on(cfg, Feature.WORLD_MAP_WAR_TABLE_PINS), on(cfg, Feature.WORLD_MAP_PLACE_LABELS));
             for (MapMarker marker : names) add(result, now, marker);
         }
         return List.copyOf(result);
@@ -184,7 +197,7 @@ public final class MapMarkerSource {
         List<SnitchReport> snitches = new ArrayList<>();
         List<PingReport> pings = new ArrayList<>();
         Tracker tracker = OpenIntelClient.tracker();
-        if (cfg.worldMapIntel && tracker != null) {
+        if (intel(cfg) && tracker != null) {
             float tickDelta = client.getDeltaTracker().getGameTimeDeltaPartialTick(false);
             for (AbstractClientPlayer entity : client.level.players()) {
                 Vec3 live = entity.getPosition(tickDelta);
@@ -200,13 +213,13 @@ public final class MapMarkerSource {
                 pings.add(new PingReport(p.id, p.label, p.color, p.sender, p.x, p.y, p.z, p.dimension, p.expiresAt));
             }
         }
-        List<MapMarker> relics = cfg.worldMapRelics ? RelicMapScanner.markers(client) : List.of();
-        boolean names = cfg.warTablePinWorldMap || cfg.warTableLabelWorldMap || cfg.warTableSanctuaryWorldMap;
-        if (cfg.warTableSanctuaryWorldMap) Sanctuaries.ensureLoaded();
+        List<MapMarker> relics = relics(cfg) ? RelicMapScanner.markers(client) : List.of();
+        boolean names = on(cfg, Feature.WORLD_MAP_WAR_TABLE_PINS) || on(cfg, Feature.WORLD_MAP_PLACE_LABELS) || on(cfg, Feature.WORLD_MAP_SANCTUARY_NAMES);
+        if (on(cfg, Feature.WORLD_MAP_SANCTUARY_NAMES)) Sanctuaries.ensureLoaded();
         return new Inputs(self, current, selfPos, loaded, players, snitches, pings, relics,
                 RelicLibraryVisit.current(),
                 names ? WarTable.waypointStrokes() : List.of(),
-                cfg.warTableSanctuaryWorldMap ? Sanctuaries.all() : List.of(),
+                on(cfg, Feature.WORLD_MAP_SANCTUARY_NAMES) ? Sanctuaries.all() : List.of(),
                 name -> OpenIntelClient.allegiances().of(name).argb);
     }
 }

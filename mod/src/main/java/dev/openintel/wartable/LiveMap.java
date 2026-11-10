@@ -1,5 +1,7 @@
 package dev.openintel.wartable;
 
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -167,6 +169,7 @@ public final class LiveMap {
      * cooled down). Cheap to call every frame; never touches a shown image.
      */
     public static void ensureLoaded() {
+        if (!Features.isOn(Feature.WAR_TABLE)) return;
         refreshRenderers();
         start(renderer(), false);
     }
@@ -177,6 +180,7 @@ public final class LiveMap {
      * the server for a newer one in the background without hiding it.
      */
     public static void refresh() {
+        if (!Features.isOn(Feature.WAR_TABLE)) return;
         refreshRenderers();
         start(renderer(), true);
     }

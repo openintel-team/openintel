@@ -1,5 +1,7 @@
 package dev.openintel.mixin;
 
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
@@ -18,7 +20,7 @@ public abstract class CrosshairMixin {
     private void openintel$crosshair(GuiGraphicsExtractor ctx, RenderPipeline pipeline, Identifier sprite,
                                      int x, int y, int width, int height, Operation<Void> original) {
         var style = OpenIntelClient.config().crosshair;
-        if (style.enabled && CrosshairRenderer.VANILLA.equals(sprite)) {
+        if (style != null && Features.isOn(Feature.CROSSHAIR) && CrosshairRenderer.VANILLA.equals(sprite)) {
             CrosshairRenderer.draw(ctx, style, x + width / 2, y + height / 2);
         } else {
             original.call(ctx, pipeline, sprite, x, y, width, height);

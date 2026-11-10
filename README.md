@@ -495,6 +495,7 @@ HUD elements draw in local pixels after OpenIntel has translated the context. Th
 | `mod/` | Fabric client |
 | `relay/` | Node.js relay, Discord bot, and admin HTTP API |
 | `docs/MAP_INTEGRATION.md` | Map integration architecture and verification |
+| `docs/UI_STYLE.md` | Settings and screen design rules (Jade-style UI) |
 
 ```bash
 cd mod && ./gradlew build

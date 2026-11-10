@@ -30,6 +30,7 @@ public final class ChatChannelFilterTest {
         defaultsAndSelectionFallback();
         pinsTheRowToTheTopOfTheChatBox();
         verifyMixinTargets();
+        filterOffShowsEverything();
         System.out.println("ChatChannelFilterTest passed");
     }
 
@@ -376,6 +377,34 @@ public final class ChatChannelFilterTest {
                 check(mixins.asList().stream().anyMatch(value -> value.getAsString().equals(name)),
                         "Chat channel mixin is registered: " + name);
             }
+        }
+    }
+
+    /** With the Chat channel filter feature off, chat is drawn unfiltered and caches reset. */
+    private static void filterOffShowsEverything() {
+        OIConfig cfg = new OIConfig();
+        dev.openintel.feature.Features.bind(() -> cfg, mod -> true);
+        check(ChatChannelFilter.active(cfg), "Chat filter is on by default");
+        cfg.chatFilterEnabled = false;
+        check(!ChatChannelFilter.active(cfg), "Chat filter off is inactive");
+        check(!ChatChannelFilter.active(null), "No config never filters");
+        int before = ChatChannelFilter.generation();
+        dev.openintel.feature.hooks.UtilityHooks.register();
+        dev.openintel.feature.Features.runOffHooks(dev.openintel.feature.Feature.CHAT_FILTER);
+        check(ChatChannelFilter.generation() != before, "Off-hook invalidates channel caches");
+        String mixin = source("dev/openintel/mixin/ChatChannelMixin.java");
+        check(mixin.contains("if (!ChatChannelFilter.active(config)) return original.call(calculator, consumer);"),
+                "Filter off draws every line through the vanilla path");
+        String bar = source("dev/openintel/mixin/ChatChannelBarMixin.java");
+        check(bar.split("!ChatChannelFilter.active\\(config\\)", -1).length == 3,
+                "Filter off hides the chip bar and ignores its clicks");
+    }
+
+    private static String source(String path) {
+        try {
+            return java.nio.file.Files.readString(java.nio.file.Path.of("src/main/java", path));
+        } catch (java.io.IOException e) {
+            throw new AssertionError("Missing source " + path, e);
         }
     }
 

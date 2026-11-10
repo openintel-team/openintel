@@ -1,5 +1,7 @@
 package dev.openintel.wartable;
 
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -207,6 +209,7 @@ public final class WarTable {
 
     /** Relay op: add / delete / clear. */
     public static void receive(JsonObject msg) {
+        if (!Features.isOn(Feature.WAR_TABLE)) return;
         Minecraft client = Minecraft.getInstance();
         if (!client.isSameThread()) {
             JsonObject copy = msg.deepCopy();
@@ -258,6 +261,7 @@ public final class WarTable {
 
     /** Full authoritative set — replaces shared state on (re)auth; local edits survive. */
     public static void applySync(JsonObject msg) {
+        if (!Features.isOn(Feature.WAR_TABLE)) return;
         Minecraft client = Minecraft.getInstance();
         if (client != null && !client.isSameThread()) {
             JsonObject copy = msg.deepCopy();

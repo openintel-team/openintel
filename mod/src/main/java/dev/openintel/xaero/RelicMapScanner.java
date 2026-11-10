@@ -1,5 +1,7 @@
 package dev.openintel.xaero;
 
+import dev.openintel.feature.Feature;
+import dev.openintel.feature.Features;
 import dev.openintel.map.MapMarker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.Holder;
@@ -42,7 +44,7 @@ public final class RelicMapScanner {
 
     public static List<MapMarker> markers(Minecraft client) {
         Player player = client.player;
-        if (player == null || client.level == null) return List.of();
+        if (player == null || client.level == null || !Features.isOn(Feature.RELIC_MAPS)) return List.of();
         LinkedHashMap<String, MapMarker> found = new LinkedHashMap<>();
         var inventory = player.getInventory();
         for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
