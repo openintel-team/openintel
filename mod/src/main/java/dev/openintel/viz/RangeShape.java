@@ -2,7 +2,7 @@ package dev.openintel.viz;
 
 import java.util.UUID;
 
-/** One manually placed coverage field persisted in openintel-ranges.json. */
+/** One manually placed coverage field persisted in openintel/ranges.json. */
 public final class RangeShape {
     public String id = UUID.randomUUID().toString();
     public RangeType type = RangeType.SNITCH;
