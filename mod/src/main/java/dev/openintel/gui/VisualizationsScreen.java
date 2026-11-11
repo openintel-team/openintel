@@ -2,7 +2,6 @@ package dev.openintel.gui;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.openintel.viz.*;
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractButton;
@@ -639,7 +638,7 @@ public final class VisualizationsScreen extends Screen {
     }
     private static final class TransferScreen extends Screen {
         final VisualizationsScreen parent; final boolean exporting; final String groupId;
-        String value = FabricLoader.getInstance().getConfigDir().resolve("openintel-ranges-export.json").toAbsolutePath().toString();
+        String value = dev.openintel.config.DataDir.file(dev.openintel.config.DataDir.RANGES_EXPORT).toAbsolutePath().toString();
         String message;
         TransferScreen(VisualizationsScreen parent, boolean exporting, String groupId) {
             super(Component.literal(exporting ? "Export coverage" : "Import coverage")); this.parent = parent; this.exporting = exporting; this.groupId = groupId;

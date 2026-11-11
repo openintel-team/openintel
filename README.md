@@ -324,8 +324,12 @@ cd mod
 Drop the jar in `.minecraft/mods` alongside Fabric API. On first launch the
 mod writes `config/openintel.json` — set `relayUrl` (for example,
 `ws://your.server:8765`), `minecraftServer` (the allowed multiplayer address),
-and your personal `token`, then join that Minecraft server. These fields are
-also available under `/oi settings`. If JourneyMap or Xaero's World Map is
+and your personal `token`, then join that Minecraft server. The token is kept
+apart from the settings, in `openintel/relay-tokens.json` next to the `config/`
+folder, so your config can be shared without sharing it. That `openintel/`
+folder also holds War Table strokes, the live-map cache, and manual coverage
+shapes (`ranges.json`); data from older versions moves there on first launch.
+These fields are also available under `/oi settings`. If JourneyMap or Xaero's World Map is
 installed, shared players, snitch hits, pings, and relic maps are additionally
 drawn on its fullscreen map — toggleable under `/oi settings` → Integrations.
 
