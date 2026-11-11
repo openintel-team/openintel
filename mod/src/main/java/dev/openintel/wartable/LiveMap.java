@@ -8,7 +8,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.openintel.OpenIntelClient;
-import net.fabricmc.loader.api.FabricLoader;
 
 import javax.imageio.ImageIO;
 import java.awt.Graphics2D;
@@ -31,7 +30,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Downloads the server's live-map renders and slices them into on-disk tile
- * pyramids under config/openintel/livemap/.
+ * pyramids under openintel/livemap/ in the game directory.
  *
  * The API serves whole-map PNGs (one per renderer) plus a JSON metadata file
  * with world bounds — see MapProjection. Tiles are 256px; level L covers
@@ -83,8 +82,7 @@ public final class LiveMap {
     private static final Gson GSON = new Gson();
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10)).build();
-    private static final Path ROOT = FabricLoader.getInstance().getConfigDir()
-            .resolve("openintel").resolve("livemap");
+    private static final Path ROOT = dev.openintel.config.DataDir.file("livemap");
     private static final Map<String, Entry> entries = new ConcurrentHashMap<>();
     private static final Set<String> loading = ConcurrentHashMap.newKeySet();
     private static final AtomicBoolean rendererLoading = new AtomicBoolean();

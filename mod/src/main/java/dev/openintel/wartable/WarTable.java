@@ -10,7 +10,6 @@ import com.google.gson.JsonParser;
 import dev.openintel.OpenIntelClient;
 import dev.openintel.api.OpenIntelApi;
 import dev.openintel.render.EventFeed;
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 
 import java.nio.file.Files;
@@ -346,8 +345,7 @@ public final class WarTable {
 
     private static Path configFile(String name) {
         try {
-            Path config = FabricLoader.getInstance().getConfigDir();
-            return config == null ? null : config.resolve("openintel").resolve(name);
+            return dev.openintel.config.DataDir.file(name);
         } catch (Throwable ignored) {
             return null;
         }

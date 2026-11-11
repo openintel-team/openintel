@@ -2,14 +2,18 @@ package dev.openintel.config;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.openintel.chat.ChatChannel;
 import dev.openintel.viz.RangeGeometry;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,6 +21,11 @@ import java.util.Map;
 
 /**
  * Client-side configuration, persisted to config/openintel.json.
+ *
+ * Relay tokens are credentials, so they are NOT part of that file. They live in
+ * openintel/relay-tokens.json beside the config folder (see {@link DataDir}) and
+ * are marked transient here, which lets players share the config folder and
+ * openintel.json without handing out their token.
  *
  * Note: webhook URLs intentionally do NOT live here. All webhook traffic is
  * fired by the relay server so alerts are deduplicated and the URLs are never
@@ -26,8 +35,23 @@ import java.util.Map;
 public class OIConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
+    /** Headless tests point load/save at a scratch directory instead of Fabric's config dir. */
+    private static volatile Path testConfigDir;
+
+    public static void useConfigDirForTest(Path dir) { testConfigDir = dir; }
+
+    private static Path configDir() {
+        Path dir = testConfigDir;
+        return dir != null ? dir : FabricLoader.getInstance().getConfigDir();
+    }
+
     private static Path path() {
-        return FabricLoader.getInstance().getConfigDir().resolve("openintel.json");
+        return configDir().resolve("openintel.json");
+    }
+
+    /** Relay credentials live in the data folder, never in config/. */
+    private static Path tokenPath() {
+        return DataDir.file(DataDir.TOKENS);
     }
     private static final String OLD_SNITCH_PATTERN = "(?i)entered snitch|snitch at|you have entered";
     private static final String DEFAULT_SNITCH_PATTERN = OLD_SNITCH_PATTERN
@@ -42,7 +66,7 @@ public class OIConfig {
     /** Personal auth token issued by the relay admin (matches users.json on the relay).
      *  Default comes from a bundled resource so token-specific builds can be
      *  baked by patching one text file inside the jar — no recompile. */
-    public String token = bundledToken();
+    public transient String token = bundledToken();
 
     /** Null means an older config; an explicit empty list must stay empty. */
     public List<RelayProfile> relays;
@@ -755,6 +779,8 @@ public class OIConfig {
     }
 
     public static OIConfig load() {
+        // Data an older version kept in config/ moves out before anything reads it.
+        DataDir.migrate();
         try {
             Path path = path();
             if (Files.exists(path)) {
@@ -762,6 +788,9 @@ public class OIConfig {
                 OIConfig c = GSON.fromJson(json, OIConfig.class);
                 JsonObject raw = GSON.fromJson(json, JsonObject.class);
                 if (c == null || raw == null) return new OIConfig();
+                // Tokens are not in openintel.json. Fill them from the token file and
+                // pull any left in an older config out of it (rewritten below).
+                boolean tokensInConfig = restoreTokens(c, raw, readTokens(tokenPath()));
                 c.repairExternalHudElements();
                 if (c.hudAnchors == null) c.hudAnchors = new LinkedHashMap<>();
                 c.hudAnchors.entrySet().removeIf(e -> e.getKey() == null || e.getValue() == null
@@ -784,7 +813,7 @@ public class OIConfig {
                 c.warTablePinOpacity = Math.clamp(c.warTablePinOpacity, 30, 150);
                 // Gson leaves a missing boolean false. Relic maps / world-map
                 // pins stay on for configs saved before those toggles existed.
-                boolean defaults = repairChatChannel;
+                boolean defaults = repairChatChannel || tokensInConfig;
                 // Gson leaves a missing boolean false. The Chat eye starts open.
                 if (!raw.has("chatShowChat")) {
                     c.chatShowChat = true;
@@ -901,8 +930,97 @@ public class OIConfig {
         try {
             Path path = path();
             Files.createDirectories(path.getParent());
+            // Tokens first: if this fails the config is left untouched, so a token
+            // that is still only in an old openintel.json is never lost.
+            Files.createDirectories(tokenPath().getParent());
+            writeTokens(tokenPath(), tokensJson());
             Files.writeString(path, GSON.toJson(this));
         } catch (IOException ignored) {
         }
+    }
+
+    // ------------------------------------------------------ relay tokens ----
+
+    /** Contents of the token file: the legacy single token plus one token per relay id. */
+    public static final class StoredTokens {
+        public String token;
+        public Map<String, String> relays = new LinkedHashMap<>();
+    }
+
+    /** JSON for the token file. Blank tokens and the bundled placeholder are not written. */
+    public String tokensJson() {
+        StoredTokens out = new StoredTokens();
+        if (token != null && !token.isBlank() && !token.equals(bundledToken())) out.token = token;
+        for (RelayProfile profile : relayProfiles()) {
+            if (profile.token != null && !profile.token.isBlank()) out.relays.put(profile.id, profile.token);
+        }
+        return GSON.toJson(out);
+    }
+
+    /** Parses the token file text; a missing, empty, or damaged file yields no tokens. */
+    public static StoredTokens parseTokens(String json) {
+        try {
+            StoredTokens parsed = GSON.fromJson(json, StoredTokens.class);
+            if (parsed != null) {
+                if (parsed.relays == null) parsed.relays = new LinkedHashMap<>();
+                parsed.relays.values().removeIf(java.util.Objects::isNull);
+                return parsed;
+            }
+        } catch (Exception ignored) { }
+        return new StoredTokens();
+    }
+
+    private static StoredTokens readTokens(Path path) {
+        try {
+            if (Files.exists(path)) return parseTokens(Files.readString(path));
+        } catch (IOException ignored) { }
+        return new StoredTokens();
+    }
+
+    private static void writeTokens(Path path, String json) throws IOException {
+        if (!Files.exists(path)) {
+            try {
+                // Owner-only where the platform supports it; the file holds credentials.
+                Files.createFile(path, java.nio.file.attribute.PosixFilePermissions
+                        .asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+            } catch (UnsupportedOperationException | FileAlreadyExistsException ignored) { }
+        }
+        Files.writeString(path, json);
+    }
+
+    /**
+     * Puts tokens back onto a config that was parsed without them. The token file
+     * wins; a token found in the raw openintel.json (an older config) is the
+     * fallback. Must run before {@link #relayProfiles()} so a legacy config
+     * migrates the right token.
+     *
+     * @return true when the raw config still contains a token, so it must be rewritten
+     */
+    public static boolean restoreTokens(OIConfig c, JsonObject raw, StoredTokens stored) {
+        boolean inConfig = raw.has("token");
+        String legacy = stored.token;
+        if (legacy == null || legacy.isBlank()) legacy = rawString(raw.get("token"));
+        if (legacy != null && !legacy.isBlank()) c.token = legacy;
+        if (c.relays == null) return inConfig;
+        JsonElement rawList = raw.get("relays");
+        JsonArray rawRelays = rawList != null && rawList.isJsonArray() ? rawList.getAsJsonArray() : null;
+        for (int i = 0; i < c.relays.size(); i++) {
+            RelayProfile profile = c.relays.get(i);
+            JsonElement rawProfile = rawRelays != null && i < rawRelays.size() ? rawRelays.get(i) : null;
+            boolean rawHasToken = rawProfile != null && rawProfile.isJsonObject()
+                    && rawProfile.getAsJsonObject().has("token");
+            if (rawHasToken) inConfig = true;
+            if (profile == null) continue;
+            String token = profile.id == null ? null : stored.relays.get(profile.id);
+            if (token == null || token.isBlank()) {
+                token = rawHasToken ? rawString(rawProfile.getAsJsonObject().get("token")) : null;
+            }
+            profile.token = token == null ? "" : token;
+        }
+        return inConfig;
+    }
+
+    private static String rawString(JsonElement element) {
+        return element != null && element.isJsonPrimitive() ? element.getAsString() : null;
     }
 }

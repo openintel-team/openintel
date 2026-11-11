@@ -3,7 +3,6 @@ package dev.openintel.viz;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonParser;
-import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -28,7 +27,7 @@ public final class RangeStore {
     public RangeStore(Path path) { overridePath = path; }
     public static RangeStore get() { return INSTANCE; }
     private Path configPath() {
-        return overridePath != null ? overridePath : FabricLoader.getInstance().getConfigDir().resolve("openintel-ranges.json");
+        return overridePath != null ? overridePath : dev.openintel.config.DataDir.file(dev.openintel.config.DataDir.RANGES);
     }
     public synchronized List<RangeShape> shapes() { return List.copyOf(shapes); }
     public synchronized List<RangeGroup> groups() { return List.copyOf(groups); }

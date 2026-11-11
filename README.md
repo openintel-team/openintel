@@ -62,7 +62,7 @@ Artifacts expire after **30 days**. These are development builds; CI does not ve
 | Nearby relic pins | Horizontal range, default **300** blocks (50–2000). Label is name, enchantment, and distance |
 | Chests | Optional closest-to-furthest sort of located relic maps in chests, barrels, ender chests, and shulkers |
 | Relic library | Chest Tracker list of stored treasure maps, searchable by name or enchantment. Where Is It highlights the chests for a selection. Those pins show on the fullscreen world map (JourneyMap or Xaero) only while that map was opened from the library |
-| Coverage | Block-aligned snitch shells (radius default **8**), the Civ+ bastion field (19 blocks across), and sanctuary rings. Manual shapes persist in `config/openintel-ranges.json`. Live-map sanctuaries reuse the War Table feed |
+| Coverage | Block-aligned snitch shells (radius default **8**), the Civ+ bastion field (19 blocks across), and sanctuary rings. Manual shapes persist in `openintel/ranges.json`. Live-map sanctuaries reuse the War Table feed |
 | Investigate | Paste Discord or in-game snitch logs and step through break, place, and enter highlights. Playback does not write live snitch hits |
 | Snitch alerts without a world | HUD and world-map markers still appear. Dimension comes from the snitch name, then the tripper, then the reporter, then the local player. The feed includes Y when the alert has it |
 | Event feed | Defaults to the top-right, right-aligned, wrapping inside about a third of the screen |
@@ -110,10 +110,10 @@ Open `/oi settings` → **General** and set:
 |---|---|---|
 | Relay URL | `ws://your.server:8765` | WebSocket address of your relay. Leave blank to stay local |
 | Minecraft server | `play.example.net` | Relay connects only while you are on this server |
-| Token | personal token from the relay admin | Keep it private. Source builds ship the placeholder `CHANGE_ME` |
+| Token | personal token from the relay admin | Keep it private. Stored per relay in `openintel/relay-tokens.json` in the game folder, never in `config/`, so you can share your config folder without sharing your token. Source builds ship the placeholder `CHANGE_ME` |
 | Live map URL | `https://host/livemap-api` | Backdrop for the War Table, and the sanctuary list used by coverage overlays |
 
-`/oi url`, `/oi token`, and `/oi reconnect` edit the same relay fields. Manual coverage shapes are a second file, `config/openintel-ranges.json`, and survive restarts.
+`/oi url`, `/oi token`, and `/oi reconnect` edit the same relay fields. Everything that is not a setting lives in an `openintel/` folder next to `config/`: relay tokens, War Table strokes, the live-map cache, and manual coverage shapes (`ranges.json`, which survive restarts). `config/` holds only `openintel.json`. Data from older versions moves there automatically on first launch. To share coverage, send `ranges.json` or use the in-game export.
 
 ### Relay
 
