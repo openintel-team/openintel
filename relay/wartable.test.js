@@ -34,7 +34,7 @@ class Socket extends EventEmitter {
 }
 const timers = [];
 const express = Object.assign(() => app, { json: () => () => {} });
-vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8'), {
+require('./test-fixture').boot({
   __dirname, Buffer, console: { log() {}, error() {} }, process: { argv: [], pid: 1234, env: {} },
   setInterval(fn) { timers.push(fn); },
   fetch: async () => ({ ok: true }),

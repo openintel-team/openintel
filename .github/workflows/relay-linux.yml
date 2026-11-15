@@ -1,0 +1,56 @@
+name: Relay Linux
+on:
+  pull_request:
+    paths: ['relay/**', '.github/workflows/relay-linux.yml', '.gitattributes']
+  push:
+    paths: ['relay/**', '.github/workflows/relay-linux.yml', '.gitattributes']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  relay:
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: relay/package-lock.json
+      - run: npm ci && npm test
+        working-directory: relay
+      - run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - run: shellcheck -x -P SCRIPTDIR relay/scripts/*.sh
+      - run: bash relay/scripts/smoke-test.sh
+      - name: systemd install, crash restart, update and rollback
+        run: |
+          export NODE_BIN="$(command -v node)"
+          sudo env NODE_BIN="$NODE_BIN" bash relay/scripts/setup.sh --systemd --minecraft-server play.example.net --admin-name SmokeAdmin --noninteractive
+          sudo systemd-analyze verify /etc/systemd/system/openintel-relay.service
+          sudo systemctl is-enabled openintel-relay
+          sudo systemctl is-active openintel-relay
+          sudo systemctl kill --signal=SIGKILL --kill-whom=main openintel-relay
+          sleep 8
+          sudo systemctl is-active openintel-relay
+          sudo env NODE_BIN="$NODE_BIN" bash relay/scripts/setup.sh --systemd --noninteractive
+          sudo env NODE_BIN="$NODE_BIN" bash relay/scripts/update.sh --source "$PWD/relay"
+          backup="$(sudo find /var/backups/openintel-relay -mindepth 1 -maxdepth 1 -type d | sort | tail -1)"
+          sudo env NODE_BIN="$NODE_BIN" bash relay/scripts/update.sh --rollback "$backup"
+      - if: always()
+        run: |
+          sudo journalctl -u openintel-relay --no-pager -n 100 || true
+          sudo systemctl stop openintel-relay || true
+  debian:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        image: ['node:24-bookworm', 'node:24-trixie']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Debian foreground setup and lifecycle
+        run: |
+          docker run --rm -v "$PWD:/workspace" -w /workspace/relay '${{ matrix.image }}' bash -c \
+            'npm ci && npm test && bash scripts/smoke-test.sh'

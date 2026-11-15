@@ -117,16 +117,27 @@ Open `/oi settings` → **General** and set:
 
 ### Relay
 
+For Linux, use the guided setup and foreground startup:
+
 ```bash
-cd relay
-npm ci
-cp config.example.json config.json
-cp users.example.json users.json
-cp allegiances.example.json allegiances.json
-node server.js
+./relay/scripts/setup.sh
+./relay/scripts/start.sh
 ```
 
-Set the listen port, admin token, and webhook URLs in `config.json`. Approved players and their tokens live in `users.json`, not in the mod jar. Invitations must use the player's current Java Edition Minecraft account name.
+For a service that starts on boot, use `sudo ./relay/scripts/setup.sh --systemd`.
+Add `--install-node` to explicitly install a verified Node 24 LTS runtime.
+Setup creates the first invitation and preserves existing data on reruns.
+The default listener is loopback; configure a public WSS endpoint for remote
+clients. Discord is optional.
+
+See the [Linux relay operator guide](relay/README.md) for prerequisites, first-player
+onboarding, systemd, Caddy TLS, diagnostics, migration, backups, updates, and rollback.
+The supported relay runtime is Node 24 LTS. Legacy `cd relay && npm ci && node server.js`
+deployments still work with their existing config/data paths.
+
+Set the listen port, optional admin token, and webhook URLs in the relay's `config.json`.
+Approved players and token hashes live in `users.json`, not in the mod jar.
+Invitations must use the player's current Java Edition Minecraft account name.
 
 `users.json` stores only SHA-256 digests of relay tokens (`tokenHash`). You can still write a new entry with a plaintext `token`: on startup the relay replaces it with `tokenHash` and saves the file. A plaintext `token` replaces an older `tokenHash` on the same entry. The relay cannot show or resend a token after that, so keep the copy you hand out, or issue a new one with `!user rotate-token`. An older relay build cannot read hashed entries.
 
@@ -154,7 +165,7 @@ For encrypted connections, put the relay behind a TLS reverse proxy and set `sec
 ### Discord webhooks
 
 1. Create two webhooks: one in the alerts channel, one in a private admin channel.
-2. Put both URLs in `relay/config.json`.
+2. Put both URLs in the relay's `config.json` (see the Linux operator guide for its location).
 3. For role pings, set `alertRoleId` and allow the role to be mentioned by webhooks.
 
 The optional Discord bot is separate from the webhooks. Setup is under [Discord terminal](#discord-terminal).

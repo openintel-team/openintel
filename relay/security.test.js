@@ -65,7 +65,7 @@ function fixture({ config = {}, users } = {}) {
       return require(name);
     },
   });
-  vm.runInContext(fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8'), context);
+  require('./test-fixture').boot(context);
 
   class Socket extends EventEmitter {
     constructor() { super(); this.readyState = 1; this.messages = []; }

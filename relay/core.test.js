@@ -1,0 +1,30 @@
+const assert = require("node:assert/strict");
+const { normalizeMinecraftServer, validName, validRole, hasTier, pageText, consumeRateLimit,
+  safeAuditValue, hashToken, tokenFingerprint, sealUsers, adminTokenDigest, adminTokenMatches } = require("./src/common");
+assert.equal(normalizeMinecraftServer("PLAY.EXAMPLE.NET:25565"), "play.example.net");
+assert.equal(normalizeMinecraftServer("minecraft://play.example.net/"), "play.example.net");
+assert(validName("Player_123")); assert(!validName("ab")); assert(!validName("bad-name"));
+assert(validRole("operator")); assert(validRole("trial")); assert(!validRole("owner"));
+assert(!hasTier("trial", "member")); assert(hasTier("member", "trial")); assert(hasTier("admin", "captain"));
+assert(!hasTier("operator", "captain"));
+assert.equal(pageText("users", ["a", "b", "c"], 2, 2), "users — page 2/2 (3)\nc");
+const limits = new Map();
+assert(consumeRateLimit(limits, "user", 1000, 5000).allowed);
+assert(!consumeRateLimit(limits, "user", 2000, 5000).allowed);
+assert.equal(consumeRateLimit(limits, "user", 7000, 5000).suppressed, 1);
+const safe = safeAuditValue({ token: "test-token", nested: { botToken: "bot" } });
+assert.equal(safe.token, `sha256:${tokenFingerprint("test-token")}`);
+assert(!JSON.stringify(safe).includes("test-token"));
+const digest = hashToken("test-token");
+assert.equal(safeAuditValue({ tokenHash: digest }).tokenHash, `sha256:${tokenFingerprint("test-token")}`);
+const sealed = sealUsers({ users: [{ name: "Plain", token: "plain-token" },
+  { name: "Replaced", tokenHash: digest, token: "new-token" }, { name: "Hashed", tokenHash: digest }, null, ["bad"]] });
+assert(sealed.changed); assert.equal(sealed.data.users.length, 3);
+assert.equal(sealed.data.users[0].tokenHash, hashToken("plain-token"));
+assert.equal(sealed.data.users[1].tokenHash, hashToken("new-token"));
+assert.equal(sealUsers({ users: [{ tokenHash: digest }] }).changed, false);
+for (const weak of [undefined, null, "", "short", "CHANGE_ME", "CHANGE_ME_LONG_RANDOM_STRING", 42]) assert.equal(adminTokenDigest(weak), null);
+const strong = "s".repeat(32);
+assert(adminTokenMatches(adminTokenDigest(strong), strong));
+for (const supplied of [undefined, "", "s", strong + "s", ["x"]]) assert(!adminTokenMatches(adminTokenDigest(strong), supplied));
+console.log("Core tests passed");

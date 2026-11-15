@@ -53,7 +53,7 @@ async function fixture() {
       return require(name);
     },
   });
-  vm.runInContext(fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8'), context);
+  require('./test-fixture').boot(context);
   async function login(index) {
     const socket = new Socket(); server.clients.add(socket);
     server.emit('connection', socket, { socket: { remoteAddress: '127.0.0.1' } });

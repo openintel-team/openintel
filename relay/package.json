@@ -5,11 +5,14 @@
   "main": "server.js",
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=24 <25"
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node server.js --self-test && node authentication.test.js && node cut.test.js && node wartable.test.js && node transport.test.js && node bridge.test.js && node positions.test.js && node security.test.js"
+    "test": "node core.test.js && node authentication.test.js && node cut.test.js && node wartable.test.js && node transport.test.js && node bridge.test.js && node positions.test.js && node security.test.js && node lifecycle.test.js",
+    "init": "node src/cli.js init",
+    "check-config": "node src/cli.js check-config",
+    "doctor": "node src/cli.js doctor"
   },
   "dependencies": {
     "discord.js": "14.27.0",

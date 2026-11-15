@@ -52,7 +52,7 @@ const context = vm.createContext({
     return require(name);
   },
 });
-vm.runInContext(fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8'), context);
+require('./test-fixture').boot(context);
 assert.equal(timers.length, 2, 'full-list timer and delta flush timer');
 assert.equal(timers[0].ms, 250, 'legacy full list keeps the 250 ms default');
 assert.equal(timers[1].ms, 50, 'delta pushes default to at most 20 Hz');
@@ -83,7 +83,7 @@ const report = (socket, subject, x, extra = {}) => socket.submit({ type: 'positi
   { subject, x, y: 64, z: 0, dim: 'minecraft:overworld', ...extra }] });
 const rows = (socket) => socket.take('pos').flatMap(m => m.p.map(row => ({
   name: row[0], x: row[1], y: row[2], z: row[3], dim: m.s[row[4]], age: row[5], reporter: m.s[row[6]],
-  bridge: row[7], hops: row[8], length: row.length })));
+  bridge: row[7], hops: row[8], length: row.length, ...(row.length > 9 ? { vx: row[9], vz: row[10] } : {}) })));
 // First full-list tick reaches everyone; later ticks pace delta clients.
 fullTick();
 clear();
@@ -93,7 +93,7 @@ report(reporter, 'Target', 10.123456, { age: 40, vx: 4.256, vz: -1.5, bridge: { 
 let seen = rows(viewer);
 assert.equal(seen.length, 1, 'delta client gets the change immediately');
 assert.deepEqual(seen[0], { name: 'Target', x: 10.12, y: 64, z: 0, dim: 'minecraft:overworld', age: 40,
-  reporter: 'Reporter', bridge: 'obs-1', hops: 0, length: 9 });
+  reporter: 'Reporter', bridge: 'obs-1', hops: 0, length: 11, vx: 4.26, vz: -1.5 });
 assert.equal(legacy.take('pos').length, 0, 'older clients never see the new message type');
 assert.equal(legacy.take('state').length, 0, 'older clients wait for the full list');
 assert.equal(trial.take('pos').length, 0, 'trial stays send-only');
@@ -188,7 +188,9 @@ const bridged = { type: 'position', name: 'Bridged', x: 7, y: 64, z: 7, dim: 'mi
 reporter.submit({ type: 'bridge', event: bridged });
 const bridgedRow = rows(viewer).find(r => r.name === 'Bridged');
 assert.equal(bridgedRow.hops, 1);
-assert.equal(bridgedRow.length, 9, 'velocity from an older client is not forwarded');
+assert.equal(bridgedRow.length, 11, 'live velocity extension survives relay bridges');
+assert.equal(bridgedRow.vx, 2);
+assert.equal(bridgedRow.vz, 3);
 assert.equal(bridgedRow.age, 20);
 assert.equal(vm.runInContext('bridgeSeen.size', context), bridgeBefore);
 assert(vm.runInContext(`positionBridgeSeen.has('bridged-1')`, context));
@@ -199,7 +201,20 @@ advance(100);
 report(reporter, 'Clamp', 1, { age: 999999 });
 const clamped = vm.runInContext(`positions.get('clamp@reporter')`, context);
 assert.equal(now - clamped.t, 1000, 'report age is capped at one second');
-assert.equal(clamped.vx, undefined, 'velocity is never stored');
+assert.equal(clamped.vx, undefined, 'velocity remains optional');
+advance(100);
+report(reporter, 'Velocity', 20, { vx: 1, vz: 2 });
+rows(viewer);
+advance(100);
+report(reporter, 'Velocity', 20, { vx: 3, vz: 4 });
+const velocityOnly = rows(viewer).find(row => row.name === 'Velocity');
+assert.equal(velocityOnly.vx, 3, 'velocity changes push even when coordinates stay the same');
+advance(100);
+report(reporter, 'Velocity', 20, { vx: 101, vz: 4 });
+assert.equal(rows(viewer).find(row => row.name === 'Velocity').length, 9, 'out-of-range velocity is dropped');
+advance(100);
+report(reporter, 'PartialVelocity', 21, { vx: 1 });
+assert.equal(rows(viewer).find(row => row.name === 'PartialVelocity').length, 9, 'a partial velocity pair is not forwarded');
 advance(1000);
 const before = vm.runInContext('positions.size', context);
 for (let i = 0; i < 20; i++) report(legacy, 'Flood' + i, i);

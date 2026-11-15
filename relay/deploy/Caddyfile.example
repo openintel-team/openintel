@@ -1,0 +1,7 @@
+# Change this hostname, point its DNS at the server, and allow inbound 80/443.
+# Import this as a separate site; do not replace an existing Caddyfile.
+relay.example.net {
+    @relay path /openintel-relay
+    reverse_proxy @relay 127.0.0.1:8765
+    respond 404
+}

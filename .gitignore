@@ -4,6 +4,8 @@ relay/users.json
 relay/allegiances.json
 relay/audit.jsonl
 relay/wartable.json
+relay/relay.lock
+relay/initial-token.txt
 
 # --- node ---
 relay/node_modules/

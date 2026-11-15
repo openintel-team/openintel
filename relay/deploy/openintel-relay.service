@@ -1,0 +1,32 @@
+[Unit]
+Description=OpenIntel relay
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=openintel-relay
+Group=openintel-relay
+WorkingDirectory=/opt/openintel-relay/current
+Environment=NODE_ENV=production
+Environment=OPENINTEL_CONFIG=/etc/openintel-relay/config.json
+Environment=OPENINTEL_DATA_DIR=/var/lib/openintel-relay
+ExecStartPre=@NODE@ /opt/openintel-relay/current/src/cli.js unlock-stale
+ExecStartPre=@NODE@ /opt/openintel-relay/current/src/cli.js check-config
+ExecStart=@NODE@ /opt/openintel-relay/current/server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/openintel-relay
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

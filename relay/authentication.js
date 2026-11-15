@@ -10,11 +10,12 @@ function sessionServer() {
   return configured.endsWith('/') ? configured.slice(0, -1) : configured;
 }
 
-async function verifyMinecraftSession(name, serverId) {
+async function verifyMinecraftSession(name, serverId, signal) {
   const url = new URL(`${sessionServer()}/session/minecraft/hasJoined`);
   url.searchParams.set('username', name);
   url.searchParams.set('serverId', serverId);
-  const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(10_000) });
+  const timeout = AbortSignal.timeout(10_000);
+  const response = await fetch(url, { redirect: 'error', signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
   if (response.status !== 200) return null;
   return response.json();
 }
@@ -27,6 +28,7 @@ function sessionServerId(challenge, clientNonce) {
 function createIdentityVerification(ws, { userByToken, onVerified, onRejected = () => {},
   verify = verifyMinecraftSession, timeoutMs = 30_000 }) {
   let state = 'new';
+  const controller = new AbortController();
   let pending;
   const deadline = Date.now() + timeoutMs;
   const timer = setTimeout(() => deny('authentication_timeout'), timeoutMs);
@@ -38,6 +40,7 @@ function createIdentityVerification(ws, { userByToken, onVerified, onRejected = 
     state = 'closed';
     pending = null;
     clearTimeout(timer);
+    controller.abort();
     ws.authedAs = null;
     onRejected(reason, invitationName);
     if (ws.readyState === 1) {
@@ -45,7 +48,7 @@ function createIdentityVerification(ws, { userByToken, onVerified, onRejected = 
       ws.close(4001, reason);
     }
   }
-  ws.on('close', () => { state = 'closed'; pending = null; clearTimeout(timer); });
+  ws.on('close', () => { state = 'closed'; pending = null; clearTimeout(timer); controller.abort(); });
   return {
     begin(token) {
       if (state !== 'new' || Date.now() >= deadline) return deny();
@@ -60,7 +63,7 @@ function createIdentityVerification(ws, { userByToken, onVerified, onRejected = 
       state = 'verifying';
       const attempt = pending;
       try {
-        const profile = await verify(attempt.name, sessionServerId(attempt.challenge, clientNonce));
+        const profile = await verify(attempt.name, sessionServerId(attempt.challenge, clientNonce), controller.signal);
         if (state !== 'verifying' || pending !== attempt || ws.readyState !== 1) return;
         if (Date.now() >= deadline) return deny('authentication_timeout');
         const current = userByToken(attempt.token);
